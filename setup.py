@@ -48,7 +48,7 @@ setup(
     include_package_data=True,
     python_requires=">=3.6",
     install_requires=_REQUIREMENTS,
-    extras_require={"dev": _REQUIREMENTS_DEV},
+    extras_require={"dev": _REQUIREMENTS_DEV, "gui": ["PySide6>=6.8"]},
     classifiers=[
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
         "Operating System :: POSIX",
@@ -56,5 +56,10 @@ setup(
         "Intended Audience :: End Users/Desktop",
         "Programming Language :: Python",
     ],
-    entry_points={"console_scripts": ["konsave = konsave.__main__:main"]},
+    entry_points={
+        "console_scripts": [
+            "konsave = konsave.__main__:main",
+            "kongui = kongui.gui.app:main",
+        ]
+    },
 )
