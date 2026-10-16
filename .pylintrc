@@ -1,3 +1,7 @@
 [MASTER]
-disable=broad-except, too-many-locals, too-many-branches
+disable=broad-except, too-many-locals, too-many-branches, too-many-instance-attributes, too-many-statements, too-few-public-methods
 good-names=i,j,k,v,ex,_,pk,x,y
+# PySide6 is a compiled extension: let pylint import it, and do not flag
+# Signal.connect/emit/disconnect as missing members.
+extension-pkg-allow-list=PySide6,shiboken6
+generated-members=connect,emit,disconnect
