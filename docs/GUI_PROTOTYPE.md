@@ -1,15 +1,17 @@
 # Protótipo visual da interface (PySide6 / Qt Widgets)
 
-Primeira versão da interface gráfica do KonGUI. **É um protótipo visual:** usa
-dados fictícios e **não executa nenhuma operação do Konsave**. O motor original
-(`konsave/`) e a camada de integração (`kongui/core/`) não foram alterados e não
-são usados por este código.
+Primeira versão da interface gráfica do KonGUI, criada como protótipo visual.
+**Atualização:** a interface agora está ligada aos serviços (`kongui/core/`) por
+padrão; o modo `--demo` mantém o comportamento original do protótipo, com dados
+fictícios. A ligação, os estados de carregamento e as limitações estão em
+[`GUI_SERVICES.md`](GUI_SERVICES.md). O motor original (`konsave/`) não foi alterado.
 
 ## 1. Como executar
 
 ```bash
 pip install "PySide6>=6.8"      # ou: pip install -e ".[gui]"
-python3 -m kongui.gui           # também: comando `kongui`, depois de instalar
+python3 -m kongui.gui           # perfis reais (serviços do KonGUI sobre o Konsave)
+python3 -m kongui.gui --demo    # dados fictícios, nada é gravado nem aplicado
 ```
 
 O programa recusa rodar como root (usa `kongui.core.safety.ensure_not_root`).
@@ -21,9 +23,9 @@ As preferências ficam em `<pasta de configuração do usuário>/kongui/kongui-g
 | Página | Chave | Atalho | Ações na barra superior | Conteúdo |
 |---|---|---|---|---|
 | Dashboard | `dashboard` | `Ctrl+1` | Importar, Salvar perfil atual (`Ctrl+S`) | 4 cartões de resumo, perfil ativo, atividade recente |
-| Perfis | `profiles` | `Ctrl+2` | Novo perfil (`Ctrl+N`) | busca (`Ctrl+F`), ordenação, grade/lista, cartões de perfil |
+| Perfis | `profiles` | `Ctrl+2` | Limpar todos, Novo perfil (`Ctrl+N`) | busca (`Ctrl+F`), ordenação, grade/lista, cartões de perfil |
 | Importar / Exportar | `transfer` | `Ctrl+3` | — | formulário de exportação, área de soltar `.knsv`, transferências recentes |
-| Configurações | `settings` | `Ctrl+4` | — | tema, confirmações, exibição, duração dos avisos, dados de demonstração |
+| Configurações | `settings` | `Ctrl+4` | — | tema, exibição, duração dos avisos, dados de demonstração (só no modo `--demo`) |
 | Sobre | `about` | `Ctrl+5` | — | versão, ambiente, links, aviso de protótipo |
 
 A navegação lateral é fixa (232 px) com ícone e rótulo. A janela tem tamanho
@@ -33,22 +35,27 @@ mínimo de 900 × 600.
 
 | Módulo | Responsabilidade |
 |---|---|
-| `app.py`, `__main__.py` | criação do `QApplication`, recusa de root, caminho das preferências |
-| `main_window.py` | `MainWindow`: barra lateral, barra superior, pilha de páginas, atalhos |
-| `context.py` | `AppContext`: o que cada página recebe (modelos, tema, avisos, navegação) |
+| `app.py`, `__main__.py` | criação do `QApplication`, recusa de root, escolha do backend (`--demo`), caminho das preferências |
+| `main_window.py` | `MainWindow`: barra lateral, barra superior, barra de progresso, pilha de páginas, atalhos |
+| `context.py` | `AppContext`: o que cada página recebe (modelo, backend, controller, tema, avisos, navegação) |
 | `state.py` | `Profile`, `ProfileStore`, `ActivityLog`, `AppSettings` (modelos em memória, com sinais) |
+| `backend.py` | `ProfileBackend`, `ServiceBackend` (serviços reais) e `FakeBackend` (memória); único módulo da GUI que importa o engine e os serviços |
+| `controller.py` | `ProfileController`: executa uma operação por vez, estado de carregamento, atualiza o `ProfileStore` |
+| `tasks.py` | executores: `ThreadExecutor` (thread de trabalho), `InlineExecutor` (testes) |
+| `messages.py` | textos pt-BR de sucesso e de erro |
 | `mock_data.py` | **todos** os dados fictícios (sete perfis, seis eventos, lista de seções) |
-| `actions.py` | criar, aplicar, duplicar e remover perfis no modelo fictício |
+| `actions.py` | diálogos de confirmação e chamadas ao controller; avisos e atividade de cada resultado |
 | `validation.py` | regras de nome (reaproveita `kongui.core.safety.validate_profile_name`) |
 | `theme.py` | tokens de cor, paleta Qt, folha de estilo e `ThemeManager` |
 | `icons.py` | ícones SVG desenhados no código e coloridos pelo tema |
 | `formatting.py` | tamanhos, datas relativas e plurais em pt-BR |
-| `widgets/` | peças reutilizáveis: `common` (botão, rótulo, selo, cartão, controle segmentado), `grid` (grade adaptável), `cards`, `shell` (barra lateral e superior), `states` (estado vazio), `search`, `toast`, `dialogs`, `dropzone`, `progress`, `rows` |
+| `widgets/` | peças reutilizáveis: `common` (botão, rótulo, selo, cartão, controle segmentado), `grid` (grade adaptável), `cards`, `shell` (barra lateral e superior), `states` (estado vazio), `search`, `toast`, `dialogs`, `dropzone`, `progress`, `rows`, `feedback` (barra de ocupado e faixa de erro) |
 | `pages/` | uma classe por página, sobre `pages/base.py` |
 
 Regras seguidas: cores só vêm de `Tokens`; ícones são refeitos quando
-`ThemeManager.changed` dispara; nenhuma página importa `konsave` nem os serviços
-de `kongui.core` (só `safety` e `errors`). Os testes conferem essas regras.
+`ThemeManager.changed` dispara; só `backend.py` importa `kongui.core.engine`,
+`profiles` e `config`; ninguém importa `konsave` nem `subprocess`. Os testes
+conferem essas regras.
 
 ## 4. Tema
 
@@ -80,13 +87,16 @@ temporário. Se o PySide6 não estiver instalado, eles são pulados.
 | `tests.test_gui_navigation` | barra lateral, barra superior, atalhos, troca de tema |
 | `tests.test_gui_widgets` | grade adaptável, avisos, diálogos, área de soltar, tema, formatação |
 | `tests.test_gui_interaction` | cada página: busca, ordenação, aplicar, remover, exportar, importar, configurações |
+| `tests.test_gui_operations` | as seis operações, uma a uma, na interface (backend em memória): carregamento, sucesso, erro, confirmação |
+| `tests.test_gui_real_backend` | as seis operações nos serviços reais, em `$HOME` temporário |
+| `tests.test_gui_support` | mensagens, executores, `FakeBackend`, `ProfileStore`, widgets de feedback |
 
 Verificação visual manual: abra o programa, alterne os três temas, redimensione
 a janela até o mínimo e use **Configurações → Esvaziar perfis** para ver os
 estados vazios. Para o aviso de arquivo existente, exporte o perfil
 “Minimalista” sem marcar “Substituir”.
 
-## 6. O que o protótipo simula
+## 6. O que o modo `--demo` simula
 
 * Aplicar, salvar, duplicar, remover, exportar e importar só mudam as listas em
   memória. Todo aviso diz “Simulação: nada foi alterado no sistema.”.
@@ -95,14 +105,14 @@ estados vazios. Para o aviso de arquivo existente, exporte o perfil
   ele nunca é aberto.
 * O arquivo `Minimalista.knsv` “já existe” no destino, para exibir o erro.
 
+No modo real, importar e exportar **não estão ligados** (aba Transferir
+desativada) e não há duplicação nem descrição/seções por perfil.
+
 ## 7. Limitações e próximos passos
 
-* Os modelos de `state.py` ainda não falam com `kongui.core`. A ligação com
-  `ProfileService`/`ConfigService` (em thread, com cancelamento e tratamento de
-  `OperationResult`) é a próxima fase.
-* Sem backup antes de aplicar, sem editor de `conf.yaml` e sem prévia real do
-  conteúdo de um `.knsv` (`inspect_archive` não existe ainda; ver
-  `INTEGRATION.md` §8).
+* Importação, exportação e edição de `conf.yaml` ainda não estão ligados à GUI.
+* Sem backup antes de aplicar e sem prévia real do conteúdo de um `.knsv`
+  (`inspect_archive` não existe ainda; ver `INTEGRATION.md` §8).
 * Não testado em Plasma 6 real: cor de destaque, troca de esquema com o app
   aberto, escala fracionária e Wayland precisam de verificação manual.
 * Acessibilidade: nomes acessíveis, foco por teclado e contraste foram tratados,

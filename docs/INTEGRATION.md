@@ -141,7 +141,8 @@ Sem o pacote instalado, `version` vale `0+unknown`.
 | Método | Delega a | Observações |
 |---|---|---|
 | `list_profiles()`, `get_profile(name)` | leitura do disco | Lista fresca; ignora arquivos soltos; `has_config` indica perfil completo |
-| `save(name, *, overwrite=False)` | `save_profile` | `overwrite` **mescla** no perfil existente (ver §8) |
+| `save(name, *, overwrite=False)` | `save_profile` | `overwrite` **mescla** no perfil existente (ver §8). Para substituir de verdade, use `replace` |
+| `replace(name, *, confirmed)` | `save_profile` (nome temporário) | Substituição real: salva a configuração atual em `.kongui-new-…`, troca por `rename` e apaga o antigo; se algo falhar, o perfil antigo continua (ou volta) ao lugar. Não altera o código do Konsave. Os temporários nunca aparecem em `list_profiles` |
 | `apply(name, *, confirmed, allow_outside_home=False)` | `apply_profile` | Sem backup; pastas são mescladas |
 | `remove(name, *, confirmed)` | `remove_profile` | Irreversível |
 | `export(name, *, directory, archive_name=None, on_conflict="error")` | `export` | A pasta de saída precisa existir; a pasta temporária de montagem fica nela |
@@ -238,7 +239,6 @@ Listadas em `NOT_IMPLEMENTED_OPERATIONS` (`kongui/core/profiles.py`):
 | `create_backup` | Backup dos arquivos vivos antes de `apply`/`import` (requisito RN-01). Hoje `apply` e `import` **sobrescrevem sem backup** [CONFIRMADO] |
 | `restore_backup` | Restauração desse backup (RN-01) |
 | `inspect_archive` | Pré-visualização completa de um `.knsv` (RN-02). Já existe uma verificação interna (nomes dos membros, `conf.yaml`, destinos fora do `HOME`) executada antes de importar, mas ainda não há API pública de inspeção |
-| `replace_profile` | Salvar *substituindo* o perfil. O `save(overwrite=True)` do original **mescla** e mantém arquivos que já não existem no sistema [CONFIRMADO] |
 
 ### Fora desta etapa
 

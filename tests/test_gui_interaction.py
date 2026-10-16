@@ -33,21 +33,21 @@ class DashboardTests(GuiTestCase):
     def test_cards_react_to_the_store(self):
         window = self.make_window()
         stats = window.pages["dashboard"].stats
-        window.context.store.activate("Gaming")
+        window.controller.apply("Gaming", confirmed=True)
         self.assertEqual(stats["active"].value_label.text(), "Gaming")
-        window.context.store.remove("Retrô")
+        self.backend_do(window, "remove", "Retrô", confirmed=True)
         self.assertEqual(stats["count"].value_label.text(), "6")
 
     def test_empty_store_shows_empty_states(self):
         window = self.make_window()
         page = window.pages["dashboard"]
-        window.context.store.clear()
+        self.backend_do(window, "wipe_all", confirmed=True)
         self.flush()
         self.assertEqual(page.stats["count"].value_label.text(), "0")
         self.assertEqual(page.stats["active"].value_label.text(), "Nenhum")
         self.assertEqual(page.stats["recent"].value_label.text(), "—")
         self.assertIsNotNone(self.button_with_text(page, "Salvar perfil atual"))
-        window.context.store.reset_demo()
+        self.backend_do(window, "reset")
         self.flush()
         self.assertEqual(page.stats["count"].value_label.text(), "7")
 
@@ -227,15 +227,6 @@ class ProfilesPageTests(GuiTestCase):
         self.assertEqual(window.context.store.active().name, "Trabalho")
         self.assertEqual(window.toasts.titles(), [])
 
-    def test_apply_skips_the_question_when_the_setting_is_off(self):
-        window, page = self.page()
-        window.settings.set("confirm_apply", False)
-        card = next(c for c in page.cards() if c.profile_name == "Gaming")
-        with ask(False) as confirm:
-            card.apply_button.click()
-        confirm.assert_not_called()
-        self.assertEqual(window.context.store.active().name, "Gaming")
-
     def test_remove_needs_confirmation_and_is_destructive(self):
         window, page = self.page()
         card = next(c for c in page.cards() if c.profile_name == "Tablet")
@@ -269,7 +260,7 @@ class ProfilesPageTests(GuiTestCase):
 
     def test_empty_store_shows_the_empty_state(self):
         window, page = self.page()
-        window.context.store.clear()
+        self.backend_do(window, "wipe_all", confirmed=True)
         self.flush()
         self.assertFalse(page.empty_state.isHidden())
         self.assertTrue(page.grid.isHidden())
@@ -374,11 +365,11 @@ class TransferPageTests(GuiTestCase):
 
     def test_export_with_no_profiles_shows_a_hint(self):
         window, page = self.page()
-        window.context.store.clear()
+        self.backend_do(window, "wipe_all", confirmed=True)
         self.flush()
         self.assertFalse(page.export_empty.isHidden())
         self.assertTrue(page.export_form.isHidden())
-        window.context.store.reset_demo()
+        self.backend_do(window, "reset")
         self.flush()
         self.assertTrue(page.export_empty.isHidden())
         self.assertFalse(page.export_form.isHidden())
@@ -386,7 +377,7 @@ class TransferPageTests(GuiTestCase):
     def test_export_list_follows_the_store(self):
         window, page = self.page()
         page.select_profile("Gaming")
-        window.context.store.remove("Retrô")
+        self.backend_do(window, "remove", "Retrô", confirmed=True)
         self.assertEqual(page.export_combo.count(), 6)
         self.assertEqual(page.export_combo.currentData(), "Gaming")
 
@@ -483,7 +474,7 @@ class SettingsPageTests(GuiTestCase):
     def test_controls_reflect_the_settings(self):
         _, page = self.page()
         self.assertEqual(page.theme_control.value(), "system")
-        self.assertTrue(page.confirm_check.isChecked())
+        self.assertFalse(hasattr(page, "confirm_check"))
         self.assertEqual(page.view_control.value(), "grid")
         self.assertEqual(page.seconds_spin.value(), 5)
         self.assertTrue(page.folder_edit.isReadOnly())
@@ -498,10 +489,9 @@ class SettingsPageTests(GuiTestCase):
         QTest.mouseClick(page.theme_control.button("system"), Qt.MouseButton.LeftButton)
         self.assertEqual(window.settings.get("theme"), "system")
 
-    def test_confirm_checkbox_and_view_are_stored(self):
-        window, page = self.page()
-        page.confirm_check.click()
-        self.assertIs(window.settings.get("confirm_apply"), False)
+    def test_view_is_stored(self):
+        window, _ = self.page()
+        page = window.pages["settings"]
         QTest.mouseClick(page.view_control.button("list"), Qt.MouseButton.LeftButton)
         self.assertEqual(window.settings.get("profiles_view"), "list")
         window.show_page("profiles")
@@ -516,9 +506,7 @@ class SettingsPageTests(GuiTestCase):
 
     def test_settings_changed_elsewhere_update_the_controls(self):
         window, page = self.page()
-        window.settings.set("confirm_apply", False)
         window.settings.set("toast_seconds", 20)
-        self.assertFalse(page.confirm_check.isChecked())
         self.assertEqual(page.seconds_spin.value(), 20)
 
     def test_test_button_shows_a_notification(self):

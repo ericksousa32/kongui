@@ -7,9 +7,9 @@ the same signals.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QObject, QSettings, Signal
 
@@ -38,146 +38,65 @@ class Profile:  # pylint: disable=too-many-instance-attributes
 
 
 class ProfileStore(QObject):
-    """Editable list of profiles. Emits ``changed`` after every mutation."""
+    """Read-only view model of the profile list. Emits ``changed`` on updates.
+
+    It is filled by the :class:`~kongui.gui.controller.ProfileController`; the
+    pages only read from it.
+    """
 
     changed = Signal()
 
     def __init__(
-        self, factory: Callable[[], List[Profile]], parent: Optional[QObject] = None
-    ):
+        self, profiles: Optional[List[Profile]] = None, parent: Optional[QObject] = None
+    ) -> None:
         """Creates the store.
 
         Args:
-            factory: Returns the initial (fictitious) profiles; also used by
-                :meth:`reset_demo`.
+            profiles: Initial profiles (empty by default).
             parent: Optional Qt parent.
         """
         super().__init__(parent)
-        self._factory = factory
-        self._items: Dict[str, Profile] = {}
-        self._load(factory())
+        self._items: List[Profile] = list(profiles or [])
 
-    def _load(self, items: List[Profile]) -> None:
-        """Replaces the content without emitting."""
-        self._items = {item.name: item for item in items}
+    def replace(self, profiles: List[Profile]) -> bool:
+        """Replaces the whole list; emits ``changed`` only if something differs.
+
+        Args:
+            profiles: The new profiles, in display order.
+
+        Returns:
+            bool: Whether the content changed.
+        """
+        new_items = list(profiles)
+        if new_items == self._items:
+            return False
+        self._items = new_items
+        self.changed.emit()
+        return True
 
     def profiles(self) -> List[Profile]:
-        """Returns the profiles in insertion order."""
-        return list(self._items.values())
+        """Returns the profiles in order."""
+        return list(self._items)
 
     def names(self) -> List[str]:
-        """Returns the profile names in insertion order."""
-        return list(self._items)
+        """Returns the profile names in order."""
+        return [item.name for item in self._items]
 
     def get(self, name: str) -> Optional[Profile]:
         """Returns one profile or ``None``."""
-        return self._items.get(name)
+        return next((item for item in self._items if item.name == name), None)
 
     def active(self) -> Optional[Profile]:
         """Returns the active profile, if any."""
-        return next((item for item in self._items.values() if item.active), None)
+        return next((item for item in self._items if item.active), None)
 
     def total_size_mb(self) -> float:
         """Returns the summed size of all profiles."""
-        return sum(item.size_mb for item in self._items.values())
+        return sum(item.size_mb for item in self._items)
 
     def latest_modified(self) -> Optional[datetime]:
         """Returns the most recent modification time, if any profile exists."""
-        return max((item.modified for item in self._items.values()), default=None)
-
-    def add(self, profile: Profile) -> None:
-        """Adds a profile.
-
-        Args:
-            profile: The new profile.
-
-        Raises:
-            ValueError: If the name is already used.
-        """
-        if profile.name in self._items:
-            raise ValueError(f"profile already exists: {profile.name}")
-        self._items[profile.name] = profile
-        self.changed.emit()
-
-    def remove(self, name: str) -> None:
-        """Removes a profile.
-
-        Args:
-            name: Profile name.
-
-        Raises:
-            KeyError: If the profile does not exist.
-        """
-        del self._items[name]
-        self.changed.emit()
-
-    def activate(self, name: str) -> None:
-        """Marks one profile as active and clears the flag on the others.
-
-        Args:
-            name: Profile name.
-
-        Raises:
-            KeyError: If the profile does not exist.
-        """
-        if name not in self._items:
-            raise KeyError(name)
-        now = datetime.now()
-        self._items = {
-            key: replace(
-                item, active=key == name, modified=now if key == name else item.modified
-            )
-            for key, item in self._items.items()
-        }
-        self.changed.emit()
-
-    def unique_copy_name(self, name: str) -> str:
-        """Returns a free name for a copy of ``name``.
-
-        Args:
-            name: Original name.
-
-        Returns:
-            str: ``"<name> (cópia)"``, numbered when taken.
-        """
-        candidate = f"{name} (cópia)"
-        counter = 2
-        while candidate in self._items:
-            candidate = f"{name} (cópia {counter})"
-            counter += 1
-        return candidate
-
-    def duplicate(self, name: str) -> Profile:
-        """Duplicates a profile.
-
-        Args:
-            name: Profile to copy.
-
-        Returns:
-            Profile: The new (inactive) copy.
-
-        Raises:
-            KeyError: If the profile does not exist.
-        """
-        original = self._items[name]
-        copy = replace(
-            original,
-            name=self.unique_copy_name(name),
-            active=False,
-            modified=datetime.now(),
-        )
-        self.add(copy)
-        return copy
-
-    def clear(self) -> None:
-        """Removes every profile (to demonstrate the empty state)."""
-        self._items = {}
-        self.changed.emit()
-
-    def reset_demo(self) -> None:
-        """Restores the fictitious profiles."""
-        self._load(self._factory())
-        self.changed.emit()
+        return max((item.modified for item in self._items), default=None)
 
 
 @dataclass(frozen=True)
@@ -243,9 +162,9 @@ class AppSettings(QObject):
 
     DEFAULTS = {
         "theme": ThemeMode.SYSTEM.value,
-        "confirm_apply": True,
         "toast_seconds": 5,
         "profiles_view": "grid",
+        "last_applied": "",
     }
 
     def __init__(

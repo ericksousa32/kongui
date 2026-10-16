@@ -70,16 +70,22 @@ class AboutPage(Page):
         notice = Card()
         notice_layout = QVBoxLayout(notice)
         notice_layout.setContentsMargins(20, 16, 20, 16)
-        notice_layout.addWidget(
-            Badge("Protótipo visual", "warning"), 0, Qt.AlignmentFlag.AlignLeft
-        )
-        notice_layout.addWidget(
-            Label(
-                "Esta versão usa dados fictícios. Nenhuma operação do Konsave é executada e "
-                "nenhum arquivo do sistema é lido ou alterado.",
-                wrap=True,
+        if ctx.backend.capabilities.demo:
+            badge, text = (
+                "Protótipo visual",
+                "Esta versão usa dados fictícios. Nenhuma operação do Konsave é "
+                "executada e nenhum arquivo do sistema é lido ou alterado.",
             )
-        )
+        else:
+            badge, text = (
+                "Em desenvolvimento",
+                "Listar, salvar, sobrescrever, aplicar, remover e limpar perfis usam o "
+                "Konsave de verdade. Aplicar substitui arquivos de configuração sem "
+                "backup. Importar, exportar e editar o conf.yaml ainda não estão "
+                "disponíveis (use --demo para ver a prévia).",
+            )
+        notice_layout.addWidget(Badge(badge, "warning"), 0, Qt.AlignmentFlag.AlignLeft)
+        notice_layout.addWidget(Label(text, wrap=True))
         self.body.addWidget(notice)
 
         info = Card()

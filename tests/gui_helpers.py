@@ -20,6 +20,45 @@ except ImportError:  # pragma: no cover - depends on the machine
     HAVE_QT = False
 
 
+class ManualExecutor:
+    """Executor that queues jobs until the test runs them.
+
+    It lets a test look at the "loading" state: the job is accepted but nothing
+    has happened yet; :meth:`run_next` runs the work and delivers the result.
+
+    Attributes:
+        queue: Pending ``(work, on_done)`` pairs.
+    """
+
+    def __init__(self) -> None:
+        """Creates an empty queue."""
+        self.queue: list = []
+
+    def submit(self, work, on_done) -> None:
+        """Queues a job."""
+        self.queue.append((work, on_done))
+
+    def run_next(self) -> bool:
+        """Runs the oldest queued job and delivers its result.
+
+        Returns:
+            bool: ``False`` if the queue was empty.
+        """
+        if not self.queue:
+            return False
+        work, on_done = self.queue.pop(0)
+        try:
+            value, error = work(), None
+        except Exception as exc:  # pylint: disable=broad-except
+            value, error = None, exc
+        on_done(value, error)
+        return True
+
+    def shutdown(self) -> None:
+        """Drops pending jobs."""
+        self.queue.clear()
+
+
 @unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
 class GuiTestCase(unittest.TestCase):
     """Base class: one shared ``QApplication``, a private ``$HOME``, cleanup.
@@ -63,10 +102,14 @@ class GuiTestCase(unittest.TestCase):
         Returns:
             MainWindow: The visible window (closed automatically at cleanup).
         """
+        from kongui.gui.backend import FakeBackend
         from kongui.gui.main_window import MainWindow
         from kongui.gui.state import AppSettings
+        from kongui.gui.tasks import InlineExecutor
 
         kwargs.setdefault("settings", AppSettings())
+        kwargs.setdefault("backend", FakeBackend())
+        kwargs.setdefault("executor", InlineExecutor())
         window = MainWindow(**kwargs)
         window.show()
         self.addCleanup(self.destroy_window, window)
@@ -86,6 +129,20 @@ class GuiTestCase(unittest.TestCase):
         window.deleteLater()
         self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()
+
+    def backend_do(self, window, operation: str, *args, **kwargs) -> None:
+        """Changes the window's fake backend behind the interface's back, then
+        reloads the list (as if another program had changed the profiles).
+
+        Args:
+            window: The main window.
+            operation: Backend method name.
+            *args: Positional arguments of the method.
+            **kwargs: Keyword arguments of the method.
+        """
+        getattr(window.backend, operation)(*args, **kwargs)
+        window.controller.refresh()
+        self.flush()
 
     def flush(self) -> None:
         """Processes pending events."""

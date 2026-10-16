@@ -62,7 +62,7 @@ class BaseDialog(QDialog):
 class ConfirmDialog(BaseDialog):
     """Asks the user to confirm an action."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         parent: Optional[QWidget],
         title: str,
@@ -70,6 +70,7 @@ class ConfirmDialog(BaseDialog):
         confirm_text: str = "Confirmar",
         *,
         destructive: bool = False,
+        require_text: str = "",
     ) -> None:
         """Creates the dialog.
 
@@ -79,16 +80,33 @@ class ConfirmDialog(BaseDialog):
             message: Explanation of what will happen.
             confirm_text: Label of the confirm button.
             destructive: Use the red button style for irreversible actions.
+            require_text: Word that must be typed exactly before the confirm
+                button is enabled (for the most destructive actions).
         """
         super().__init__(
             parent, title, confirm_text, "danger-solid" if destructive else "primary"
         )
         self.message_label = Label(message, wrap=True)
         self.body.addWidget(self.message_label)
+        self.required_text = require_text
+        self.confirm_edit: Optional[QLineEdit] = None
+        if require_text:
+            self.body.addWidget(
+                Label(f"Digite {require_text} para confirmar:", "muted")
+            )
+            self.confirm_edit = QLineEdit()
+            self.confirm_edit.setAccessibleName(f"Digite {require_text} para confirmar")
+            self.confirm_edit.textChanged.connect(self._check_text)
+            self.body.addWidget(self.confirm_edit)
+            self.confirm_button.setEnabled(False)
         self.cancel_button.setFocus()
 
+    def _check_text(self, text: str) -> None:
+        """Enables the confirm button only when the typed word matches."""
+        self.confirm_button.setEnabled(text.strip() == self.required_text)
+
     @classmethod
-    def ask(
+    def ask(  # pylint: disable=too-many-arguments
         cls,
         parent: Optional[QWidget],
         title: str,
@@ -96,6 +114,7 @@ class ConfirmDialog(BaseDialog):
         confirm_text: str = "Confirmar",
         *,
         destructive: bool = False,
+        require_text: str = "",
     ) -> bool:
         """Shows the dialog and waits.
 
@@ -105,18 +124,26 @@ class ConfirmDialog(BaseDialog):
             message: Explanation.
             confirm_text: Label of the confirm button.
             destructive: Use the red button style.
+            require_text: Word the user must type to enable the confirm button.
 
         Returns:
             bool: ``True`` only if the user confirmed.
         """
-        dialog = cls(parent, title, message, confirm_text, destructive=destructive)
+        dialog = cls(
+            parent,
+            title,
+            message,
+            confirm_text,
+            destructive=destructive,
+            require_text=require_text,
+        )
         return dialog.exec() == QDialog.DialogCode.Accepted
 
 
 class ProfileDialog(BaseDialog):
     """Collects the name, description and sections of a new profile."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         parent: Optional[QWidget],
         existing_names: Collection[str],
@@ -124,6 +151,7 @@ class ProfileDialog(BaseDialog):
         *,
         title: str = "Salvar perfil atual",
         confirm_text: str = "Salvar",
+        ask_details: bool = True,
     ) -> None:
         """Creates the dialog.
 
@@ -133,6 +161,8 @@ class ProfileDialog(BaseDialog):
             sections: Section names offered as check boxes (all start checked).
             title: Heading.
             confirm_text: Label of the confirm button.
+            ask_details: Show the description and the section check boxes. Off
+                when the backend cannot store them (only the name is asked).
         """
         super().__init__(parent, title, confirm_text, "primary")
         self._existing = set(existing_names)
@@ -143,19 +173,20 @@ class ProfileDialog(BaseDialog):
         self.body.addWidget(self.name_edit)
         self.error_label = Label("", "danger", wrap=True)
         self.body.addWidget(self.error_label)
-        self.body.addWidget(Label("Descrição (opcional)", "muted"))
         self.description_edit = QPlainTextEdit()
         self.description_edit.setFixedHeight(64)
         self.description_edit.setAccessibleName("Descrição do perfil")
-        self.body.addWidget(self.description_edit)
-        self.body.addWidget(Label("O que incluir", "muted"))
         self.section_checks: List[QCheckBox] = []
-        for section in sections:
-            check = QCheckBox(section)
-            check.setChecked(True)
-            check.toggled.connect(self._update)
-            self.body.addWidget(check)
-            self.section_checks.append(check)
+        if ask_details:
+            self.body.addWidget(Label("Descrição (opcional)", "muted"))
+            self.body.addWidget(self.description_edit)
+            self.body.addWidget(Label("O que incluir", "muted"))
+            for section in sections:
+                check = QCheckBox(section)
+                check.setChecked(True)
+                check.toggled.connect(self._update)
+                self.body.addWidget(check)
+                self.section_checks.append(check)
         self.name_edit.textChanged.connect(self._update)
         self._update()
         self.name_edit.setFocus()
@@ -165,7 +196,9 @@ class ProfileDialog(BaseDialog):
         problem = profile_name_problem(self.name_edit.text(), self._existing)
         if problem:
             return problem
-        if not any(check.isChecked() for check in self.section_checks):
+        if self.section_checks and not any(
+            check.isChecked() for check in self.section_checks
+        ):
             return "Escolha ao menos uma seção."
         return None
 

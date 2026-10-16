@@ -99,10 +99,24 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
 
         ctx.store.changed.connect(self._on_store_changed)
         ctx.activity.changed.connect(self._build_recent)
+        if not ctx.backend.capabilities.transfer:
+            self._disable_for_real_backend()
         self._fill_profiles()
         self._update_export_state()
         self._update_import_state()
         self._build_recent()
+
+    def _disable_for_real_backend(self) -> None:
+        """Locks both forms: transfer is not wired to the services yet."""
+        self.transfer_notice = Label(
+            "Importação e exportação ainda não estão disponíveis nesta versão. "
+            "Os formulários abaixo são apenas uma prévia.",
+            "muted",
+            wrap=True,
+        )
+        self.body.insertWidget(0, self.transfer_notice)
+        self.export_card.setEnabled(False)
+        self.import_card.setEnabled(False)
 
     # ---- export -----------------------------------------------------------------
 
@@ -190,6 +204,9 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
     def _fill_profiles(self) -> None:
         """Reloads the profile combo, keeping the selection when possible."""
         current = self.export_combo.currentData()
+        if current is None:
+            active = self.ctx.store.active()
+            current = active.name if active else None
         self.export_combo.blockSignals(True)
         self.export_combo.clear()
         for name in self.ctx.store.names():
@@ -441,20 +458,16 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
     def _import_done(self, name: str, source: str, apply_after: bool) -> None:
         """Finishes the simulated import."""
         self.import_progress.hide()
-        self.ctx.store.add(
-            Profile(
-                name,
-                f"Importado de {source}.",
-                SECTIONS[:5],
-                round(8.0 + 6.1 * 5, 1),
-                datetime.now(),
-            )
+        profile = Profile(
+            name,
+            f"Importado de {source}.",
+            SECTIONS[:5],
+            round(8.0 + 6.1 * 5, 1),
+            datetime.now(),
         )
+        self.ctx.controller.demo_import(profile, apply_after)
         self.ctx.activity.add("import", f"“{name}” importado de {source}")
         self.ctx.toasts.show_message("success", f"“{name}” importado", SIMULATED)
-        if apply_after:
-            self.ctx.store.activate(name)
-            self.ctx.activity.add("apply", f"Perfil “{name}” aplicado")
         self.set_import_file(None)
 
     # ---- recent -----------------------------------------------------------------

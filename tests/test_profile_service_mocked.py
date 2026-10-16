@@ -623,7 +623,7 @@ class NotImplementedTests(MockedServiceCase):
     def test_each_one_raises_with_its_documented_reason(self):
         self.assertEqual(
             set(NOT_IMPLEMENTED_OPERATIONS),
-            {"create_backup", "restore_backup", "inspect_archive", "replace_profile"},
+            {"create_backup", "restore_backup", "inspect_archive"},
         )
         for name, reason in NOT_IMPLEMENTED_OPERATIONS.items():
             with self.subTest(operation=name):

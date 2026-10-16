@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from kongui.gui.actions import ProfileActions
 from kongui.gui.context import AppContext
+from kongui.gui.controller import LoadState
 from kongui.gui.formatting import format_relative, format_size, plural
 from kongui.gui.pages.base import Page
 from kongui.gui.widgets.cards import ActivityRow, StatCard
@@ -73,11 +74,14 @@ class DashboardPage(Page):
 
         ctx.store.changed.connect(self.refresh)
         ctx.activity.changed.connect(self.refresh)
+        ctx.controller.state_changed.connect(self.refresh)
         self.refresh()
 
     def header_actions(self) -> List[QWidget]:
         """Returns the top-bar buttons."""
-        return [self.import_button, self.save_button]
+        if self.ctx.backend.capabilities.transfer:
+            return [self.import_button, self.save_button]
+        return [self.save_button]
 
     def on_shown(self) -> None:
         """Refreshes the figures when the page appears."""
@@ -86,24 +90,34 @@ class DashboardPage(Page):
     def refresh(self) -> None:
         """Rebuilds the figures and panels from the models."""
         store = self.ctx.store
+        controller = self.ctx.controller
         active = store.active()
         latest = store.latest_modified()
         count = len(store.names())
-        self.stats["count"].set_content(
-            str(count), plural(count, "perfil", "perfis") + " no total"
-        )
-        self.stats["active"].set_content(
-            active.name if active else "Nenhum",
-            "Em uso agora" if active else "Aplique um perfil",
-        )
-        self.stats["size"].set_content(
-            format_size(store.total_size_mb()), "Soma de todos os perfis"
-        )
-        self.stats["recent"].set_content(
-            format_relative(latest) if latest else "—",
-            "Perfil mais recente" if latest else "",
-        )
-        self._build_active(active)
+        waiting = controller.state in (LoadState.IDLE, LoadState.LOADING) and not count
+        failed = controller.state is LoadState.ERROR and not count
+        self.save_button.setEnabled(not controller.busy and not failed)
+        if waiting or failed:
+            placeholder = "…" if waiting else "—"
+            hint = "Carregando…" if waiting else "Não foi possível listar"
+            for stat in self.stats.values():
+                stat.set_content(placeholder, hint)
+        else:
+            self.stats["count"].set_content(
+                str(count), plural(count, "perfil", "perfis") + " no total"
+            )
+            self.stats["active"].set_content(
+                active.name if active else "Nenhum",
+                "Em uso agora" if active else "Aplique um perfil",
+            )
+            self.stats["size"].set_content(
+                format_size(store.total_size_mb()), "Soma de todos os perfis"
+            )
+            self.stats["recent"].set_content(
+                format_relative(latest) if latest else "—",
+                "Perfil mais recente" if latest else "",
+            )
+        self._build_active(active if not (waiting or failed) else None)
         self._build_activity()
 
     def _build_active(self, active) -> None:
@@ -135,10 +149,11 @@ class DashboardPage(Page):
         buttons = QHBoxLayout()
         view = Button("Ver perfis", icon_name="profiles")
         view.clicked.connect(lambda: self.ctx.navigate("profiles"))
-        export = Button("Exportar", icon_name="export")
-        export.clicked.connect(lambda: self.ctx.navigate("transfer"))
         buttons.addWidget(view)
-        buttons.addWidget(export)
+        if self.ctx.backend.capabilities.transfer:
+            export = Button("Exportar", icon_name="export")
+            export.clicked.connect(lambda: self.ctx.navigate("transfer"))
+            buttons.addWidget(export)
         buttons.addStretch(1)
         self.active_layout.addSpacing(6)
         self.active_layout.addLayout(buttons)

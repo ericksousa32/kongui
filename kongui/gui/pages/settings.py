@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import List
 
-from PySide6.QtWidgets import QCheckBox, QLineEdit, QSpinBox, QVBoxLayout
+from PySide6.QtWidgets import QLineEdit, QSpinBox, QVBoxLayout
 
 from kongui.gui.context import AppContext
 from kongui.gui.pages.base import Page
 from kongui.gui.theme import ThemeMode
 from kongui.gui.widgets.common import Button, Card, SegmentedControl, Separator
-from kongui.gui.widgets.dialogs import ConfirmDialog
+from kongui.gui.actions import ProfileActions
 from kongui.gui.widgets.rows import SettingRow
 
 #: Where the original Konsave keeps profiles (documented in docs/INTEGRATION.md).
@@ -53,19 +53,6 @@ class SettingsPage(Page):  # pylint: disable=too-many-instance-attributes
         )
 
         profiles = self._group("Perfis")
-        self.confirm_check = QCheckBox()
-        self.confirm_check.setAccessibleName("Confirmar antes de aplicar um perfil")
-        self.confirm_check.setChecked(bool(settings.get("confirm_apply")))
-        self.confirm_check.toggled.connect(
-            lambda value: settings.set("confirm_apply", value)
-        )
-        profiles.addWidget(
-            SettingRow(
-                "Confirmar antes de aplicar",
-                "Aplicar um perfil substitui a configuração atual do Plasma.",
-                self.confirm_check,
-            )
-        )
         self.view_control = SegmentedControl(
             [("grid", "Grade", "grid"), ("list", "Lista", "list")]
         )
@@ -112,27 +99,10 @@ class SettingsPage(Page):  # pylint: disable=too-many-instance-attributes
             SettingRow("Visualizar", "Mostra um aviso de exemplo.", self.test_button)
         )
 
-        demo = self._group("Dados de demonstração")
-        self.clear_button = Button(
-            "Esvaziar perfis", variant="danger", icon_name="trash"
-        )
-        self.clear_button.clicked.connect(self._clear_profiles)
-        self.reset_button = Button("Restaurar fictícios", icon_name="refresh")
-        self.reset_button.clicked.connect(self._reset_profiles)
-        demo.addWidget(
-            SettingRow(
-                "Lista vazia",
-                "Remove todos os perfis fictícios para mostrar os estados vazios.",
-                self.clear_button,
-            )
-        )
-        demo.addWidget(
-            SettingRow(
-                "Dados originais",
-                "Volta aos sete perfis de exemplo.",
-                self.reset_button,
-            )
-        )
+        self.clear_button = None
+        self.reset_button = None
+        if ctx.backend.capabilities.demo:
+            self._build_demo()
         self.body.addStretch(1)
 
         settings.changed.connect(self._on_setting_changed)
@@ -155,27 +125,40 @@ class SettingsPage(Page):  # pylint: disable=too-many-instance-attributes
             self.theme_control.set_value(str(value))
         elif key == "profiles_view":
             self.view_control.set_value(str(value))
-        elif key == "confirm_apply":
-            self.confirm_check.setChecked(bool(value))
         elif key == "toast_seconds":
             self.seconds_spin.setValue(int(value))  # type: ignore[call-overload]
 
+    def _build_demo(self) -> None:
+        """Adds the demonstration-data group (demo backend only)."""
+        demo = self._group("Dados de demonstração")
+        self.clear_button = Button(
+            "Esvaziar perfis", variant="danger", icon_name="trash"
+        )
+        self.clear_button.clicked.connect(self._clear_profiles)
+        self.reset_button = Button("Restaurar fictícios", icon_name="refresh")
+        self.reset_button.clicked.connect(self._reset_profiles)
+        demo.addWidget(
+            SettingRow(
+                "Lista vazia",
+                "Remove todos os perfis fictícios para mostrar os estados vazios.",
+                self.clear_button,
+            )
+        )
+        demo.addWidget(
+            SettingRow(
+                "Dados originais",
+                "Volta aos sete perfis de exemplo.",
+                self.reset_button,
+            )
+        )
+
     def _clear_profiles(self) -> None:
-        """Empties the fictitious list after confirmation."""
-        if ConfirmDialog.ask(
-            self.window(),
-            "Esvaziar a lista de perfis?",
-            "Apenas os dados fictícios do protótipo serão removidos.",
-            "Esvaziar",
-            destructive=True,
-        ):
-            self.ctx.store.clear()
-            self.ctx.toasts.show_message("warning", "Lista de perfis esvaziada")
+        """Empties the fictitious list after explicit confirmation."""
+        ProfileActions(self.ctx).wipe_all(self.window())
 
     def _reset_profiles(self) -> None:
         """Restores the fictitious profiles."""
-        self.ctx.store.reset_demo()
-        self.ctx.toasts.show_message("success", "Perfis fictícios restaurados")
+        self.ctx.controller.demo_reset()
 
     def header_actions(self) -> List:
         """Settings has no top-bar actions."""

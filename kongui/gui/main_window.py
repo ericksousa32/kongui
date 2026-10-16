@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Type
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -13,8 +14,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from kongui.gui.actions import OutcomeNotifier
+from kongui.gui.backend import FakeBackend, ProfileBackend
 from kongui.gui.context import AppContext
-from kongui.gui.mock_data import demo_activity, demo_profiles
+from kongui.gui.controller import ProfileController
+from kongui.gui.mock_data import demo_activity
 from kongui.gui.pages.about import AboutPage
 from kongui.gui.pages.base import Page
 from kongui.gui.pages.dashboard import DashboardPage
@@ -22,7 +26,9 @@ from kongui.gui.pages.profiles import ProfilesPage
 from kongui.gui.pages.settings import SettingsPage
 from kongui.gui.pages.transfer import TransferPage
 from kongui.gui.state import ActivityLog, AppSettings, ProfileStore
+from kongui.gui.tasks import Executor, ThreadExecutor
 from kongui.gui.theme import ThemeMode, get_theme
+from kongui.gui.widgets.feedback import BusyBar
 from kongui.gui.widgets.shell import Sidebar, TopBar
 from kongui.gui.widgets.toast import ToastHost
 
@@ -46,15 +52,18 @@ class MainWindow(QMainWindow):
     def __init__(
         self,
         settings: Optional[AppSettings] = None,
-        store: Optional[ProfileStore] = None,
+        backend: Optional[ProfileBackend] = None,
         activity: Optional[ActivityLog] = None,
+        executor: Optional[Executor] = None,
     ) -> None:
         """Builds the window.
 
         Args:
             settings: Preferences; defaults to in-memory settings.
-            store: Profile model; defaults to the fictitious profiles.
-            activity: Activity feed; defaults to the fictitious feed.
+            backend: Profile services; defaults to the in-memory demo backend.
+            activity: Activity feed; defaults to the fictitious feed in demo
+                mode and to an empty one with a real backend.
+            executor: Where blocking work runs; defaults to a worker thread.
         """
         super().__init__()
         self.setWindowTitle("KonGUI")
@@ -64,6 +73,7 @@ class MainWindow(QMainWindow):
         self.theme = get_theme()
         self.theme.set_mode(ThemeMode.parse(self.settings.get("theme")))
 
+        self.backend = backend or FakeBackend()
         root = QWidget()
         root.setObjectName("Root")
         self.setCentralWidget(root)
@@ -71,21 +81,34 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self.sidebar = Sidebar()
+        self.sidebar = Sidebar(demo=self.backend.capabilities.demo)
         self.top_bar = TopBar()
         self.stack = QStackedWidget()
         column = QVBoxLayout()
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
         column.addWidget(self.top_bar)
+        self.busy_bar = BusyBar()
+        column.addWidget(self.busy_bar)
         column.addWidget(self.stack, 1)
         layout.addWidget(self.sidebar)
         layout.addLayout(column, 1)
 
         self.toasts = ToastHost(root, int(self.settings.get("toast_seconds")))  # type: ignore[call-overload]
+        self.executor = executor or ThreadExecutor()
+        self.store = ProfileStore()
+        self.controller = ProfileController(
+            self.backend, self.executor, self.store, self.settings
+        )
+        if activity is None:
+            activity = ActivityLog(
+                demo_activity() if self.backend.capabilities.demo else []
+            )
         self.context = AppContext(
-            store=store or ProfileStore(demo_profiles),
-            activity=activity or ActivityLog(demo_activity()),
+            store=self.store,
+            backend=self.backend,
+            controller=self.controller,
+            activity=activity,
             settings=self.settings,
             theme=self.theme,
             toasts=self.toasts,
@@ -108,7 +131,19 @@ class MainWindow(QMainWindow):
         self.sidebar.page_requested.connect(self.show_page)
         self.sidebar.theme_toggle_requested.connect(self.toggle_theme)
         self.settings.changed.connect(self._on_setting_changed)
+        self.notifier = OutcomeNotifier(self.context)
+        self.controller.state_changed.connect(self._sync_busy)
         self.show_page("dashboard")
+        QTimer.singleShot(0, self.controller.refresh)
+
+    def _sync_busy(self) -> None:
+        """Shows the busy bar while an operation is running."""
+        self.busy_bar.set_busy(self.controller.busy)
+
+    def closeEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Waits for the running operation before closing."""
+        self.executor.shutdown()
+        super().closeEvent(event)
 
     def _page_shortcut(self, key: str):
         """Returns a callback that opens one page."""

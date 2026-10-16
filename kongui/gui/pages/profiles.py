@@ -8,11 +8,13 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout, QWidget
 
 from kongui.gui.actions import ProfileActions
 from kongui.gui.context import AppContext
+from kongui.gui.controller import LoadState
 from kongui.gui.formatting import plural
 from kongui.gui.pages.base import Page
 from kongui.gui.state import Profile
 from kongui.gui.widgets.cards import ProfileCard
 from kongui.gui.widgets.common import Button, Label, SegmentedControl
+from kongui.gui.widgets.feedback import ErrorBanner
 from kongui.gui.widgets.grid import ResponsiveGrid
 from kongui.gui.widgets.search import SearchField
 from kongui.gui.widgets.states import EmptyState
@@ -75,6 +77,9 @@ class ProfilesPage(Page):
             lambda: self.actions.save_current(self.window())
         )
 
+        self.wipe_button = Button("Limpar todos", variant="danger", icon_name="trash")
+        self.wipe_button.clicked.connect(lambda: self.actions.wipe_all(self.window()))
+
         toolbar = QHBoxLayout()
         toolbar.setSpacing(10)
         self.search = SearchField("Buscar perfis")
@@ -94,6 +99,14 @@ class ProfilesPage(Page):
         toolbar.addWidget(self.view_control)
         self.body.addLayout(toolbar)
         self.body.addWidget(self.count_label)
+
+        self.error_banner = ErrorBanner("Não foi possível listar os perfis")
+        self.error_banner.retry_requested.connect(self._retry)
+        self.body.addWidget(self.error_banner)
+        self.loading_state = EmptyState(
+            "refresh", "Carregando perfis…", "Lendo a pasta de perfis do Konsave."
+        )
+        self.body.addWidget(self.loading_state)
 
         self.grid = ResponsiveGrid(min_item_width=330, max_columns=4)
         self.body.addWidget(self.grid)
@@ -121,11 +134,16 @@ class ProfilesPage(Page):
         self.sort_combo.currentIndexChanged.connect(self.refresh)
         self.view_control.selected.connect(self._on_view_selected)
         ctx.store.changed.connect(self.refresh)
+        ctx.controller.state_changed.connect(self.refresh)
         self.refresh()
 
     def header_actions(self) -> List[QWidget]:
         """Returns the top-bar buttons."""
-        return [self.new_button]
+        return [self.wipe_button, self.new_button]
+
+    def _retry(self) -> None:
+        """Tries to list the profiles again."""
+        self.ctx.controller.refresh()
 
     def on_shown(self) -> None:
         """Rebuilds the list when the page appears."""
@@ -146,33 +164,68 @@ class ProfilesPage(Page):
         self.refresh()
 
     def refresh(self) -> None:
-        """Rebuilds the cards for the current search, sort and layout."""
+        """Rebuilds the page for the list, the search and the running operation."""
+        controller = self.ctx.controller
+        caps = self.ctx.backend.capabilities
         all_profiles = self.ctx.store.profiles()
+        loaded = controller.state in (LoadState.READY,) or bool(all_profiles)
+        loading = controller.state is LoadState.LOADING and not all_profiles
+        failed = controller.state is LoadState.ERROR and not all_profiles
+        busy = controller.busy
+        running = controller.current
         sort = str(self.sort_combo.currentData())
         shown = filter_and_sort(all_profiles, self.search.text(), sort)
         list_mode = self.ctx.settings.get("profiles_view") == "list"
         self.view_control.set_value("list" if list_mode else "grid")
         self.grid.set_forced_columns(1 if list_mode else None)
+        busy_texts = {
+            "apply": "Aplicando…",
+            "overwrite": "Sobrescrevendo…",
+            "remove": "Removendo…",
+        }
         cards = []
         for profile in shown:
-            card = ProfileCard(profile, list_mode=list_mode)
+            text = ""
+            if running and running[1] == profile.name:
+                text = busy_texts.get(running[0], "Processando…")
+            card = ProfileCard(
+                profile,
+                list_mode=list_mode,
+                can_export=caps.transfer,
+                can_duplicate=caps.duplicate,
+                locked=busy,
+                busy_text=text,
+            )
             card.apply_requested.connect(
                 lambda name: self.actions.apply(self.window(), name)
             )
             card.export_requested.connect(self.ctx.export_profile)
             card.duplicate_requested.connect(self.actions.duplicate)
+            card.overwrite_requested.connect(
+                lambda name: self.actions.overwrite(self.window(), name)
+            )
             card.remove_requested.connect(
                 lambda name: self.actions.remove(self.window(), name)
             )
             cards.append(card)
         self.grid.set_items(cards)
         has_any = bool(all_profiles)
+        self.loading_state.setVisible(loading)
+        self.error_banner.setVisible(failed)
+        if failed:
+            self.error_banner.set_content(
+                "Não foi possível listar os perfis", controller.error
+            )
         self.grid.setVisible(bool(shown))
-        self.empty_state.setVisible(not has_any)
+        self.empty_state.setVisible(
+            loaded and not has_any and not loading and not failed
+        )
         self.no_results.setVisible(has_any and not shown)
-        self.sort_combo.setEnabled(has_any)
-        self.search.setEnabled(has_any)
-        self.view_control.setEnabled(has_any)
+        for widget in (self.sort_combo, self.search, self.view_control):
+            widget.setEnabled(has_any)
+        self.new_button.setEnabled(not busy and not failed)
+        self.wipe_button.setEnabled(not busy and has_any)
+        self.error_banner.retry_button.setEnabled(not busy)
         if not has_any:
             self.count_label.setText("")
         elif self.search.text().strip():

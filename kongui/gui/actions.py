@@ -1,26 +1,40 @@
-"""Profile actions shared by several pages.
+"""User actions on profiles: ask first, then call the controller.
 
-They only change the in-memory models. Every message says so, to avoid any
-doubt that the system was modified.
+* :class:`ProfileActions` opens the dialogs (name, confirmation) and starts the
+  operation. Destructive operations are *never* started without the user
+  pressing the confirm button; the controller refuses them otherwise.
+* :class:`OutcomeNotifier` turns every finished operation into a notification
+  and an activity entry. It exists once per window.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Optional
 
+from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QDialog, QWidget
 
 from kongui.gui.context import AppContext
+from kongui.gui.controller import Outcome
 from kongui.gui.mock_data import SECTIONS
-from kongui.gui.state import Profile
 from kongui.gui.widgets.dialogs import ConfirmDialog, ProfileDialog
 
 SIMULATED = "Simulação: nada foi alterado no sistema."
+#: Word the user must type to wipe every profile.
+WIPE_WORD = "APAGAR"
+
+_ACTIVITY_KIND = {
+    "save": "save",
+    "overwrite": "save",
+    "duplicate": "save",
+    "apply": "apply",
+    "remove": "remove",
+    "wipe_all": "remove",
+    "import": "import",
+}
 
 
 class ProfileActions:
-    """Create, apply, duplicate and remove profiles in the fictitious store."""
+    """Dialogs plus controller calls for each profile operation."""
 
     def __init__(self, ctx: AppContext) -> None:
         """Creates the helper.
@@ -30,100 +44,175 @@ class ProfileActions:
         """
         self.ctx = ctx
 
-    def save_current(self, parent: QWidget) -> Optional[Profile]:
-        """Asks for details and adds a profile.
+    @property
+    def _demo(self) -> bool:
+        """Whether the fictitious backend is in use."""
+        return self.ctx.backend.capabilities.demo
+
+    def _dispatched(self, started: bool) -> bool:
+        """Tells the user when an operation could not start."""
+        if not started:
+            self.ctx.toasts.show_message(
+                "info", "Aguarde", "Outra operação ainda está em andamento."
+            )
+        return started
+
+    def save_current(self, parent: QWidget) -> bool:
+        """Asks for a name and saves the current configuration as a new profile.
 
         Args:
             parent: Window used as dialog parent.
 
         Returns:
-            Optional[Profile]: The new profile, or ``None`` if cancelled.
+            bool: Whether an operation was started.
         """
-        dialog = ProfileDialog(parent, self.ctx.store.names(), SECTIONS)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return None
-        return self.create(*dialog.values())
-
-    def create(self, name: str, description: str, sections: tuple) -> Profile:
-        """Adds a profile with an invented size.
-
-        Args:
-            name: Profile name.
-            description: Description text.
-            sections: Included sections.
-
-        Returns:
-            Profile: The new profile.
-        """
-        profile = Profile(
-            name,
-            description or "Sem descrição.",
-            sections,
-            round(4.0 + 7.3 * len(sections), 1),
-            datetime.now(),
+        caps = self.ctx.backend.capabilities
+        dialog = ProfileDialog(
+            parent, self.ctx.store.names(), SECTIONS, ask_details=caps.descriptions
         )
-        self.ctx.store.add(profile)
-        self.ctx.activity.add("save", f"Perfil “{name}” criado")
-        self.ctx.toasts.show_message("success", f"Perfil “{name}” salvo", SIMULATED)
-        return profile
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+        name, description, sections = dialog.values()
+        return self._dispatched(self.ctx.controller.save(name, description, sections))
 
-    def apply(self, parent: QWidget, name: str) -> bool:
-        """Applies a profile after the optional confirmation.
+    def overwrite(self, parent: QWidget, name: str) -> bool:
+        """Replaces a profile with the current configuration, after confirmation.
 
         Args:
             parent: Window used as dialog parent.
-            name: Profile name.
+            name: Existing profile.
 
         Returns:
-            bool: Whether the profile was applied.
+            bool: Whether an operation was started.
         """
-        if self.ctx.settings.get("confirm_apply") and not ConfirmDialog.ask(
+        if not ConfirmDialog.ask(
             parent,
-            f"Aplicar “{name}”?",
-            "A aparência e as configurações atuais serão substituídas pelas deste perfil. "
-            "Salve o estado atual antes se quiser poder voltar. (Protótipo: nada será alterado.)",
-            "Aplicar",
+            f"Sobrescrever “{name}”?",
+            "O perfil será substituído pela configuração atual do Plasma. O conteúdo "
+            "antigo é perdido e não há desfazer."
+            + (" (Protótipo: nada será alterado.)" if self._demo else ""),
+            "Sobrescrever",
+            destructive=True,
         ):
             return False
-        self.ctx.store.activate(name)
-        self.ctx.activity.add("apply", f"Perfil “{name}” aplicado")
-        self.ctx.toasts.show_message("success", f"Perfil “{name}” aplicado", SIMULATED)
-        return True
+        return self._dispatched(self.ctx.controller.overwrite(name, confirmed=True))
 
-    def duplicate(self, name: str) -> Profile:
-        """Duplicates a profile.
-
-        Args:
-            name: Profile to copy.
-
-        Returns:
-            Profile: The copy.
-        """
-        copy = self.ctx.store.duplicate(name)
-        self.ctx.activity.add("save", f"Perfil “{name}” duplicado como “{copy.name}”")
-        self.ctx.toasts.show_message("info", f"Criado “{copy.name}”", SIMULATED)
-        return copy
-
-    def remove(self, parent: QWidget, name: str) -> bool:
-        """Removes a profile after confirmation.
+    def apply(self, parent: QWidget, name: str) -> bool:
+        """Applies a profile to the session, after confirmation.
 
         Args:
             parent: Window used as dialog parent.
-            name: Profile name.
+            name: Existing profile.
 
         Returns:
-            bool: Whether the profile was removed.
+            bool: Whether an operation was started.
+        """
+        if not ConfirmDialog.ask(
+            parent,
+            f"Aplicar “{name}”?",
+            "Os arquivos de configuração atuais serão substituídos pelos deste perfil, "
+            "sem backup (ainda não existe). Salve o estado atual antes se quiser "
+            "poder voltar."
+            + (" (Protótipo: nada será alterado.)" if self._demo else ""),
+            "Aplicar",
+            destructive=True,
+        ):
+            return False
+        return self._dispatched(self.ctx.controller.apply(name, confirmed=True))
+
+    def remove(self, parent: QWidget, name: str) -> bool:
+        """Removes a profile, after confirmation.
+
+        Args:
+            parent: Window used as dialog parent.
+            name: Existing profile.
+
+        Returns:
+            bool: Whether an operation was started.
         """
         if not ConfirmDialog.ask(
             parent,
             f"Remover “{name}”?",
-            "O perfil será apagado e não poderá ser recuperado. (Protótipo: apenas a lista "
-            "fictícia é alterada.)",
+            "O perfil será apagado e não poderá ser recuperado."
+            + (" (Protótipo: apenas a lista fictícia muda.)" if self._demo else ""),
             "Remover",
             destructive=True,
         ):
             return False
-        self.ctx.store.remove(name)
-        self.ctx.activity.add("remove", f"Perfil “{name}” removido")
-        self.ctx.toasts.show_message("warning", f"Perfil “{name}” removido", SIMULATED)
-        return True
+        return self._dispatched(self.ctx.controller.remove(name, confirmed=True))
+
+    def wipe_all(self, parent: QWidget) -> bool:
+        """Removes every profile; the user must type :data:`WIPE_WORD`.
+
+        Args:
+            parent: Window used as dialog parent.
+
+        Returns:
+            bool: Whether an operation was started.
+        """
+        count = len(self.ctx.store.names())
+        if not ConfirmDialog.ask(
+            parent,
+            "Limpar todos os perfis?",
+            f"Os {count} perfis salvos serão apagados e não poderão ser recuperados. "
+            "O conf.yaml do Konsave é mantido."
+            + (" (Protótipo: apenas a lista fictícia muda.)" if self._demo else ""),
+            "Limpar tudo",
+            destructive=True,
+            require_text=WIPE_WORD,
+        ):
+            return False
+        return self._dispatched(self.ctx.controller.wipe_all(confirmed=True))
+
+    def duplicate(self, name: str) -> bool:
+        """Duplicates a profile (demo backend only).
+
+        Args:
+            name: Existing profile.
+
+        Returns:
+            bool: Whether an operation was started.
+        """
+        return self._dispatched(self.ctx.controller.duplicate(name))
+
+
+class OutcomeNotifier(QObject):
+    """Shows a notification and logs an activity for each finished operation."""
+
+    def __init__(self, ctx: AppContext) -> None:
+        """Connects to the controller.
+
+        Args:
+            ctx: Shared services.
+        """
+        super().__init__()
+        self.ctx = ctx
+        ctx.controller.operation_finished.connect(self.on_finished)
+
+    def on_finished(self, outcome: Outcome) -> None:
+        """Reports an outcome.
+
+        Args:
+            outcome: What happened.
+        """
+        demo = self.ctx.backend.capabilities.demo
+        if outcome.operation == "list":
+            # A failed listing is shown inside the page, with a retry button.
+            return
+        details = list(outcome.details)
+        if outcome.ok and demo:
+            details.append(SIMULATED)
+        text = "\n".join(details)
+        if outcome.ok:
+            kind = (
+                "warning" if outcome.operation in ("remove", "wipe_all") else "success"
+            )
+            self.ctx.toasts.show_message(kind, outcome.title, text)
+            activity = _ACTIVITY_KIND.get(outcome.operation)
+            if activity:
+                self.ctx.activity.add(activity, outcome.title)
+        else:
+            self.ctx.toasts.show_message("error", outcome.title, text, seconds=0)
+
+
+__all__ = ["ProfileActions", "OutcomeNotifier", "SIMULATED", "WIPE_WORD"]

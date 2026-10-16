@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import time
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
@@ -34,12 +35,15 @@ from kongui.core.safety import validate_archive_name, validate_profile_name
 
 ON_CONFLICT_CHOICES = ("error", "unique", "overwrite")
 
+#: Prefix of the temporary folders ``replace`` creates inside the profiles
+#: folder. They are never listed as profiles.
+TEMP_PREFIX = ".kongui-"
+
 #: Operations that are planned but deliberately not implemented yet.
 NOT_IMPLEMENTED_OPERATIONS: Mapping[str, str] = {
     "create_backup": "Backup of live files before apply/import (requirement RN-01).",
     "restore_backup": "Restore a backup made before apply/import (requirement RN-01).",
     "inspect_archive": "Full read-only listing/preview of a .knsv (requirement RN-02).",
-    "replace_profile": "Save that replaces a profile instead of merging into it.",
 }
 
 
@@ -80,7 +84,7 @@ class ProfileService:
         profiles = []
         for name in self._engine.profile_names():
             path = self._engine.profiles_dir / name
-            if not path.is_dir():
+            if name.startswith(TEMP_PREFIX) or not path.is_dir():
                 continue
             try:
                 modified: Optional[float] = path.stat().st_mtime
@@ -154,6 +158,127 @@ class ProfileService:
             f"profile '{name}' saved",
             "save failed",
             target,
+            report.warnings,
+            notes,
+        )
+
+    def replace(self, name: str, *, confirmed: bool = False) -> OperationResult:
+        """Replaces a profile with the current configuration.
+
+        The original ``save_profile(force=True)`` *merges* into the existing
+        profile, so files that no longer exist on the system would survive. This
+        method gives a real replacement without touching the original code:
+
+        1. the current configuration is saved under a temporary name inside the
+           profiles folder (``TEMP_PREFIX``);
+        2. only if that worked, the old profile is renamed aside, the new one is
+           renamed to ``name`` and the old one is deleted;
+        3. if a rename fails, everything is put back.
+
+        The old profile is therefore never removed before a complete new one
+        exists. Both renames stay in the same folder, hence on one filesystem.
+
+        Args:
+            name: Name of an existing profile.
+            confirmed: Must be ``True``; the caller asks the user first.
+
+        Returns:
+            OperationResult: Outcome, with the profile folder as ``path``. On
+            failure the previous profile is still in place.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not true.
+            ValidationError: If the name is not acceptable.
+            ProfileNotFoundError: If there is no such profile.
+            ConfigMissingError: If there is no active ``conf.yaml``.
+            ConfigValidationError: If the active configuration is invalid.
+        """
+        self._require_confirmation(confirmed, "replace")
+        existing = self.get_profile(name)
+        self._require_config()
+        report = self._config.validate()
+        if not report.ok:
+            raise ConfigValidationError("the active configuration is invalid", report)
+        stamp = f"{os.getpid()}-{time.time_ns()}"
+        fresh = self._engine.profiles_dir / f"{TEMP_PREFIX}new-{stamp}-{name}"
+        aside = self._engine.profiles_dir / f"{TEMP_PREFIX}old-{stamp}-{name}"
+        call = self._engine.call(
+            "save_profile", fresh.name, self._engine.profile_names()
+        )
+        notes: List[str] = []
+        if call.failed or not (fresh / "conf.yaml").is_file():
+            if os.path.lexists(fresh):
+                notes.append(self._remove_created(fresh))
+            return self._result(
+                "replace",
+                False,
+                call,
+                "",
+                f"replace failed; profile '{name}' was left as it was",
+                existing.path,
+                report.warnings,
+                notes,
+            )
+        try:
+            os.rename(existing.path, aside)
+        except OSError as error:
+            notes.append(self._remove_created(fresh))
+            return self._failed_swap(name, existing.path, call, error, report, notes)
+        try:
+            os.rename(fresh, existing.path)
+        except OSError as error:
+            try:
+                os.rename(aside, existing.path)
+                notes.append("the previous profile was put back")
+            except OSError as rollback_error:
+                notes.append(
+                    f"could not put the previous profile back from {aside}: {rollback_error}"
+                )
+            notes.append(self._remove_created(fresh))
+            return self._failed_swap(name, existing.path, call, error, report, notes)
+        notes_after = self._remove_created(aside)
+        if not notes_after.startswith("removed"):
+            notes.append(notes_after)
+        return self._result(
+            "replace",
+            True,
+            call,
+            f"profile '{name}' replaced",
+            "",
+            existing.path,
+            report.warnings,
+            notes,
+        )
+
+    def _failed_swap(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        name: str,
+        path: Path,
+        call: EngineCall,
+        error: OSError,
+        report: ValidationReport,
+        notes: List[str],
+    ) -> OperationResult:
+        """Builds the failure result of a rename that did not work.
+
+        Args:
+            name: Profile name.
+            path: Folder of the profile.
+            call: The engine call that saved the new copy.
+            error: The ``OSError`` raised by the rename.
+            report: Validation report of the active configuration.
+            notes: Clean-up notes collected so far.
+
+        Returns:
+            OperationResult: A failed result mentioning the error.
+        """
+        return self._result(
+            "replace",
+            False,
+            call,
+            "",
+            f"replace failed while swapping folders for '{name}': {error}",
+            path,
             report.warnings,
             notes,
         )
@@ -427,16 +552,6 @@ class ProfileService:
         """
         raise NotImplementedOperationError(
             NOT_IMPLEMENTED_OPERATIONS["inspect_archive"]
-        )
-
-    def replace_profile(self, *_args: Any, **_kwargs: Any) -> None:
-        """Not implemented: save that replaces instead of merging.
-
-        Raises:
-            NotImplementedOperationError: Always.
-        """
-        raise NotImplementedOperationError(
-            NOT_IMPLEMENTED_OPERATIONS["replace_profile"]
         )
 
     # ------------------------------------------------------------------ helpers

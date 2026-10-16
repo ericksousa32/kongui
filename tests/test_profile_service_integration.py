@@ -464,3 +464,126 @@ class HostileArchiveIntegrationTests(IntegrationCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReplaceIntegrationTests(IntegrationCase):
+    """ProfileService.replace: a real replacement, unlike ``save(overwrite=True)``."""
+
+    def test_files_that_no_longer_exist_do_not_survive(self):
+        self.profiles.save("work").raise_for_status()
+        write(self.engine.profiles_dir / "work/configs/stale-file", "from the old save")
+        write(self.home / ".config/kdeglobals", "kdeglobals-B")
+        result = self.profiles.replace("work", confirmed=True)
+        self.assertTrue(result.ok, result.message)
+        folder = self.engine.profiles_dir / "work"
+        self.assertFalse((folder / "configs/stale-file").exists())
+        self.assertEqual((folder / "configs/kdeglobals").read_text(), "kdeglobals-B")
+        self.assertEqual(result.path, folder)
+
+    def test_the_merge_behaviour_of_save_is_the_reason_it_exists(self):
+        """Known limitation of the original, pinned so the contrast stays visible."""
+        self.profiles.save("work").raise_for_status()
+        write(self.engine.profiles_dir / "work/configs/stale-file", "old")
+        self.profiles.save("work", overwrite=True).raise_for_status()
+        self.assertTrue((self.engine.profiles_dir / "work/configs/stale-file").exists())
+
+    def test_no_temporary_folder_is_left_and_the_listing_is_clean(self):
+        self.profiles.save("work").raise_for_status()
+        self.profiles.replace("work", confirmed=True).raise_for_status()
+        self.assertEqual(self.engine.profile_names(), ["work"])
+        self.assertEqual([p.name for p in self.profiles.list_profiles()], ["work"])
+
+    def test_other_profiles_are_untouched(self):
+        self.profiles.save("a").raise_for_status()
+        self.profiles.save("b").raise_for_status()
+        before = tree(self.engine.profiles_dir / "b")
+        self.profiles.replace("a", confirmed=True).raise_for_status()
+        self.assertEqual(tree(self.engine.profiles_dir / "b"), before)
+
+    def test_requires_explicit_confirmation(self):
+        self.profiles.save("work").raise_for_status()
+        for value in (False, None, 1, "yes"):
+            with self.subTest(confirmed=value):
+                with self.assertRaises(ConfirmationRequiredError):
+                    self.profiles.replace("work", confirmed=value)
+
+    def test_unknown_profile_and_bad_names(self):
+        from kongui.core import ProfileNotFoundError
+
+        with self.assertRaises(ProfileNotFoundError):
+            self.profiles.replace("ghost", confirmed=True)
+        with self.assertRaises(ValidationError):
+            self.profiles.replace("../x", confirmed=True)
+        self.assertEqual(self.engine.profile_names(), [])
+
+    def test_invalid_active_configuration_leaves_the_profile_alone(self):
+        self.profiles.save("work").raise_for_status()
+        before = tree(self.engine.profiles_dir / "work")
+        write(self.engine.config_file, "save: [not, a, mapping]\n")
+        with self.assertRaises(ConfigValidationError):
+            self.profiles.replace("work", confirmed=True)
+        self.assertEqual(tree(self.engine.profiles_dir / "work"), before)
+        self.assertEqual(self.engine.profile_names(), ["work"])
+
+    def test_a_failing_save_keeps_the_old_profile_and_cleans_up(self):
+        from unittest import mock
+
+        from tests.helpers import fake_call, patch_engine_call
+
+        self.profiles.save("work").raise_for_status()
+        before = tree(self.engine.profiles_dir / "work")
+
+        def broken_save(name, *args, **kwargs):
+            (self.engine.profiles_dir / name).mkdir()
+            return fake_call("save_profile", errors=("disk full",))
+
+        patch_engine_call(self.engine, {"save_profile": broken_save})
+        result = self.profiles.replace("work", confirmed=True)
+        self.assertFalse(result.ok)
+        self.assertIn("left as it was", result.message)
+        self.assertEqual(tree(self.engine.profiles_dir / "work"), before)
+        self.assertEqual(self.engine.profile_names(), ["work"])
+        mock.patch.stopall()
+
+    def test_a_failing_swap_puts_the_old_profile_back(self):
+        from unittest import mock
+
+        self.profiles.save("work").raise_for_status()
+        old_content = (self.engine.profiles_dir / "work/configs/kdeglobals").read_text()
+        write(self.home / ".config/kdeglobals", "kdeglobals-NEW")
+        real_rename = os.rename
+        calls = []
+
+        def flaky_rename(source, target):
+            calls.append((str(source), str(target)))
+            if len(calls) == 2:  # moving the new copy into place
+                raise OSError("simulated failure")
+            return real_rename(source, target)
+
+        with mock.patch("kongui.core.profiles.os.rename", side_effect=flaky_rename):
+            result = self.profiles.replace("work", confirmed=True)
+        self.assertFalse(result.ok)
+        self.assertIn("simulated failure", result.message)
+        self.assertIn("put back", " ".join(result.warnings))
+        self.assertEqual(
+            (self.engine.profiles_dir / "work/configs/kdeglobals").read_text(),
+            old_content,
+        )
+        self.assertEqual(self.engine.profile_names(), ["work"])
+
+    def test_a_failing_first_rename_keeps_everything(self):
+        from unittest import mock
+
+        self.profiles.save("work").raise_for_status()
+        with mock.patch(
+            "kongui.core.profiles.os.rename", side_effect=OSError("denied")
+        ):
+            result = self.profiles.replace("work", confirmed=True)
+        self.assertFalse(result.ok)
+        self.assertEqual(self.engine.profile_names(), ["work"])
+        self.assertTrue((self.engine.profiles_dir / "work/conf.yaml").is_file())
+
+    def test_a_crash_leftover_is_never_listed_as_a_profile(self):
+        self.profiles.save("work").raise_for_status()
+        (self.engine.profiles_dir / ".kongui-new-1-2-work").mkdir()
+        self.assertEqual([p.name for p in self.profiles.list_profiles()], ["work"])

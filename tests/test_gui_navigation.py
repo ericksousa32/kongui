@@ -57,7 +57,7 @@ class SidebarNavigationTests(GuiTestCase):
         window = self.make_window()
         expected = {
             "dashboard": ["Importar", "Salvar perfil atual"],
-            "profiles": ["Novo perfil"],
+            "profiles": ["Limpar todos", "Novo perfil"],
             "transfer": [],
             "settings": [],
             "about": [],

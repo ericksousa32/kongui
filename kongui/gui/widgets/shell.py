@@ -34,8 +34,12 @@ class Sidebar(QFrame):
     theme_toggle_requested = Signal()
     WIDTH = 232
 
-    def __init__(self) -> None:
-        """Creates the empty sidebar; add items with :meth:`add_item`."""
+    def __init__(self, demo: bool = True) -> None:
+        """Creates the empty sidebar; add items with :meth:`add_item`.
+
+        Args:
+            demo: Show the "prototype / fictitious data" footer.
+        """
         super().__init__()
         self.setObjectName("Sidebar")
         self.setFixedWidth(self.WIDTH)
@@ -76,8 +80,13 @@ class Sidebar(QFrame):
         footer.setContentsMargins(6, 0, 0, 0)
         stack = QVBoxLayout()
         stack.setSpacing(2)
-        stack.addWidget(Badge("Protótipo", "warning"), 0, Qt.AlignmentFlag.AlignLeft)
-        stack.addWidget(Label(f"v{__version__} · dados fictícios", "caption"))
+        if demo:
+            stack.addWidget(
+                Badge("Protótipo", "warning"), 0, Qt.AlignmentFlag.AlignLeft
+            )
+            stack.addWidget(Label(f"v{__version__} · dados fictícios", "caption"))
+        else:
+            stack.addWidget(Label(f"v{__version__} · perfis reais", "caption"))
         footer.addLayout(stack, 1)
         self.theme_button = Button(
             variant="icon", icon_name="moon", tooltip="Alternar tema claro/escuro"
