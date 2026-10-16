@@ -19,7 +19,20 @@ from kongui.gui.controller import LoadState, ProfileController
 from kongui.gui.state import AppSettings, ProfileStore
 from kongui.gui.tasks import InlineExecutor
 from tests.gui_helpers import GuiTestCase
-from tests.helpers import BASE_CONF, non_root, really_root, write
+from tests.helpers import BASE_CONF, make_knsv, non_root, really_root, write
+
+
+def snapshot_dir(folder):
+    """Relative path -> bytes (``None`` for folders) below ``folder``."""
+    result = {}
+    for base, dirs, files in os.walk(folder):
+        for name in dirs:
+            result[os.path.relpath(os.path.join(base, name), folder)] = None
+        for name in files:
+            full = os.path.join(base, name)
+            with open(full, "rb") as handle:
+                result[os.path.relpath(full, folder)] = handle.read()
+    return result
 
 
 class RealBackendCase(GuiTestCase):
@@ -83,16 +96,16 @@ class RealListTests(RealBackendCase):
         original = self.service.list_profiles
 
         def boom():
-            raise OSError("permissão negada")
+            raise PermissionError(13, "Permission denied", "/x")
 
         self.service.list_profiles = boom
         try:
-            with self.assertLogs(level="ERROR"):
+            with self.assertNoLogs(level="ERROR"):
                 self.controller.refresh()
         finally:
             self.service.list_profiles = original
         self.assertIs(self.controller.state, LoadState.ERROR)
-        self.assertIn("permissão negada", " ".join(self.controller.error))
+        self.assertIn("Sem permissão", " ".join(self.controller.error))
 
 
 class RealSaveTests(RealBackendCase):
@@ -294,7 +307,7 @@ class RealWindowFlowTests(RealBackendCase):
         self.assertTrue(self.folder("Real").is_dir())
         card = page.cards()[0]
         self.assertIsNone(card.duplicate_action)
-        self.assertIsNone(card.export_button)
+        self.assertIsNotNone(card.export_button, "export is available")
         with mock.patch.object(ConfirmDialog, "ask", return_value=True):
             card.overwrite_action.trigger()
             self.flush()
@@ -302,6 +315,138 @@ class RealWindowFlowTests(RealBackendCase):
             self.flush()
         self.assertEqual(page.cards(), [])
         self.assertEqual(os.listdir(self.engine.profiles_dir), [])
+
+    def test_export_wipe_import_round_trip_through_the_interface(self):
+        import hashlib
+        import zipfile
+        from unittest import mock
+
+        from kongui.gui.widgets.dialogs import ConfirmDialog, ConflictDialog
+
+        self.controller.save("work")
+        window = self.make_window(backend=self.backend)
+        window.show_page("transfer")
+        self.flush()
+        page = window.pages["transfer"]
+        out = self.root / "out"
+        out.mkdir()
+        before = snapshot_dir(self.folder("work"))
+
+        page.destination_edit.setText(str(out))
+        self.assertTrue(page.start_export())
+        archive = out / "work.knsv"
+        self.assertTrue(archive.is_file())
+        self.assertIn("work.knsv", window.toasts._toasts[-1].accessibleName())
+        with zipfile.ZipFile(archive) as handle:
+            self.assertIn("conf.yaml", handle.namelist())
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+        # the same name again: asking never replaces silently
+        with mock.patch.object(ConflictDialog, "ask", return_value="cancel") as ask:
+            self.assertFalse(page.start_export())
+        self.assertTrue(ask.called)
+        self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), digest)
+        with mock.patch.object(ConflictDialog, "ask", return_value="unique"):
+            self.assertTrue(page.start_export())
+        self.assertEqual(sorted(os.listdir(out)), ["work-2.knsv", "work.knsv"])
+        page.conflict_combo.setCurrentIndex(page.conflict_combo.findData("overwrite"))
+        with mock.patch.object(ConfirmDialog, "ask", return_value=False):
+            self.assertFalse(page.start_export())
+        self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), digest)
+
+        # wipe, then bring the profile back from the file
+        window.controller.wipe_all(confirmed=True)
+        self.flush()
+        self.assertEqual(window.store.names(), [])
+        self.assertTrue(page.set_import_file(str(archive)))
+        self.flush()
+        self.assertEqual(page.import_name_edit.text(), "work")
+        self.assertTrue(page.import_button.isEnabled(), page.file_error.text())
+        with mock.patch.object(ConfirmDialog, "ask", return_value=True) as sure:
+            self.assertTrue(page.start_import())
+        self.assertTrue(sure.call_args.kwargs["destructive"])
+        self.flush()
+        self.assertEqual(window.store.names(), ["work"])
+        self.assertEqual(snapshot_dir(self.folder("work")), before)
+        self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), digest)
+        self.assertEqual(window.toasts.kinds()[-1], "success")
+        self.assertFalse(page.drop_zone.isHidden())
+
+    def test_import_with_a_new_name_and_apply_after(self):
+        from unittest import mock
+
+        from kongui.gui.widgets.dialogs import ConfirmDialog
+
+        self.controller.save("work")
+        archive = self.backend.export_profile("work", str(self.root)).path
+        write(self.root / ".config/kdeglobals", "CHANGED")
+        window = self.make_window(backend=self.backend)
+        window.show_page("transfer")
+        page = window.pages["transfer"]
+        page.set_import_file(str(archive))
+        self.flush()
+        page.import_name_edit.setText("viagem")
+        page.apply_after_check.setChecked(True)
+        with mock.patch.object(ConfirmDialog, "ask", return_value=True):
+            self.assertTrue(page.start_import())
+        self.flush()
+        self.assertEqual(sorted(window.store.names()), ["viagem", "work"])
+        self.assertEqual(window.store.active().name, "viagem")
+        self.assertEqual((self.root / ".config/kdeglobals").read_text(), "kdeglobals-A")
+        self.assertEqual(self.folder("viagem").is_dir(), True)
+
+    def test_import_errors_are_shown_without_touching_anything(self):
+        from unittest import mock
+
+        from kongui.gui.widgets.dialogs import ConfirmDialog
+
+        window = self.make_window(backend=self.backend)
+        window.show_page("transfer")
+        page = window.pages["transfer"]
+        before = snapshot_dir(self.root)
+        for label, make, fragment in (
+            ("missing", lambda: self.root / "ghost.knsv", "não foi encontrado"),
+            (
+                "not a zip",
+                lambda: write(self.root / "fake.knsv", "no"),
+                "não é um .knsv",
+            ),
+            (
+                "no conf",
+                lambda: make_knsv(self.root / "nc.knsv", {"save/a": "x"}),
+                "conf.yaml",
+            ),
+        ):
+            with self.subTest(case=label):
+                before = snapshot_dir(self.root)
+                page.set_import_file(str(make()))
+                self.flush()
+                self.assertIn(fragment, page.file_error.text())
+                self.assertFalse(page.import_button.isEnabled())
+                with mock.patch.object(ConfirmDialog, "ask") as sure:
+                    self.assertFalse(page.start_import())
+                sure.assert_not_called()
+                page.clear_file_button.click()
+                os.path.exists(self.root / "ghost.knsv")
+        self.assertEqual(self.store.names(), [])
+
+    def test_export_errors_are_shown_without_writing(self):
+        window = self.make_window(backend=self.backend)
+        window.show_page("transfer")
+        page = window.pages["transfer"]
+        self.controller.save("work")
+        window.controller.refresh()
+        self.flush()
+        out = self.root / "out"
+        for directory, fragment in (
+            (str(self.root / "missing"), "não existe"),
+            (str(write(self.root / "plain.txt")), "não é uma pasta"),
+        ):
+            with self.subTest(directory=directory):
+                page.destination_edit.setText(directory)
+                self.assertFalse(page.start_export())
+                self.assertIn(fragment, page.export_error.text())
+        self.assertFalse(out.exists())
 
     def test_wording_does_not_claim_fictitious_data(self):
         from kongui.gui.widgets.common import Badge, Label
@@ -314,13 +459,14 @@ class RealWindowFlowTests(RealBackendCase):
         self.assertIn("Em desenvolvimento", badges)
         self.assertNotIn("Protótipo visual", badges)
 
-    def test_transfer_and_demo_controls_are_unavailable(self):
+    def test_transfer_is_available_and_demo_controls_are_not(self):
         window = self.make_window(backend=self.backend)
         window.show_page("transfer")
         self.flush()
         page = window.pages["transfer"]
-        self.assertFalse(page.export_card.isEnabled())
-        self.assertFalse(page.import_card.isEnabled())
+        self.assertTrue(page.export_card.isEnabled())
+        self.assertTrue(page.import_card.isEnabled())
+        self.assertFalse(hasattr(page, "transfer_notice"))
         self.assertIsNone(window.pages["settings"].clear_button)
         self.assertEqual(window.context.activity.entries(), [])
 

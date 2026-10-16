@@ -79,10 +79,10 @@ class AboutPage(Page):
         else:
             badge, text = (
                 "Em desenvolvimento",
-                "Listar, salvar, sobrescrever, aplicar, remover e limpar perfis usam o "
-                "Konsave de verdade. Aplicar substitui arquivos de configuração sem "
-                "backup. Importar, exportar e editar o conf.yaml ainda não estão "
-                "disponíveis (use --demo para ver a prévia).",
+                "Listar, salvar, sobrescrever, aplicar, remover, limpar, importar e "
+                "exportar perfis usam o Konsave de verdade. Aplicar e importar "
+                "substituem arquivos de configuração sem backup. Editar o "
+                "conf.yaml ainda não está disponível.",
             )
         notice_layout.addWidget(Badge(badge, "warning"), 0, Qt.AlignmentFlag.AlignLeft)
         notice_layout.addWidget(Label(text, wrap=True))

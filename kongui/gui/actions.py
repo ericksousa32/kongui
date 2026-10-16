@@ -30,6 +30,7 @@ _ACTIVITY_KIND = {
     "remove": "remove",
     "wipe_all": "remove",
     "import": "import",
+    "export": "export",
 }
 
 

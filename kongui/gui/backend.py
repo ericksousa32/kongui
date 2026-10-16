@@ -11,9 +11,12 @@ Backend methods are **blocking** and are meant to run in a worker thread (see
 ``kongui.gui.tasks``). They must not touch any Qt object.
 """
 
+# pylint: disable=duplicate-code
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -23,6 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from kongui.core import (
+    ArchiveExistsError,
     ConfirmationRequiredError,
     KonsaveEngine,
     NotImplementedOperationError,
@@ -30,7 +34,9 @@ from kongui.core import (
     ProfileExistsError,
     ProfileNotFoundError,
     ProfileService,
+    ValidationError,
 )
+from kongui.core.safety import validate_archive_name, validate_profile_name
 from kongui.gui.mock_data import SECTIONS, demo_profiles
 from kongui.gui.state import Profile
 
@@ -52,6 +58,56 @@ class Capabilities:
     descriptions: bool
     sections: bool
     demo: bool
+
+
+#: Export conflict policies (see ``ProfileService.export``): refuse, pick a free
+#: name, or replace an existing ``.knsv`` file.
+ON_CONFLICT = ("error", "unique", "overwrite")
+
+
+@dataclass(frozen=True)
+class ArchiveInfo:  # pylint: disable=too-many-instance-attributes
+    """What a ``.knsv`` file holds, for the import form.
+
+    Attributes:
+        path: Archive path as given.
+        name: Profile name the file would create.
+        size_mb: File size in megabytes.
+        save_sections: Sections kept in the profile.
+        export_sections: Sections written to the live system on import.
+        warnings: Non-blocking observations.
+        name_taken: A profile with that name already exists.
+    """
+
+    path: str
+    name: str
+    size_mb: float
+    save_sections: Tuple[str, ...] = ()
+    export_sections: Tuple[str, ...] = ()
+    warnings: Tuple[str, ...] = ()
+    name_taken: bool = False
+
+
+@dataclass(frozen=True)
+class ExportProbe:
+    """What the export form needs to know about its target, read without writing.
+
+    Attributes:
+        path: Archive that would be written with the plain (``error``) policy.
+        folder_problem: ``""`` if the folder is usable, else ``missing``,
+            ``not_dir`` or ``not_writable``.
+        conflict: ``""`` if the target is free, ``archive`` if a regular
+            ``.knsv`` file is there (it can be replaced or the name made
+            unique) or ``blocked`` if a folder, ``.zip`` or special file with
+            that name exists (the original export would delete or replace it,
+            so only a unique name is possible).
+        unique_path: Archive that the ``unique`` policy would write.
+    """
+
+    path: str
+    folder_problem: str = ""
+    conflict: str = ""
+    unique_path: str = ""
 
 
 def _require(confirmed: bool, operation: str) -> None:
@@ -112,13 +168,48 @@ class ProfileBackend(ABC):
         """
         raise NotImplementedOperationError("duplicate is not available")
 
-    def add_profile(self, profile: Profile) -> OperationResult:
-        """Adds a ready-made profile (demo import only).
+    def inspect_archive(self, path: str) -> ArchiveInfo:
+        """Checks a ``.knsv`` file and describes it, writing nothing.
 
         Raises:
-            NotImplementedOperationError: If the backend is not a demo one.
+            NotImplementedOperationError: If the backend cannot transfer.
         """
-        raise NotImplementedOperationError("add_profile is demo only")
+        raise NotImplementedOperationError("inspect_archive is not available")
+
+    def probe_export(self, directory: str, base: str) -> ExportProbe:
+        """Looks at the export target (folder and name) without writing.
+
+        Raises:
+            NotImplementedOperationError: If the backend cannot transfer.
+        """
+        raise NotImplementedOperationError("probe_export is not available")
+
+    def export_profile(
+        self,
+        name: str,
+        directory: str,
+        archive_name: Optional[str] = None,
+        on_conflict: str = "error",
+    ) -> OperationResult:
+        """Exports a profile to ``<directory>/<archive_name>.knsv``.
+
+        ``on_conflict`` is ``error`` (refuse), ``unique`` (free name) or
+        ``overwrite`` (replace an existing ``.knsv`` file).
+
+        Raises:
+            NotImplementedOperationError: If the backend cannot transfer.
+        """
+        raise NotImplementedOperationError("export_profile is not available")
+
+    def import_profile(
+        self, path: str, name: Optional[str] = None, *, confirmed: bool = False
+    ) -> OperationResult:
+        """Imports a ``.knsv`` file as profile ``name`` (default: file name).
+
+        Raises:
+            NotImplementedOperationError: If the backend cannot transfer.
+        """
+        raise NotImplementedOperationError("import_profile is not available")
 
     def reset(self) -> OperationResult:
         """Restores the demo data (demo only).
@@ -155,7 +246,7 @@ class ServiceBackend(ProfileBackend):
     """Real operations, through :class:`~kongui.core.ProfileService`."""
 
     capabilities = Capabilities(
-        duplicate=False, transfer=False, descriptions=False, sections=False, demo=False
+        duplicate=False, transfer=True, descriptions=False, sections=False, demo=False
     )
 
     def __init__(self, service: ProfileService) -> None:
@@ -230,6 +321,106 @@ class ServiceBackend(ProfileBackend):
         """Deletes every profile."""
         return self._service.wipe_all(confirmed=confirmed)
 
+    def _expand(self, path: str) -> Path:
+        """Expands a leading ``~`` against the engine's home directory."""
+        text = str(path).strip()
+        home = self._service.engine.home
+        if text == "~":
+            return Path(home)
+        if text.startswith("~/"):
+            return Path(home) / text[2:]
+        return Path(text)
+
+    def inspect_archive(self, path: str) -> ArchiveInfo:
+        """Reads a ``.knsv`` without extracting it."""
+        info = self._service.inspect_archive(self._expand(path))
+        return ArchiveInfo(
+            str(info.path),
+            info.name,
+            round(info.size_bytes / 1048576, 1),
+            info.save_sections,
+            info.export_sections,
+            info.warnings,
+            info.name_taken,
+        )
+
+    def probe_export(self, directory: str, base: str) -> ExportProbe:
+        """Checks the output folder and whether the archive name is taken."""
+        folder = self._expand(directory)
+        suffix = self._service.engine.export_extension
+        path = str(folder / f"{base}{suffix}")
+        if not folder.exists():
+            return ExportProbe(path, "missing")
+        if not folder.is_dir():
+            return ExportProbe(path, "not_dir")
+        if not os.access(folder, os.W_OK | os.X_OK):
+            return ExportProbe(path, "not_writable")
+
+        def taken(name: str) -> list:
+            return [
+                item
+                for item in (
+                    folder / name,
+                    folder / f"{name}{suffix}",
+                    folder / f"{name}.zip",
+                )
+                if os.path.lexists(item)
+            ]
+
+        conflict = ""
+        if taken(base):
+            archive = folder / f"{base}{suffix}"
+            only_archive = (
+                taken(base) == [archive]
+                and archive.is_file()
+                and not archive.is_symlink()
+            )
+            conflict = "archive" if only_archive else "blocked"
+        unique, counter = base, 1
+        while taken(unique) and counter < 1000:
+            counter += 1
+            unique = f"{base}-{counter}"
+        return ExportProbe(path, "", conflict, str(folder / f"{unique}{suffix}"))
+
+    def export_profile(
+        self,
+        name: str,
+        directory: str,
+        archive_name: Optional[str] = None,
+        on_conflict: str = "error",
+    ) -> OperationResult:
+        """Exports with the original ``export`` (``-e``, ``-d``, ``-n``, ``-f``)."""
+        return self._service.export(
+            name,
+            directory=self._expand(directory),
+            archive_name=archive_name or None,
+            on_conflict=on_conflict,
+        )
+
+    def import_profile(
+        self, path: str, name: Optional[str] = None, *, confirmed: bool = False
+    ) -> OperationResult:
+        """Imports with the original ``import_profile`` (``-i``).
+
+        The original names the profile after the file. To use another name, the
+        very same file is copied to a private temporary folder under that name
+        and imported from there; the archive format is untouched.
+        """
+        _require(confirmed, "import")
+        source = self._expand(path)
+        info = self._service.inspect_archive(source)
+        target = validate_profile_name(name) if name else info.name
+        if target == info.name:
+            return self._service.import_profile(source, confirmed=True)
+        suffix = self._service.engine.export_extension
+        staging = Path(tempfile.mkdtemp(prefix="kongui-import-"))
+        try:
+            copy = staging / f"{target}{suffix}"
+            shutil.copyfile(source, copy)
+            return self._service.import_profile(copy, confirmed=True)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+
 
 class FakeBackend(ProfileBackend):
     """In-memory profiles for demo mode and tests.
@@ -251,6 +442,7 @@ class FakeBackend(ProfileBackend):
         *,
         latency: float = 0.0,
         active: Optional[str] = "Trabalho",
+        archives: Optional[List[str]] = None,
     ) -> None:
         """Creates the backend.
 
@@ -258,6 +450,8 @@ class FakeBackend(ProfileBackend):
             profiles: Initial profiles; the fictitious ones by default.
             latency: Seconds every call sleeps, to make loading states visible.
             active: Name reported by :attr:`initial_active`.
+            archives: Paths of archives that "already exist" in the fictitious
+                file system (``~/Downloads/Minimalista.knsv`` by default).
         """
         self._lock = threading.Lock()
         self._initial = [
@@ -269,6 +463,10 @@ class FakeBackend(ProfileBackend):
         self._active = active
         self._failures: Dict[str, BaseException] = {}
         self.calls: List[Tuple[str, str]] = []
+        self.blocked: set = set()
+        self.archives = set(
+            ["~/Downloads/Minimalista.knsv"] if archives is None else archives
+        )
 
     @property
     def initial_active(self) -> Optional[str]:
@@ -379,14 +577,103 @@ class FakeBackend(ProfileBackend):
             )
         return self._ok("duplicate", candidate)
 
-    def add_profile(self, profile: Profile) -> OperationResult:
-        """Adds a ready-made profile (simulated import)."""
-        self._enter("add_profile", profile.name)
+    def probe_export(self, directory: str, base: str) -> ExportProbe:
+        """Looks at the fictitious file system."""
+        path = self._archive_path(directory, base)
+        if not directory.strip():
+            return ExportProbe(path, "missing")
+
+        def taken(candidate: str) -> bool:
+            return candidate in self.archives or candidate in self.blocked
+
+        conflict = ""
+        if taken(path):
+            conflict = "blocked" if path in self.blocked else "archive"
+        unique, counter = path, 1
+        while taken(unique):
+            counter += 1
+            unique = self._archive_path(directory, f"{base}-{counter}")
+        return ExportProbe(path, "", conflict, unique)
+
+    @staticmethod
+    def _archive_path(directory: str, base: str) -> str:
+        """Joins a folder and an archive base name the way the real one does."""
+        return f"{directory.strip().rstrip('/')}/{base}.knsv"
+
+    def inspect_archive(self, path: str) -> ArchiveInfo:
+        """Describes a fictitious archive; only the file name (and size, if the
+        file happens to exist) is looked at, the file is never opened."""
+        self._enter("inspect_archive", path)
+        if not path.endswith(".knsv") or path.endswith("/.knsv"):
+            raise ValidationError("archive must be a '*.knsv' file")
+        name = validate_profile_name(os.path.basename(path)[: -len(".knsv")])
+        try:
+            size = round(os.stat(os.path.expanduser(path)).st_size / 1048576, 1)
+        except OSError:
+            size = 8.0 + 6.1 * 5
         with self._lock:
-            if profile.name in self._items:
-                raise ProfileExistsError(f"profile already exists: {profile.name}")
-            self._items[profile.name] = replace(profile, active=False)
-        return self._ok("add_profile", profile.name)
+            taken = name in self._items
+        return ArchiveInfo(
+            path, name, size, tuple(SECTIONS[:4]), (SECTIONS[4],), (), taken
+        )
+
+    def export_profile(
+        self,
+        name: str,
+        directory: str,
+        archive_name: Optional[str] = None,
+        on_conflict: str = "error",
+    ) -> OperationResult:
+        """Pretends to export, following the real conflict rules."""
+        self._enter("export", name)
+        if on_conflict not in ON_CONFLICT:
+            raise ValidationError(f"on_conflict must be one of {ON_CONFLICT}")
+        base = validate_archive_name(archive_name) if archive_name else name
+        if not directory.strip():
+            raise ValidationError("output folder is required")
+        with self._lock:
+            if name not in self._items:
+                raise ProfileNotFoundError(f"profile not found: {name}")
+            target = self._archive_path(directory, base)
+            if target in self.blocked and on_conflict != "unique":
+                raise ArchiveExistsError(f"refusing to overwrite: {target}")
+            if target in self.archives or target in self.blocked:
+                if on_conflict == "error":
+                    raise ArchiveExistsError(f"already exists: {target}")
+                if on_conflict == "unique":
+                    counter = 2
+                    while self._archive_path(directory, f"{base}-{counter}") in (
+                        self.archives | self.blocked
+                    ):
+                        counter += 1
+                    target = self._archive_path(directory, f"{base}-{counter}")
+            self.archives.add(target)
+        return OperationResult(
+            "export", True, f"profile '{name}' exported to {target}", path=Path(target)
+        )
+
+    def import_profile(
+        self, path: str, name: Optional[str] = None, *, confirmed: bool = False
+    ) -> OperationResult:
+        """Pretends to import: adds a fictitious profile."""
+        _require(confirmed, "import")
+        info = self.inspect_archive(path)
+        target = validate_profile_name(name) if name else info.name
+        self._enter("import", target)
+        with self._lock:
+            if target in self._items:
+                raise ProfileExistsError(f"profile already exists: {target}")
+            sections = tuple(info.save_sections) + tuple(info.export_sections)
+            self._items[target] = Profile(
+                target,
+                f"Importado de {os.path.basename(path)}.",
+                sections,
+                max(info.size_mb, 0.1),
+                datetime.now(),
+            )
+        return OperationResult(
+            "import", True, f"profile '{target}' imported", path=Path(target)
+        )
 
     def reset(self) -> OperationResult:
         """Restores the initial profiles."""

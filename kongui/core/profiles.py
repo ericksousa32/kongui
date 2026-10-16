@@ -30,7 +30,12 @@ from kongui.core.errors import (
     ProfileNotFoundError,
     ValidationError,
 )
-from kongui.core.results import OperationResult, ProfileInfo, ValidationReport
+from kongui.core.results import (
+    ArchiveInspection,
+    OperationResult,
+    ProfileInfo,
+    ValidationReport,
+)
 from kongui.core.safety import validate_archive_name, validate_profile_name
 
 ON_CONFLICT_CHOICES = ("error", "unique", "overwrite")
@@ -43,7 +48,6 @@ TEMP_PREFIX = ".kongui-"
 NOT_IMPLEMENTED_OPERATIONS: Mapping[str, str] = {
     "create_backup": "Backup of live files before apply/import (requirement RN-01).",
     "restore_backup": "Restore a backup made before apply/import (requirement RN-01).",
-    "inspect_archive": "Full read-only listing/preview of a .knsv (requirement RN-02).",
 }
 
 
@@ -458,22 +462,7 @@ class ProfileService:
         """
         self._require_confirmation(confirmed, "import")
         path = Path(archive_path)
-        suffix = self._engine.export_extension
-        if not path.is_file():
-            raise ValidationError(f"archive not found: {path}")
-        if not path.name.endswith(suffix) or path.name == suffix:
-            raise ValidationError(f"archive must be a '*{suffix}' file")
-        name = validate_profile_name(path.name[: -len(suffix)])
-        report = self._read_archive_config(path)
-        if not report.ok or report.resolved is None:
-            raise ConfigValidationError("the archive configuration is invalid", report)
-        if not allow_outside_home:
-            outside = self._outside_home_problems(report.resolved, ("export", "save"))
-            if outside:
-                raise ConfigValidationError(
-                    "the archive writes outside the home folder",
-                    report.with_errors(outside),
-                )
+        name, report = self._check_archive(path, allow_outside_home)
         if name in self._engine.profile_names():
             raise ProfileExistsError(f"profile already exists: {name}")
         staging = self._engine.temp_dir / name
@@ -503,6 +492,77 @@ class ProfileService:
             report.warnings,
             notes,
         )
+
+    def inspect_archive(
+        self, archive_path: Path, *, allow_outside_home: bool = False
+    ) -> ArchiveInspection:
+        """Checks a ``.knsv`` file and describes it, writing nothing.
+
+        It applies the same checks as :meth:`import_profile` (readable zip,
+        safe member names, ``conf.yaml`` and ``save/`` present, valid and safe
+        configuration) so a problem is found before the user confirms.
+
+        Args:
+            archive_path: Path of the ``.knsv`` file.
+            allow_outside_home: Accept destinations outside the home folder.
+
+        Returns:
+            ArchiveInspection: Name, size and sections of the archive.
+
+        Raises:
+            ValidationError: If the file is missing, not a ``.knsv``, not a
+                readable archive or its name is not acceptable.
+            ConfigValidationError: If its configuration is invalid or unsafe.
+        """
+        path = Path(archive_path)
+        name, report = self._check_archive(path, allow_outside_home)
+        resolved = report.resolved or {}
+        with zipfile.ZipFile(path) as handle:
+            members = len(handle.namelist())
+        return ArchiveInspection(
+            path=path,
+            name=name,
+            size_bytes=path.stat().st_size,
+            member_count=members,
+            save_sections=tuple(resolved.get("save", {})),
+            export_sections=tuple(resolved.get("export", {})),
+            warnings=report.warnings,
+            name_taken=name in self._engine.profile_names(),
+        )
+
+    def _check_archive(
+        self, path: Path, allow_outside_home: bool
+    ) -> Tuple[str, ValidationReport]:
+        """Runs the checks shared by inspection and import.
+
+        Args:
+            path: Archive path.
+            allow_outside_home: Accept destinations outside the home folder.
+
+        Returns:
+            Tuple[str, ValidationReport]: Profile name and configuration report.
+
+        Raises:
+            ValidationError: If the file or its name is not acceptable.
+            ConfigValidationError: If the configuration is invalid or unsafe.
+        """
+        suffix = self._engine.export_extension
+        if not path.is_file():
+            raise ValidationError(f"archive not found: {path}")
+        if not path.name.endswith(suffix) or path.name == suffix:
+            raise ValidationError(f"archive must be a '*{suffix}' file")
+        name = validate_profile_name(path.name[: -len(suffix)])
+        report = self._read_archive_config(path)
+        if not report.ok or report.resolved is None:
+            raise ConfigValidationError("the archive configuration is invalid", report)
+        if not allow_outside_home:
+            outside = self._outside_home_problems(report.resolved, ("export", "save"))
+            if outside:
+                raise ConfigValidationError(
+                    "the archive writes outside the home folder",
+                    report.with_errors(outside),
+                )
+        return name, report
 
     def wipe_all(self, *, confirmed: bool = False) -> OperationResult:
         """Deletes every profile (``wipe``). Irreversible.
@@ -543,16 +603,6 @@ class ProfileService:
             NotImplementedOperationError: Always.
         """
         raise NotImplementedOperationError(NOT_IMPLEMENTED_OPERATIONS["restore_backup"])
-
-    def inspect_archive(self, *_args: Any, **_kwargs: Any) -> None:
-        """Not implemented: full read-only preview of a ``.knsv``.
-
-        Raises:
-            NotImplementedOperationError: Always.
-        """
-        raise NotImplementedOperationError(
-            NOT_IMPLEMENTED_OPERATIONS["inspect_archive"]
-        )
 
     # ------------------------------------------------------------------ helpers
 

@@ -12,6 +12,7 @@ python3 -m kongui.gui --demo    # dados fictícios; nada é gravado nem aplicado
 ```
 
 O programa recusa rodar como root e avisa se o Konsave não puder ser carregado.
+Importar e exportar estão descritos na §4.
 
 ## 2. Arquitetura
 
@@ -46,6 +47,8 @@ Página ──► ProfileActions (diálogos) ──► ProfileController ──�
 | Aplicar | `apply` | cartão mostra “Aplicando…” | diálogo destrutivo |
 | Remover | `remove` | cartão mostra “Removendo…” | diálogo destrutivo |
 | Limpar todos | `wipe_all` | botões travados | diálogo destrutivo **e** digitar `APAGAR` |
+| Exportar | `ProfileService.export` | barra ocupada, botão travado | só para substituir um arquivo (ver §4) |
+| Importar | `ProfileService.import_profile` | verificação em segundo plano, depois barra ocupada | sempre |
 
 Cada erro aparece como aviso persistente com a causa; falha ao listar mostra uma
 faixa com “Tentar novamente”. As camadas inferiores também exigem `confirmed=True`
@@ -59,29 +62,102 @@ acrescentado `ProfileService.replace`, sem mexer no Konsave: salva num nome
 temporário (`.kongui-…`), confere o resultado e troca por `rename` com
 reversão se algo falhar. Entradas com esse prefixo nunca são listadas.
 
-## 4. Testes
+## 4. Importar e exportar
 
-Nenhum teste aplica perfis na sessão real: usam `FakeBackend` ou um `$HOME`
+Formato: o `.knsv` **original** do Konsave (um zip com `conf.yaml`, `save/` e
+`export/`). A GUI não cria nenhum formato novo; os testes trocam arquivos com o
+`python -m konsave` original nos dois sentidos.
+
+### Opções do CLI e como aparecem
+
+| CLI original | Na interface | Comportamento real |
+|---|---|---|
+| `-e PERFIL` | lista “Perfil” | o perfil precisa existir e ter `conf.yaml` válido |
+| `-d PASTA` | “Pasta de destino” + **Escolher…** | o original usa a pasta atual; aqui o padrão é `~/Downloads`. A pasta precisa existir e aceitar escrita (checado antes, com mensagem clara). `~` vale a home do motor |
+| `-n NOME` | “Nome do arquivo (sem extensão)” | começa igual ao perfil; mesmas regras de nome do core (sem `/`, `.`/`..`, `-` inicial, `.knsv`/`.zip`) |
+| `-f` | “Se o arquivo já existir” | ver abaixo |
+| `-i ARQUIVO` | área de soltar / **Escolher arquivo** | só `.knsv`; o arquivo é verificado (somente leitura) assim que é escolhido |
+| (nenhuma) | “Nome do perfil importado” | o original usa o nome do arquivo; ver “Renomear” |
+| (nenhuma) | “Aplicar o perfil depois de importar” | segundo passo separado: se falhar, o perfil continua importado e um aviso explica |
+
+### Conflito ao exportar (semântica do `-f`)
+
+Sem `-f` o original **não pergunta**: acrescenta data e hora ao nome. Com `-f`
+substitui. O `force` do original também apaga uma pasta com o nome do arquivo,
+por isso a GUI nunca o repassa para pastas. Escolha “Se o arquivo já existir”:
+
+| Opção | Se existir um `.knsv` | Se existir pasta, `.zip` ou link com esse nome |
+|---|---|---|
+| Perguntar (padrão) | diálogo: **Substituir**, **Usar nome único** ou Cancelar | diálogo só com **Usar nome único** |
+| Criar um nome único | `nome-2.knsv`, `nome-3.knsv`… (sem perguntar; nada é perdido) | idem |
+| Substituir | confirmação destrutiva; só substitui um arquivo regular | **recusa** (o original apagaria a pasta) |
+
+Quando nada existe, a exportação vai com a política `error`: se alguém criar o
+arquivo no meio do caminho, ele **não** é sobrescrito. Diferença conhecida: o
+nome único do original é `nome_fDD-MM-AAAA:HH-MM-SS`; o do core é `nome-2`.
+
+### Importar
+
+* **Sempre confirma**: o original grava a seção `export` do arquivo direto no
+  sistema (por exemplo, `~/.local/share/icons`), sobrescrevendo, sem backup. O
+  diálogo lista as seções que serão gravadas.
+* Nunca substitui um perfil: se o nome já existe, o formulário recusa (o
+  original também recusa).
+* `ProfileService.inspect_archive` (novo, somente leitura) faz as mesmas
+  verificações da importação — zip legível, nomes de membros seguros, `conf.yaml`
+  e `save/` presentes, configuração válida e destinos dentro da home — e mostra
+  nome, tamanho e seções antes de qualquer gravação. Arquivo ausente, não-zip,
+  sem `conf.yaml`, com caminhos inseguros ou sem permissão de leitura aparecem
+  como erro no formulário.
+* Destinos **fora da home** continuam recusados (`allow_outside_home` não é
+  exposto na interface).
+* **Renomear**: o original nomeia o perfil pelo arquivo. Para usar outro nome,
+  o *mesmo* arquivo é copiado para uma pasta temporária privada com o nome
+  novo e importado de lá; a cópia é apagada no fim, mesmo em erro, e o original
+  não é tocado. Não é um formato novo.
+
+### Erros
+
+Permissão negada, arquivo ou pasta ausente e demais `OSError` viram mensagens em
+pt-BR (e não são registrados como bug). Falhas de exportação ficam na tela até
+serem fechadas e o formulário continua preenchido.
+
+## 5. Testes
+
+Nenhum teste aplica perfil na sessão real: usam `FakeBackend` ou `$HOME`
 temporário, e os testes com arquivos recusam rodar como root.
 
 ```bash
-QT_QPA_PLATFORM=offscreen python3 -m unittest tests.test_gui_operations tests.test_gui_real_backend tests.test_gui_support -v
+QT_QPA_PLATFORM=offscreen python3 -m unittest tests.test_gui_operations tests.test_gui_real_backend tests.test_gui_support tests.test_gui_transfer tests.test_gui_transfer_roundtrip -v
 ```
 
-## 5. Limitações conhecidas
+`tests.test_gui_transfer_roundtrip` exporta num home e importa em outro com o
+Konsave real, compara o perfil byte a byte e repete com o CLI original.
 
-* Aplicar **não faz backup** e não é atômico: se falhar no meio, parte dos
-  arquivos já foi trocada (o aviso mostra os erros do Konsave).
+## 6. Limitações conhecidas
+
+* Aplicar e importar **não fazem backup**; aplicar não é atômico: se falhar no
+  meio, parte dos arquivos já foi trocada (o aviso mostra os erros do Konsave).
+* Importar grava a seção `export` do arquivo **antes** de qualquer outra coisa;
+  se o Konsave falhar depois, o perfil é desfeito, mas esses arquivos já escritos
+  não são restaurados.
 * “Ativo” é apenas o último perfil aplicado por esta interface
   (`last_applied`); o Konsave não registra isso.
-* O Konsave não guarda descrição nem seções: no modo real, o diálogo pede só o
-  nome e os cartões não mostram descrição.
-* Sem cancelamento nem progresso parcial; só “ocupado”.
+* O Konsave não guarda descrição nem seções: no modo real, o diálogo de salvar
+  pede só o nome e os cartões não mostram descrição.
+* Sem cancelamento nem progresso parcial; só “ocupado”. Exportar ou importar um
+  perfil grande pode demorar e bloqueia outras operações.
+* O `.knsv` não é assinado nem cifrado e o `conf.yaml` dele decide para onde os
+  arquivos vão: a GUI só aceita destinos dentro da home, mas importe apenas
+  arquivos de fontes confiáveis.
+* Exportar lê o `conf.yaml` **global** atual para a seção `export`, que pode
+  diferir do que o perfil tinha ao ser salvo (limitação do Konsave).
+* O bit executável e metadados de arquivos não sobrevivem ao ciclo exportar →
+  importar (limitação do Konsave).
 * `replace` usa `rename` (mesmo sistema de arquivos) e só deixa resíduo `.kongui-*`
   se o processo morrer no meio.
 * Não há trava entre processos: dois KonGUI (ou o `konsave` na linha de comando)
   ao mesmo tempo podem se atropelar.
 * O motor redireciona `stdout` de forma global durante cada chamada.
-* Importar/exportar e editar `conf.yaml` seguem fora desta etapa (aba Transferir
-  desativada no modo real).
+* Editar `conf.yaml` segue fora de escopo.
 * Não testado em uma sessão Plasma real.

@@ -24,7 +24,7 @@ from kongui.core import (
 from kongui.gui.backend import FakeBackend
 from kongui.gui.controller import LoadState
 from kongui.gui.widgets.dialogs import ConfirmDialog
-from tests.gui_helpers import GuiTestCase, ManualExecutor
+from tests.gui_helpers import GuiTestCase, ManualExecutor, WindowCase
 
 
 def ask(result):
@@ -32,51 +32,7 @@ def ask(result):
     return mock.patch.object(ConfirmDialog, "ask", return_value=result)
 
 
-class OperationCase(GuiTestCase):
-    """A window with a fake backend whose work only runs when told to."""
-
-    def open_window(self, backend=None, load=True, page="profiles"):
-        """Opens the window and (optionally) finishes the first listing.
-
-        Args:
-            backend: Backend to use; a fresh ``FakeBackend`` by default.
-            load: Run the initial listing.
-            page: Page to show.
-
-        Returns:
-            MainWindow: The window.
-        """
-        self.backend = backend or FakeBackend()
-        self.executor = ManualExecutor()
-        window = self.make_window(backend=self.backend, executor=self.executor)
-        self.outcomes: List = []
-        window.controller.operation_finished.connect(self.outcomes.append)
-        window.show_page(page)
-        self.flush()
-        if load:
-            self.run_all()
-        return window
-
-    def run_all(self) -> None:
-        """Runs every queued job."""
-        self.flush()
-        while self.executor.run_next():
-            self.flush()
-
-    def run_one(self) -> None:
-        """Runs exactly one queued job."""
-        self.assertTrue(self.executor.run_next(), "nothing was queued")
-        self.flush()
-
-    @staticmethod
-    def names(page):
-        """Names of the cards shown by the profiles page."""
-        return [card.profile_name for card in page.cards()]
-
-    @staticmethod
-    def card(page, name):
-        """The card of one profile."""
-        return next(c for c in page.cards() if c.profile_name == name)
+OperationCase = WindowCase
 
 
 class ListOperationTests(OperationCase):

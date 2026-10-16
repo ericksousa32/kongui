@@ -24,7 +24,7 @@ As preferências ficam em `<pasta de configuração do usuário>/kongui/kongui-g
 |---|---|---|---|---|
 | Dashboard | `dashboard` | `Ctrl+1` | Importar, Salvar perfil atual (`Ctrl+S`) | 4 cartões de resumo, perfil ativo, atividade recente |
 | Perfis | `profiles` | `Ctrl+2` | Limpar todos, Novo perfil (`Ctrl+N`) | busca (`Ctrl+F`), ordenação, grade/lista, cartões de perfil |
-| Importar / Exportar | `transfer` | `Ctrl+3` | — | formulário de exportação, área de soltar `.knsv`, transferências recentes |
+| Importar / Exportar | `transfer` | `Ctrl+3` | — | formulário de exportação (perfil, pasta, nome, conflito), área de soltar `.knsv` com verificação, transferências recentes (ver [`GUI_SERVICES.md`](GUI_SERVICES.md) §4) |
 | Configurações | `settings` | `Ctrl+4` | — | tema, exibição, duração dos avisos, dados de demonstração (só no modo `--demo`) |
 | Sobre | `about` | `Ctrl+5` | — | versão, ambiente, links, aviso de protótipo |
 
@@ -49,7 +49,7 @@ mínimo de 900 × 600.
 | `theme.py` | tokens de cor, paleta Qt, folha de estilo e `ThemeManager` |
 | `icons.py` | ícones SVG desenhados no código e coloridos pelo tema |
 | `formatting.py` | tamanhos, datas relativas e plurais em pt-BR |
-| `widgets/` | peças reutilizáveis: `common` (botão, rótulo, selo, cartão, controle segmentado), `grid` (grade adaptável), `cards`, `shell` (barra lateral e superior), `states` (estado vazio), `search`, `toast`, `dialogs`, `dropzone`, `progress`, `rows`, `feedback` (barra de ocupado e faixa de erro) |
+| `widgets/` | peças reutilizáveis: `common` (botão, rótulo, selo, cartão, controle segmentado), `grid` (grade adaptável), `cards`, `shell` (barra lateral e superior), `states` (estado vazio), `search`, `toast`, `dialogs`, `dropzone`, `rows`, `feedback` (barra de ocupado e faixa de erro) |
 | `pages/` | uma classe por página, sobre `pages/base.py` |
 
 Regras seguidas: cores só vêm de `Tokens`; ícones são refeitos quando
@@ -89,6 +89,8 @@ temporário. Se o PySide6 não estiver instalado, eles são pulados.
 | `tests.test_gui_interaction` | cada página: busca, ordenação, aplicar, remover, exportar, importar, configurações |
 | `tests.test_gui_operations` | as seis operações, uma a uma, na interface (backend em memória): carregamento, sucesso, erro, confirmação |
 | `tests.test_gui_real_backend` | as seis operações nos serviços reais, em `$HOME` temporário |
+| `tests.test_gui_transfer` | importar e exportar na interface (backend em memória): formulário, conflitos, confirmações, erros |
+| `tests.test_gui_transfer_roundtrip` | exportar e importar nos serviços reais, em dois homes temporários; compatibilidade com o `python -m konsave` original |
 | `tests.test_gui_support` | mensagens, executores, `FakeBackend`, `ProfileStore`, widgets de feedback |
 
 Verificação visual manual: abra o programa, alterne os três temas, redimensione
@@ -98,21 +100,17 @@ estados vazios. Para o aviso de arquivo existente, exporte o perfil
 
 ## 6. O que o modo `--demo` simula
 
-* Aplicar, salvar, duplicar, remover, exportar e importar só mudam as listas em
-  memória. Todo aviso diz “Simulação: nada foi alterado no sistema.”.
-* Exportar e importar mostram uma barra de progresso falsa
-  (`widgets/progress.py`). Importar mostra apenas nome e tamanho do arquivo;
-  ele nunca é aberto.
-* O arquivo `Minimalista.knsv` “já existe” no destino, para exibir o erro.
-
-No modo real, importar e exportar **não estão ligados** (aba Transferir
-desativada) e não há duplicação nem descrição/seções por perfil.
+* Aplicar, salvar, duplicar, remover, exportar e importar só mudam listas e um
+  sistema de arquivos virtual, em memória. Todo aviso diz “Simulação: nada foi
+  alterado no sistema.”.
+* As regras são as reais: política de conflito, nomes inválidos e confirmações.
+  Importar nunca abre o arquivo (só o nome e, se existir, o tamanho).
+* O arquivo `~/Downloads/Minimalista.knsv` “já existe”, para exibir o conflito.
 
 ## 7. Limitações e próximos passos
 
-* Importação, exportação e edição de `conf.yaml` ainda não estão ligados à GUI.
-* Sem backup antes de aplicar e sem prévia real do conteúdo de um `.knsv`
-  (`inspect_archive` não existe ainda; ver `INTEGRATION.md` §8).
+* A edição de `conf.yaml` ainda não está ligada à GUI.
+* Sem backup antes de aplicar ou importar.
 * Não testado em Plasma 6 real: cor de destaque, troca de esquema com o app
   aberto, escala fracionária e Wayland precisam de verificação manual.
 * Acessibilidade: nomes acessíveis, foco por teclado e contraste foram tratados,

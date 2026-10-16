@@ -95,7 +95,7 @@ class FakeBackendTests(unittest.TestCase):
     def test_capabilities(self):
         self.assertTrue(FakeBackend.capabilities.demo)
         self.assertFalse(ServiceBackend.capabilities.demo)
-        self.assertFalse(ServiceBackend.capabilities.transfer)
+        self.assertTrue(ServiceBackend.capabilities.transfer)
         self.assertFalse(ServiceBackend.capabilities.duplicate)
 
     def test_an_empty_list_is_respected(self):
@@ -145,19 +145,26 @@ class FakeBackendTests(unittest.TestCase):
         backend.save("A")
         self.assertEqual(backend.calls, [("list", ""), ("save", "A")])
 
-    def test_the_abstract_backend_refuses_demo_only_calls(self):
+    def test_the_base_backend_refuses_optional_calls(self):
         from kongui.core import NotImplementedOperationError
 
-        class Minimal(ServiceBackend):
-            """Uses the default demo-only methods of the base class."""
+        class Minimal(ProfileBackend):
+            """Implements only the required operations."""
 
-            def __init__(self):
-                pass
+            capabilities = FakeBackend.capabilities
+
+            def list_profiles(self):
+                return []
+
+            save = overwrite = apply = remove = wipe_all = list_profiles
 
         backend = Minimal()
         for call in (
             lambda: backend.duplicate("x"),
-            lambda: backend.add_profile(Profile("x", "", (), 1.0, None)),
+            lambda: backend.inspect_archive("x.knsv"),
+            lambda: backend.probe_export("/x", "y"),
+            lambda: backend.export_profile("x", "/x"),
+            lambda: backend.import_profile("x.knsv"),
             backend.reset,
         ):
             with self.assertRaises(NotImplementedOperationError):

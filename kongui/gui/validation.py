@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Collection, Optional
 
 from kongui.core.errors import ValidationError
-from kongui.core.safety import validate_profile_name
+from kongui.core.safety import validate_archive_name, validate_profile_name
 
 
 def profile_name_problem(name: str, existing: Collection[str] = ()) -> Optional[str]:
@@ -34,4 +34,29 @@ def profile_name_problem(name: str, existing: Collection[str] = ()) -> Optional[
         )
     if name in existing:
         return "Já existe um perfil com esse nome."
+    return None
+
+
+def archive_name_problem(name: str) -> Optional[str]:
+    """Explains why an exported file name (without extension) cannot be used.
+
+    Uses :func:`kongui.core.safety.validate_archive_name`, so the interface
+    refuses exactly what the export service would refuse.
+
+    Args:
+        name: Name typed by the user.
+
+    Returns:
+        Optional[str]: A pt-BR message, or ``None`` if the name is fine.
+    """
+    if not name.strip():
+        return "Informe um nome para o arquivo."
+    try:
+        validate_archive_name(name)
+    except ValidationError:
+        return (
+            "Nome inválido. Não use barras, “.” ou “..”, hífen no início, espaços "
+            "nas pontas, caracteres de controle, nem as extensões .knsv ou .zip "
+            "(máximo de 200 caracteres)."
+        )
     return None

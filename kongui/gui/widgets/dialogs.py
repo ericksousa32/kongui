@@ -56,6 +56,7 @@ class BaseDialog(QDialog):
         self.confirm_button.clicked.connect(self.accept)
         buttons.addWidget(self.cancel_button)
         buttons.addWidget(self.confirm_button)
+        self.button_row = buttons
         outer.addLayout(buttons)
 
 
@@ -138,6 +139,66 @@ class ConfirmDialog(BaseDialog):
             require_text=require_text,
         )
         return dialog.exec() == QDialog.DialogCode.Accepted
+
+
+class ConflictDialog(BaseDialog):
+    """Asks what to do when the exported file already exists.
+
+    After ``exec()``, :attr:`choice` is ``"cancel"``, ``"unique"`` (save under a
+    free name) or ``"overwrite"`` (replace the existing file).
+    """
+
+    def __init__(
+        self, parent: Optional[QWidget], title: str, message: str, allow_replace: bool
+    ) -> None:
+        """Creates the dialog.
+
+        Args:
+            parent: Parent window.
+            title: Heading.
+            message: Explanation of what exists.
+            allow_replace: Offer "Substituir" (not when a folder or ``.zip``
+                with that name is in the way: the original would delete it).
+        """
+        super().__init__(parent, title, "Usar nome único", "primary")
+        self.choice = "cancel"
+        self.body.addWidget(Label(message, wrap=True))
+        self.replace_button = Button("Substituir", variant="danger-solid")
+        self.replace_button.setVisible(allow_replace)
+        self.button_row.insertWidget(self.button_row.count() - 1, self.replace_button)
+        self.confirm_button.clicked.connect(lambda: self._pick("unique"))
+        self.replace_button.clicked.connect(lambda: self._pick("overwrite"))
+        self.cancel_button.setFocus()
+
+    def _pick(self, choice: str) -> None:
+        """Records the choice (the button also closes the dialog)."""
+        self.choice = choice
+        if choice == "overwrite":
+            self.accept()
+
+    @classmethod
+    def ask(
+        cls,
+        parent: Optional[QWidget],
+        title: str,
+        message: str,
+        allow_replace: bool = True,
+    ) -> str:
+        """Shows the dialog and waits.
+
+        Args:
+            parent: Parent window.
+            title: Heading.
+            message: Explanation.
+            allow_replace: Offer "Substituir".
+
+        Returns:
+            str: ``cancel``, ``unique`` or ``overwrite``.
+        """
+        dialog = cls(parent, title, message, allow_replace)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return "cancel"
+        return dialog.choice
 
 
 class ProfileDialog(BaseDialog):

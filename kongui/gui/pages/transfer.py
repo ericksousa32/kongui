@@ -1,30 +1,35 @@
-"""Import / export page. Transfers are simulated."""
+"""Import / export page.
+
+Export covers the original options ``-e`` (profile), ``-d`` (folder), ``-n``
+(file name) and ``-f`` (what to do when the file exists); import covers ``-i``
+(file). The original import takes the profile name from the file name and has
+no other option; here the user may pick another name (see
+``ServiceBackend.import_profile``) and may apply the profile afterwards.
+"""
 
 from __future__ import annotations
 
 import os
-from datetime import datetime
 from pathlib import PurePath
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
-    QProgressBar,
+    QSizePolicy,
     QVBoxLayout,
+    QCheckBox,
     QWidget,
 )
 
-from kongui.gui.actions import SIMULATED
+from kongui.gui import messages
+from kongui.gui.backend import ArchiveInfo
 from kongui.gui.context import AppContext
 from kongui.gui.formatting import format_size
-from kongui.gui.mock_data import SECTIONS
 from kongui.gui.pages.base import Page
-from kongui.gui.state import Profile
-from kongui.gui.validation import profile_name_problem
+from kongui.gui.validation import archive_name_problem, profile_name_problem
 from kongui.gui.widgets.cards import ActivityRow
 from kongui.gui.widgets.common import (
     Badge,
@@ -36,16 +41,33 @@ from kongui.gui.widgets.common import (
     clear_layout,
     repolish,
 )
+from kongui.gui.widgets.dialogs import ConfirmDialog, ConflictDialog
 from kongui.gui.widgets.dropzone import DropZone, knsv_paths
+from kongui.gui.widgets.feedback import BusyBar
 from kongui.gui.widgets.grid import ResponsiveGrid
-from kongui.gui.widgets.progress import SimulatedTask
 from kongui.gui.widgets.states import EmptyState
 
-#: Archive that "already exists" in the fictitious destination, to show the
-#: overwrite warning.
-FAKE_EXISTING_ARCHIVE = "Minimalista.knsv"
 DEFAULT_DESTINATION = "~/Downloads"
 RECENT_LIMIT = 5
+MAX_BADGES = 3
+
+#: Choices for "if the file already exists": ``(key, label)``.
+CONFLICT_CHOICES: Tuple[Tuple[str, str], ...] = (
+    ("ask", "Perguntar o que fazer"),
+    ("unique", "Criar um nome único"),
+    ("overwrite", "Substituir (pede confirmação)"),
+)
+
+FOLDER_PROBLEMS = {
+    "missing": "A pasta de destino não existe.",
+    "not_dir": "O destino não é uma pasta.",
+    "not_writable": "Sem permissão de escrita na pasta de destino.",
+}
+
+
+def _short(section: str) -> str:
+    """Section name without the explanation in parentheses."""
+    return section.split(" (", maxsplit=1)[0]
 
 
 def _card_header(icon_name: str, title: str, subtitle: str) -> QHBoxLayout:
@@ -61,17 +83,15 @@ def _card_header(icon_name: str, title: str, subtitle: str) -> QHBoxLayout:
     return row
 
 
-class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
+class TransferPage(
+    Page
+):  # pylint: disable=too-many-instance-attributes,too-many-public-methods
     """Export a profile to a ``.knsv`` file, or import one."""
 
     key = "transfer"
     title = "Importar / Exportar"
     subtitle = "Leve seus perfis para outro computador ou faça cópias"
     icon_name = "transfer"
-
-    #: Timer ticks and interval of the fake progress; tests lower them.
-    STEPS = 16
-    STEP_MS = 30
 
     def __init__(self, ctx: AppContext) -> None:
         """Builds the page.
@@ -81,12 +101,17 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
         """
         super().__init__(ctx)
         self._import_path: Optional[str] = None
-        self._export_task: Optional[SimulatedTask] = None
-        self._import_task: Optional[SimulatedTask] = None
+        self._archive: Optional[ArchiveInfo] = None
+        self._archive_error: Tuple[str, ...] = ()
+        self._inspecting = False
+        self._inspect_token = 0
 
         panels = ResponsiveGrid(min_item_width=380, max_columns=2)
         self.export_card = self._build_export()
         self.import_card = self._build_import()
+        for card in (self.export_card, self.import_card):
+            # Equal columns whatever the content: only the grid decides the width.
+            card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         panels.set_items([self.export_card, self.import_card])
         self.body.addWidget(panels)
 
@@ -99,24 +124,43 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
 
         ctx.store.changed.connect(self._on_store_changed)
         ctx.activity.changed.connect(self._build_recent)
+        ctx.controller.state_changed.connect(self._on_controller_changed)
+        ctx.controller.operation_finished.connect(self._on_finished)
         if not ctx.backend.capabilities.transfer:
-            self._disable_for_real_backend()
+            self._disable_without_transfer()
         self._fill_profiles()
         self._update_export_state()
         self._update_import_state()
         self._build_recent()
 
-    def _disable_for_real_backend(self) -> None:
-        """Locks both forms: transfer is not wired to the services yet."""
+    def _disable_without_transfer(self) -> None:
+        """Locks both forms for a backend that cannot transfer."""
         self.transfer_notice = Label(
-            "Importação e exportação ainda não estão disponíveis nesta versão. "
-            "Os formulários abaixo são apenas uma prévia.",
+            "Importação e exportação não estão disponíveis neste modo.",
             "muted",
             wrap=True,
         )
         self.body.insertWidget(0, self.transfer_notice)
         self.export_card.setEnabled(False)
         self.import_card.setEnabled(False)
+
+    # ---- shared -----------------------------------------------------------------
+
+    def _on_controller_changed(self) -> None:
+        """Shows the busy bar of the running transfer and locks the buttons."""
+        running = self.ctx.controller.current
+        operation = running[0] if running else ""
+        self.export_progress.set_busy(operation == "export")
+        self.import_progress.set_busy(operation == "import")
+        self._update_export_state()
+        self._update_import_state()
+
+    def _on_finished(self, outcome) -> None:
+        """Resets the import form after a successful import."""
+        if outcome.operation == "import" and outcome.ok:
+            self.set_import_file(None)
+        elif outcome.operation == "import":
+            self._update_import_state()
 
     # ---- export -----------------------------------------------------------------
 
@@ -130,7 +174,7 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
             _card_header(
                 "export",
                 "Exportar perfil",
-                "Gera um arquivo .knsv com o perfil escolhido.",
+                "Gera um arquivo .knsv (o mesmo formato do Konsave) com o perfil escolhido.",
             )
         )
         outer.addWidget(Separator())
@@ -162,13 +206,18 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
         form.addWidget(self.filename_edit)
         self.filename_error = Label("", "danger", wrap=True)
         form.addWidget(self.filename_error)
+        form.addWidget(Label("Se o arquivo já existir", "muted"))
+        self.conflict_combo = QComboBox()
+        self.conflict_combo.setAccessibleName("Se o arquivo já existir")
+        for key, label in CONFLICT_CHOICES:
+            self.conflict_combo.addItem(label, key)
+        form.addWidget(self.conflict_combo)
         self.preview_label = Label("", "caption", wrap=True)
         form.addWidget(self.preview_label)
-        self.overwrite_check = QCheckBox("Substituir se o arquivo já existir")
-        form.addWidget(self.overwrite_check)
-        self.export_progress = QProgressBar()
-        self.export_progress.setTextVisible(False)
-        self.export_progress.hide()
+        self.export_error = Label("", "danger", wrap=True)
+        self.export_error.hide()
+        form.addWidget(self.export_error)
+        self.export_progress = BusyBar()
         form.addWidget(self.export_progress)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
@@ -181,7 +230,7 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
         self.export_combo.currentIndexChanged.connect(self._on_export_profile_changed)
         self.destination_edit.textChanged.connect(self._update_export_state)
         self.filename_edit.textChanged.connect(self._update_export_state)
-        self.overwrite_check.toggled.connect(self._update_export_state)
+        self.conflict_combo.currentIndexChanged.connect(self._update_export_state)
         self.browse_destination.clicked.connect(self._choose_destination)
         self.export_button.clicked.connect(self.start_export)
         return card
@@ -220,6 +269,7 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
         """Keeps the profile combo in sync with the store."""
         self._fill_profiles()
         self._update_export_state()
+        self._update_import_state()
 
     def _on_export_profile_changed(self) -> None:
         """Suggests the file name after the profile changed."""
@@ -228,12 +278,13 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
 
     def _choose_destination(self) -> None:
         """Opens the folder picker."""
-        chosen = QFileDialog.getExistingDirectory(self, "Pasta de destino")
+        start = os.path.expanduser(self.destination_edit.text().strip() or "~")
+        chosen = QFileDialog.getExistingDirectory(self, "Pasta de destino", start)
         if chosen:
             self.destination_edit.setText(chosen)
 
     def export_target(self) -> str:
-        """Returns the archive path that would be written."""
+        """Returns the archive path that would be written (plain policy)."""
         folder = self.destination_edit.text().strip() or DEFAULT_DESTINATION
         return f"{folder.rstrip('/')}/{self.filename_edit.text().strip()}.knsv"
 
@@ -243,7 +294,7 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
             return "Escolha um perfil."
         if not self.destination_edit.text().strip():
             return "Informe a pasta de destino."
-        return profile_name_problem(self.filename_edit.text())
+        return archive_name_problem(self.filename_edit.text())
 
     def _update_export_state(self) -> None:
         """Refreshes the visibility and enabled state of the export form."""
@@ -259,48 +310,107 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
         self.preview_label.setText(
             f"Arquivo final: {self.export_target()}" if not problem else ""
         )
-        busy = self._export_task is not None and self._export_task.running
-        self.export_button.setEnabled(problem is None and not busy)
+        self.export_error.hide()
+        self.export_button.setEnabled(problem is None and not self.ctx.controller.busy)
 
-    def start_export(self) -> bool:
-        """Starts the simulated export.
+    def _export_policy(self, probe) -> Optional[str]:
+        """Decides the conflict policy for this export, asking when needed.
+
+        A file is never replaced without an explicit answer, and when nothing
+        exists yet the plain ``error`` policy is used so that a file created in
+        the meantime is not overwritten silently.
+
+        Args:
+            probe: The :class:`~kongui.gui.backend.ExportProbe` of the target.
 
         Returns:
-            bool: ``False`` if the form is invalid or the archive "exists" and
-            overwriting is off (an error notification is shown in that case).
+            Optional[str]: ``error``, ``unique`` or ``overwrite``; ``None`` if
+            the user cancelled or the export is not possible.
+        """
+        choice = str(self.conflict_combo.currentData())
+        if not probe.conflict:
+            return "unique" if choice == "unique" else "error"
+        if choice == "unique":
+            return "unique"
+        blocked = probe.conflict == "blocked"
+        if choice == "overwrite" and blocked:
+            self._export_failed(
+                "Já existe uma pasta, um .zip ou outro item com esse nome no destino. "
+                "O Konsave o apagaria, por isso a substituição foi recusada. "
+                "Escolha outro nome ou “Criar um nome único”."
+            )
+            return None
+        window = self.window()
+        if choice == "overwrite":
+            if ConfirmDialog.ask(
+                window,
+                "Substituir o arquivo existente?",
+                f"{probe.path} já existe e será substituído. O conteúdo antigo "
+                "é perdido e não há desfazer.",
+                "Substituir",
+                destructive=True,
+            ):
+                return "overwrite"
+            return None
+        what = (
+            "Já existe uma pasta, um .zip ou outro item com esse nome."
+            if blocked
+            else f"O arquivo {probe.path} já existe."
+        )
+        answer = ConflictDialog.ask(
+            window,
+            "O arquivo já existe",
+            f"{what}\nNovo nome sugerido: {probe.unique_path}",
+            allow_replace=not blocked,
+        )
+        return None if answer == "cancel" else answer
+
+    def _export_failed(self, text: str) -> None:
+        """Shows why an export could not start."""
+        self.export_error.setText(text)
+        self.export_error.show()
+        self.ctx.toasts.show_message(
+            "error", "Não foi possível exportar o perfil", text, seconds=0
+        )
+
+    def start_export(self) -> bool:
+        """Checks the target, asks when something would be replaced, and exports.
+
+        Returns:
+            bool: ``True`` if an export was started. ``False`` if the form is
+            invalid, the folder is unusable, the user cancelled, or another
+            operation is running (an error notification explains it).
         """
         if self._export_problem() is not None:
             return False
-        target = self.export_target()
-        if (
-            target.endswith("/" + FAKE_EXISTING_ARCHIVE)
-            and not self.overwrite_check.isChecked()
-        ):
+        controller = self.ctx.controller
+        if controller.busy:
             self.ctx.toasts.show_message(
-                "error",
-                "O arquivo já existe",
-                f"{FAKE_EXISTING_ARCHIVE} já está em {self.destination_edit.text().strip()}. "
-                "Marque “Substituir” ou escolha outro nome.",
+                "info", "Aguarde", "Outra operação ainda está em andamento."
             )
             return False
         name = str(self.export_combo.currentData())
-        task = SimulatedTask(self.STEPS, self.STEP_MS, self)
-        task.progress.connect(self.export_progress.setValue)
-        task.finished.connect(lambda: self._export_done(name, target))
-        self._export_task = task
-        self.export_progress.setValue(0)
-        self.export_progress.show()
-        self.export_button.setEnabled(False)
-        task.start()
-        return True
-
-    def _export_done(self, name: str, target: str) -> None:
-        """Finishes the simulated export."""
-        self.export_progress.hide()
-        self._update_export_state()
-        self.ctx.activity.add("export", f"“{name}” exportado para {target}")
-        self.ctx.toasts.show_message(
-            "success", f"“{name}” exportado", f"{target}\n{SIMULATED}"
+        directory = self.destination_edit.text().strip()
+        base = self.filename_edit.text()
+        try:
+            probe = self.ctx.backend.probe_export(directory, base)
+        except OSError as error:
+            self._export_failed(" ".join(messages.describe_error(error)))
+            return False
+        if probe.folder_problem:
+            self._export_failed(
+                FOLDER_PROBLEMS.get(probe.folder_problem, "Pasta de destino inválida.")
+            )
+            return False
+        policy = self._export_policy(probe)
+        if policy is None:
+            return False
+        return controller.export_profile(
+            name,
+            directory,
+            base,
+            policy,
+            confirmed=policy == "overwrite",
         )
 
     # ---- import -----------------------------------------------------------------
@@ -315,7 +425,7 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
             _card_header(
                 "import",
                 "Importar perfil",
-                "Lê um arquivo .knsv e cria um novo perfil.",
+                "Lê um arquivo .knsv do Konsave e cria um novo perfil.",
             )
         )
         outer.addWidget(Separator())
@@ -331,9 +441,13 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
         file_row.addWidget(self.file_label, 1)
         file_row.addWidget(self.clear_file_button)
         form.addLayout(file_row)
+        self.file_error = Label("", "danger", wrap=True)
+        form.addWidget(self.file_error)
         self.contents_row = QHBoxLayout()
         self.contents_row.setSpacing(6)
         form.addLayout(self.contents_row)
+        self.import_info = Label("", "caption", wrap=True)
+        form.addWidget(self.import_info)
         form.addWidget(Label("Nome do perfil importado", "muted"))
         self.import_name_edit = QLineEdit()
         self.import_name_edit.setAccessibleName("Nome do perfil importado")
@@ -342,9 +456,7 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
         form.addWidget(self.import_error)
         self.apply_after_check = QCheckBox("Aplicar o perfil depois de importar")
         form.addWidget(self.apply_after_check)
-        self.import_progress = QProgressBar()
-        self.import_progress.setTextVisible(False)
-        self.import_progress.hide()
+        self.import_progress = BusyBar()
         form.addWidget(self.import_progress)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
@@ -377,9 +489,10 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
         )
 
     def set_import_file(self, path: Optional[str]) -> bool:
-        """Selects (or clears) the archive to import.
+        """Selects (or clears) the archive to import and checks it.
 
-        The file is not opened: the prototype only shows its name and size.
+        The file is only read, never extracted: the check runs in the
+        background and fills in what the archive holds or why it is unusable.
 
         Args:
             path: Local path ending in ``.knsv``, or ``None`` to clear.
@@ -390,85 +503,139 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
         if path is not None and not knsv_paths([path]):
             self._on_drop_rejected()
             return False
+        self._inspect_token += 1
         self._import_path = path
-        clear_layout(self.contents_row)
+        self._archive = None
+        self._archive_error = ()
+        self._inspecting = path is not None
         if path:
-            stem = PurePath(path).stem
-            size = ""
-            try:
-                size = f" · {format_size(os.stat(path).st_size / 1048576)}"
-            except OSError:
-                pass
-            self.file_label.setText(f"{PurePath(path).name}{size}")
-            self.import_name_edit.setText(stem)
-            for section in SECTIONS[:4]:
-                self.contents_row.addWidget(Badge(section.split(" (", maxsplit=1)[0]))
-            self.contents_row.addWidget(Badge("+1"))
-            self.contents_row.addStretch(1)
+            self.import_name_edit.setText(PurePath(path).stem)
+            token = self._inspect_token
+            self.ctx.controller.inspect_archive(
+                path, lambda info, error: self._on_inspected(token, info, error)
+            )
         else:
             self.import_name_edit.clear()
+            self.apply_after_check.setChecked(False)
         self._update_import_state()
         return True
+
+    def _on_inspected(
+        self,
+        token: int,
+        info: Optional[ArchiveInfo],
+        error: Optional[BaseException],
+    ) -> None:
+        """Receives the result of the background check (ignores stale ones)."""
+        if token != self._inspect_token:
+            return
+        self._inspecting = False
+        self._archive = info
+        self._archive_error = (
+            messages.describe_error(error) if error is not None else ()
+        )
+        self._update_import_state()
 
     def _import_problem(self) -> Optional[str]:
         """Returns why the import form is not valid, if it is not."""
         if not self._import_path:
             return "Escolha um arquivo."
+        if self._inspecting:
+            return "Verificando o arquivo…"
+        if self._archive_error:
+            return " ".join(self._archive_error)
         return profile_name_problem(
             self.import_name_edit.text(), self.ctx.store.names()
         )
+
+    def _fill_contents(self) -> None:
+        """Shows what the selected archive holds."""
+        clear_layout(self.contents_row)
+        info = self._archive
+        if info is None:
+            self.import_info.setText("")
+            return
+        names = [_short(section) for section in info.save_sections]
+        for name in names[:MAX_BADGES]:
+            self.contents_row.addWidget(Badge(name))
+        if len(names) > MAX_BADGES:
+            self.contents_row.addWidget(Badge(f"+{len(names) - MAX_BADGES}"))
+        self.contents_row.addStretch(1)
+        if info.export_sections:
+            self.import_info.setText(
+                "Ao importar, arquivos das seções "
+                + ", ".join(_short(name) for name in info.export_sections)
+                + " são gravados direto no sistema, sem backup."
+            )
+        else:
+            self.import_info.setText("Este arquivo não grava nada fora dos perfis.")
 
     def _update_import_state(self) -> None:
         """Refreshes visibility and enabled state of the import form."""
         has_file = self._import_path is not None
         self.drop_zone.setVisible(not has_file)
         self.import_form.setVisible(has_file)
+        if has_file:
+            size = f" · {format_size(self._archive.size_mb)}" if self._archive else ""
+            checking = " · verificando…" if self._inspecting else ""
+            self.file_label.setText(
+                f"{PurePath(self._import_path or '').name}{size}{checking}"
+            )
+        self.file_error.setText(" ".join(self._archive_error))
+        self.file_error.setVisible(bool(self._archive_error))
+        self._fill_contents()
         problem = self._import_problem()
-        typed = bool(self.import_name_edit.text())
-        self.import_error.setText(problem if has_file and problem and typed else "")
-        self.import_error.setVisible(bool(has_file and problem and typed))
-        self.import_name_edit.setProperty(
-            "invalid", bool(has_file and problem and typed)
-        )
+        typed = self.import_name_edit.text()
+        name_problem = ""
+        if has_file and typed and not self._archive_error and not self._inspecting:
+            name_problem = profile_name_problem(typed, self.ctx.store.names()) or ""
+        self.import_error.setText(name_problem)
+        self.import_error.setVisible(bool(name_problem))
+        self.import_name_edit.setProperty("invalid", bool(name_problem))
         repolish(self.import_name_edit)
-        busy = self._import_task is not None and self._import_task.running
-        self.import_button.setEnabled(problem is None and not busy)
+        self.import_button.setEnabled(problem is None and not self.ctx.controller.busy)
 
     def start_import(self) -> bool:
-        """Starts the simulated import.
+        """Asks for confirmation and imports the selected archive.
+
+        Importing writes files into the live system, so it always asks.
 
         Returns:
-            bool: ``False`` if the form is invalid.
+            bool: ``True`` if an import was started. ``False`` if the form is
+            invalid, the user declined, or another operation is running.
         """
-        if self._import_problem() is not None:
+        if self._import_problem() is not None or self._import_path is None:
             return False
         name = self.import_name_edit.text()
         apply_after = self.apply_after_check.isChecked()
-        source = PurePath(self._import_path or "").name
-        task = SimulatedTask(self.STEPS, self.STEP_MS, self)
-        task.progress.connect(self.import_progress.setValue)
-        task.finished.connect(lambda: self._import_done(name, source, apply_after))
-        self._import_task = task
-        self.import_progress.setValue(0)
-        self.import_progress.show()
-        self.import_button.setEnabled(False)
-        task.start()
-        return True
-
-    def _import_done(self, name: str, source: str, apply_after: bool) -> None:
-        """Finishes the simulated import."""
-        self.import_progress.hide()
-        profile = Profile(
-            name,
-            f"Importado de {source}.",
-            SECTIONS[:5],
-            round(8.0 + 6.1 * 5, 1),
-            datetime.now(),
+        info = self._archive
+        writes = (
+            "Os arquivos das seções "
+            + ", ".join(_short(name) for name in info.export_sections)
+            + " serão "
+            if info and info.export_sections
+            else "Os arquivos do perfil serão "
         )
-        self.ctx.controller.demo_import(profile, apply_after)
-        self.ctx.activity.add("import", f"“{name}” importado de {source}")
-        self.ctx.toasts.show_message("success", f"“{name}” importado", SIMULATED)
-        self.set_import_file(None)
+        demo = self.ctx.backend.capabilities.demo
+        if not ConfirmDialog.ask(
+            self.window(),
+            f"Importar “{name}”?",
+            f"{writes}gravados no sistema, substituindo os atuais, sem backup. "
+            "O perfil também será salvo na sua lista."
+            + (" O perfil será aplicado em seguida." if apply_after else "")
+            + (" (Protótipo: nada será alterado.)" if demo else ""),
+            "Importar",
+            destructive=True,
+        ):
+            return False
+        started = self.ctx.controller.import_profile(
+            self._import_path, name, apply_after, confirmed=True
+        )
+        if not started:
+            self.ctx.toasts.show_message(
+                "info", "Aguarde", "Outra operação ainda está em andamento."
+            )
+        return started
 
     # ---- recent -----------------------------------------------------------------
 
@@ -486,3 +653,6 @@ class TransferPage(Page):  # pylint: disable=too-many-instance-attributes
             return
         for entry in rows:
             self.recent_layout.addWidget(ActivityRow(entry))
+
+
+__all__ = ["TransferPage"]

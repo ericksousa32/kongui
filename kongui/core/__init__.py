@@ -21,6 +21,7 @@ from kongui.core.errors import (
 )
 from kongui.core.profiles import NOT_IMPLEMENTED_OPERATIONS, ProfileService
 from kongui.core.results import (
+    ArchiveInspection,
     CliResult,
     OperationResult,
     ProfileInfo,
@@ -29,6 +30,7 @@ from kongui.core.results import (
 
 __all__ = [
     "ArchiveExistsError",
+    "ArchiveInspection",
     "CliExecutionError",
     "CliResult",
     "CliRunner",

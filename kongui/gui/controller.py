@@ -22,7 +22,7 @@ from PySide6.QtCore import QObject, Signal
 
 from kongui.core import ConfirmationRequiredError, OperationResult
 from kongui.gui import messages
-from kongui.gui.backend import ProfileBackend
+from kongui.gui.backend import ArchiveInfo, ProfileBackend
 from kongui.gui.state import AppSettings, Profile, ProfileStore
 from kongui.gui.tasks import Executor
 
@@ -257,27 +257,115 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         """
         return self._run("duplicate", name, lambda: self._backend.duplicate(name))
 
-    def demo_import(self, profile: Profile, apply_after: bool = False) -> bool:
-        """Adds a simulated imported profile (demo backends only).
+    def export_profile(
+        self,
+        name: str,
+        directory: str,
+        archive_name: Optional[str] = None,
+        on_conflict: str = "error",
+        *,
+        confirmed: bool = False,
+    ) -> bool:
+        """Exports a profile to a ``.knsv`` file.
 
         Args:
-            profile: The profile to add.
-            apply_after: Also mark it as applied.
+            name: Existing profile.
+            directory: Output folder.
+            archive_name: File name without extension (default: the profile name).
+            on_conflict: ``error``, ``unique`` or ``overwrite``.
+            confirmed: Must be ``True`` when ``on_conflict`` is ``overwrite``.
 
         Returns:
             bool: ``False`` if another operation is running.
+
+        Raises:
+            ConfirmationRequiredError: If replacing is asked without confirmation.
         """
+        if on_conflict == "overwrite":
+            self._need(confirmed, "export")
+        return self._run(
+            "export",
+            name,
+            lambda: self._backend.export_profile(
+                name, directory, archive_name, on_conflict
+            ),
+        )
+
+    def import_profile(
+        self,
+        path: str,
+        name: Optional[str] = None,
+        apply_after: bool = False,
+        *,
+        confirmed: bool = False,
+    ) -> bool:
+        """Imports a ``.knsv`` file, optionally applying the new profile.
+
+        Importing writes the archive's export section into the live system, so
+        it always needs confirmation. Applying afterwards is a second, separate
+        step; if it fails the import still stands and a warning says so.
+
+        Args:
+            path: The archive.
+            name: Name of the new profile (default: the file name).
+            apply_after: Apply the profile once imported.
+            confirmed: Must be ``True``.
+
+        Returns:
+            bool: ``False`` if another operation is running.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not exactly ``True``.
+        """
+        self._need(confirmed, "import")
+        label = name or ""
 
         def work() -> OperationResult:
-            result = self._backend.add_profile(profile)
-            if apply_after:
-                self._backend.apply(profile.name, confirmed=True)
-            return result
+            result = self._backend.import_profile(path, name, confirmed=True)
+            if not (apply_after and result.ok):
+                return result
+            target = label or _profile_name_of(result)
+            try:
+                applied = self._backend.apply(target, confirmed=True)
+            except Exception as error:  # pylint: disable=broad-exception-caught
+                applied = None
+                reason = " ".join(messages.describe_error(error))
+            else:
+                reason = (
+                    " ".join(messages.describe_result(applied))
+                    if not applied.ok
+                    else ""
+                )
+            if applied is not None and applied.ok:
+                self._pending_active = target
+                return result
+            return replace(
+                result,
+                warnings=result.warnings
+                + (f"O perfil foi importado, mas não foi aplicado: {reason}",),
+            )
 
         if self.busy:
             return False
-        self._pending_active = profile.name if apply_after else ""
-        return self._run("import", profile.name, work)
+        self._pending_active = ""
+        return self._run("import", label, work)
+
+    def inspect_archive(
+        self,
+        path: str,
+        on_done: Callable[[Optional[ArchiveInfo], Optional[BaseException]], None],
+    ) -> None:
+        """Reads a ``.knsv`` without extracting it, off the interface thread.
+
+        It does not count as an operation (the list is not reloaded and other
+        operations are not blocked).
+
+        Args:
+            path: The archive.
+            on_done: Called in the interface thread with ``(info, None)`` or
+                ``(None, error)``.
+        """
+        self._executor.submit(lambda: self._backend.inspect_archive(path), on_done)
 
     def demo_reset(self) -> bool:
         """Restores the demo data (demo backends only).
@@ -360,6 +448,8 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
             self._state = LoadState.READY if self._store.profiles() else LoadState.ERROR
             if self._state is LoadState.ERROR:
                 self._error = messages.describe_error(error) if error else ()
+        if not name and result is not None and result.path is not None:
+            name = result.path.name
         outcome = self._outcome(operation, name, result, error, list_error)
         self._pending_active = ""
         self.state_changed.emit()
@@ -420,6 +510,8 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
                 result=result,
             )
         details: List[str] = []
+        if operation == "export" and result is not None and result.path is not None:
+            details.append(str(result.path))
         hint = messages.outcome_hint(operation, True)
         if hint:
             details.append(hint)
@@ -440,11 +532,16 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         )
 
 
+def _profile_name_of(result: OperationResult) -> str:
+    """Returns the profile folder name an import result points to."""
+    return result.path.name if result.path is not None else ""
+
+
 def _is_expected(error: BaseException) -> bool:
     """Tells whether an exception is a normal ``KonGuiError`` outcome."""
     from kongui.core import KonGuiError  # pylint: disable=import-outside-toplevel
 
-    return isinstance(error, KonGuiError)
+    return isinstance(error, (KonGuiError, OSError))
 
 
 __all__: List[Any] = ["LoadState", "Outcome", "ProfileController"]

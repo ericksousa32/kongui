@@ -49,6 +49,32 @@ class ValidationReport:
 
 
 @dataclass(frozen=True)
+class ArchiveInspection:
+    """What a ``.knsv`` file holds, read without extracting anything.
+
+    Attributes:
+        path: The archive.
+        name: Profile name it would create (the file name without ``.knsv``).
+        size_bytes: Size of the file.
+        member_count: Number of entries in the zip.
+        save_sections: Sections of the profile (``save`` in its ``conf.yaml``).
+        export_sections: Sections written to the live system on import
+            (``export`` in its ``conf.yaml``).
+        warnings: Non-blocking observations about the configuration.
+        name_taken: A profile with that name already exists.
+    """
+
+    path: Path
+    name: str
+    size_bytes: int
+    member_count: int
+    save_sections: Tuple[str, ...] = ()
+    export_sections: Tuple[str, ...] = ()
+    warnings: Tuple[str, ...] = ()
+    name_taken: bool = False
+
+
+@dataclass(frozen=True)
 class OperationResult:  # pylint: disable=too-many-instance-attributes
     """Outcome of an operation executed by the original engine.
 

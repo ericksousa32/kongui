@@ -383,6 +383,64 @@ class ExportImportIntegrationTests(IntegrationCase):
         self.assertFalse(link.is_symlink(), "symbolic links become regular files")
 
 
+class InspectArchiveIntegrationTests(IntegrationCase):
+    """inspect_archive: the import checks, read only."""
+
+    def setUp(self):
+        super().setUp()
+        self.profiles.save("shared").raise_for_status()
+        self.out = self.base / "out"
+        self.out.mkdir()
+        self.archive = self.profiles.export("shared", directory=self.out).path
+
+    def test_describes_an_archive_made_by_export(self):
+        info = self.profiles.inspect_archive(self.archive)
+        self.assertEqual(info.name, "shared")
+        self.assertEqual(info.path, self.archive)
+        self.assertEqual(info.save_sections, ("configs",))
+        self.assertEqual(info.export_sections, ("share_folder",))
+        self.assertEqual(info.size_bytes, self.archive.stat().st_size)
+        self.assertGreater(info.member_count, 3)
+        self.assertTrue(info.name_taken, "the profile exists in this home")
+
+    def test_name_is_free_in_another_home(self):
+        _, _, profiles_b = self.second_home()
+        self.assertFalse(profiles_b.inspect_archive(self.archive).name_taken)
+
+    def test_writes_nothing(self):
+        before = tree(self.base)
+        self.profiles.inspect_archive(self.archive)
+        self.assertEqual(tree(self.base), before)
+
+    def test_refuses_what_import_would_refuse(self):
+        bad = {
+            "missing": self.out / "nope.knsv",
+            "extension": write(self.out / "plain.txt"),
+            "not a zip": write(self.out / "fake.knsv", "not a zip"),
+            "no conf": make_knsv(self.out / "noconf.knsv", {"save/a": "x"}),
+            "no save": make_knsv(self.out / "nosave.knsv", {"conf.yaml": BASE_CONF}),
+            "unsafe": make_knsv(
+                self.out / "unsafe.knsv",
+                {"conf.yaml": BASE_CONF, "save/a": "x", "../evil": "x"},
+            ),
+        }
+        for label, path in bad.items():
+            with self.subTest(case=label):
+                with self.assertRaises(ValidationError):
+                    self.profiles.inspect_archive(path)
+
+    def test_refuses_an_unsafe_configuration(self):
+        conf = (
+            'save:\n    configs:\n        location: "/etc"\n        entries: []\n'
+            "export: {}\n"
+        )
+        archive = make_knsv(self.out / "etc.knsv", {"conf.yaml": conf, "save/a": "x"})
+        with self.assertRaises(ConfigValidationError):
+            self.profiles.inspect_archive(archive)
+        info = self.profiles.inspect_archive(archive, allow_outside_home=True)
+        self.assertEqual(info.name, "etc")
+
+
 class HostileArchiveIntegrationTests(IntegrationCase):
     """A .knsv is untrusted input: its conf.yaml chooses where files go."""
 
