@@ -1,0 +1,707 @@
+"""Profile service: save, apply, remove, export, import and wipe profiles.
+
+Every operation reuses the original ``konsave.funcs`` through
+:class:`~kongui.core.engine.KonsaveEngine`. This layer adds what the original
+lacks: argument and configuration validation *before* anything is written,
+fresh profile lists, outcome detection (the original always returns ``None``),
+and clean-up of leftovers it can prove it created itself.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import tempfile
+import zipfile
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
+
+from kongui.core.config import ConfigService
+from kongui.core.engine import EngineCall, KonsaveEngine
+from kongui.core.errors import (
+    ArchiveExistsError,
+    ConfigMissingError,
+    ConfigValidationError,
+    ConfirmationRequiredError,
+    NotImplementedOperationError,
+    ProfileExistsError,
+    ProfileInvalidError,
+    ProfileNotFoundError,
+    ValidationError,
+)
+from kongui.core.results import OperationResult, ProfileInfo, ValidationReport
+from kongui.core.safety import validate_archive_name, validate_profile_name
+
+ON_CONFLICT_CHOICES = ("error", "unique", "overwrite")
+
+#: Operations that are planned but deliberately not implemented yet.
+NOT_IMPLEMENTED_OPERATIONS: Mapping[str, str] = {
+    "create_backup": "Backup of live files before apply/import (requirement RN-01).",
+    "restore_backup": "Restore a backup made before apply/import (requirement RN-01).",
+    "inspect_archive": "Full read-only listing/preview of a .knsv (requirement RN-02).",
+    "replace_profile": "Save that replaces a profile instead of merging into it.",
+}
+
+
+class ProfileService:
+    """High level operations on Konsave profiles."""
+
+    def __init__(
+        self, engine: KonsaveEngine, config: Optional[ConfigService] = None
+    ) -> None:
+        """Creates the service.
+
+        Args:
+            engine: Engine bound to the home directory in use.
+            config: Configuration service; created from ``engine`` if omitted.
+        """
+        self._engine = engine
+        self._config = config if config is not None else ConfigService(engine)
+
+    @property
+    def engine(self) -> KonsaveEngine:
+        """The engine used by this service."""
+        return self._engine
+
+    @property
+    def config(self) -> ConfigService:
+        """The configuration service used by this service."""
+        return self._config
+
+    # ------------------------------------------------------------------ queries
+
+    def list_profiles(self) -> List[ProfileInfo]:
+        """Lists the saved profiles, fresh from disk.
+
+        Returns:
+            List[ProfileInfo]: One entry per profile folder, sorted by name.
+            Loose files in the profiles folder are ignored.
+        """
+        profiles = []
+        for name in self._engine.profile_names():
+            path = self._engine.profiles_dir / name
+            if not path.is_dir():
+                continue
+            try:
+                modified: Optional[float] = path.stat().st_mtime
+            except OSError:
+                modified = None
+            profiles.append(
+                ProfileInfo(name, path, (path / "conf.yaml").is_file(), modified)
+            )
+        return profiles
+
+    def get_profile(self, name: str) -> ProfileInfo:
+        """Returns one profile.
+
+        Args:
+            name: Profile name.
+
+        Returns:
+            ProfileInfo: The profile.
+
+        Raises:
+            ValidationError: If the name is not acceptable.
+            ProfileNotFoundError: If there is no such profile.
+        """
+        validate_profile_name(name)
+        for profile in self.list_profiles():
+            if profile.name == name:
+                return profile
+        raise ProfileNotFoundError(f"profile not found: {name}")
+
+    # --------------------------------------------------------------- operations
+
+    def save(self, name: str, *, overwrite: bool = False) -> OperationResult:
+        """Saves the current configuration as a profile (``save_profile``).
+
+        With ``overwrite`` the original ``force`` flag is used, which *merges*
+        into the existing profile: files that no longer exist on the system
+        stay in the profile (see ``NOT_IMPLEMENTED_OPERATIONS``).
+
+        Args:
+            name: Profile name.
+            overwrite: Allow saving over an existing profile.
+
+        Returns:
+            OperationResult: Outcome, with the profile folder as ``path``.
+
+        Raises:
+            ValidationError: If the name is not acceptable.
+            ConfigMissingError: If there is no active ``conf.yaml``.
+            ConfigValidationError: If the active configuration is invalid.
+            ProfileExistsError: If the profile exists and ``overwrite`` is false.
+        """
+        validate_profile_name(name)
+        self._require_config()
+        report = self._config.validate()
+        if not report.ok:
+            raise ConfigValidationError("the active configuration is invalid", report)
+        names = self._engine.profile_names()
+        if name in names and not overwrite:
+            raise ProfileExistsError(f"profile already exists: {name}")
+        target = self._engine.profiles_dir / name
+        existed = os.path.lexists(target)
+        call = self._engine.call("save_profile", name, names, force=overwrite)
+        ok = not call.failed and (target / "conf.yaml").is_file()
+        notes: List[str] = []
+        if not ok and not existed:
+            notes.append(self._remove_created(target))
+        return self._result(
+            "save",
+            ok,
+            call,
+            f"profile '{name}' saved",
+            "save failed",
+            target,
+            report.warnings,
+            notes,
+        )
+
+    def apply(
+        self,
+        name: str,
+        *,
+        confirmed: bool = False,
+        allow_outside_home: bool = False,
+    ) -> OperationResult:
+        """Applies a profile to the live system (``apply_profile``).
+
+        Destructive: files are replaced without backup (backup is not
+        implemented yet) and folders are merged, not replaced.
+
+        Args:
+            name: Profile name.
+            confirmed: Must be ``True``; the caller asks the user first.
+            allow_outside_home: Allow destinations outside the home folder.
+
+        Returns:
+            OperationResult: Outcome. ``ok`` is false if *any* section failed,
+            even though the original prints a success message.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not true.
+            ValidationError: If the name is not acceptable.
+            ProfileNotFoundError: If there is no such profile.
+            ProfileInvalidError: If the profile has no ``conf.yaml``.
+            ConfigValidationError: If the profile cannot be applied safely.
+        """
+        self._require_confirmation(confirmed, "apply")
+        info = self._require_valid_profile(name)
+        report = self._config.validate(info.path / "conf.yaml")
+        if not report.ok or report.resolved is None:
+            raise ConfigValidationError("the profile configuration is invalid", report)
+        problems = self._apply_problems(report.resolved, info.path)
+        if not allow_outside_home:
+            problems += self._outside_home_problems(report.resolved, ("save",))
+        if problems:
+            raise ConfigValidationError(
+                "the profile cannot be applied safely", report.with_errors(problems)
+            )
+        names = self._engine.profile_names()
+        call = self._engine.call("apply_profile", name, names, len(names))
+        return self._result(
+            "apply",
+            not call.failed,
+            call,
+            f"profile '{name}' applied; log out and in to see all changes",
+            "apply failed (some files may already have been replaced)",
+            info.path,
+            report.warnings,
+        )
+
+    def remove(self, name: str, *, confirmed: bool = False) -> OperationResult:
+        """Deletes a profile (``remove_profile``). Irreversible.
+
+        Args:
+            name: Profile name.
+            confirmed: Must be ``True``; the caller asks the user first.
+
+        Returns:
+            OperationResult: Outcome.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not true.
+            ValidationError: If the name is not acceptable.
+            ProfileNotFoundError: If there is no such profile.
+        """
+        self._require_confirmation(confirmed, "remove")
+        info = self.get_profile(name)
+        names = self._engine.profile_names()
+        call = self._engine.call("remove_profile", name, names, len(names))
+        ok = not call.failed and not os.path.lexists(info.path)
+        return self._result(
+            "remove", ok, call, f"profile '{name}' removed", "remove failed"
+        )
+
+    def export(
+        self,
+        name: str,
+        *,
+        directory: Path,
+        archive_name: Optional[str] = None,
+        on_conflict: str = "error",
+    ) -> OperationResult:
+        """Exports a profile to a ``.knsv`` file (``export``).
+
+        The original ``force`` flag is *never* used to overwrite a folder: it
+        deletes ``<directory>/<name>`` with ``rmtree``. Conflicts are resolved
+        here instead.
+
+        Args:
+            name: Profile name.
+            directory: Existing folder that receives the archive.
+            archive_name: Archive base name without extension; defaults to
+                ``name``.
+            on_conflict: ``"error"`` refuses when something with that name
+                exists; ``"unique"`` picks ``<name>-2``, ``<name>-3``...;
+                ``"overwrite"`` replaces an existing ``.knsv`` file only.
+
+        Returns:
+            OperationResult: Outcome, with the archive as ``path``.
+
+        Raises:
+            ValidationError: For invalid names, folder or ``on_conflict``.
+            ProfileNotFoundError: If there is no such profile.
+            ProfileInvalidError: If the profile has no ``conf.yaml``.
+            ConfigValidationError: If the profile configuration is invalid.
+            ArchiveExistsError: If the conflict policy forbids the target.
+        """
+        validate_profile_name(name)
+        if on_conflict not in ON_CONFLICT_CHOICES:
+            raise ValidationError(f"on_conflict must be one of {ON_CONFLICT_CHOICES}")
+        info = self._require_valid_profile(name)
+        folder = Path(directory)
+        if not folder.is_dir():
+            raise ValidationError(f"output folder does not exist: {folder}")
+        if not os.access(folder, os.W_OK | os.X_OK):
+            raise ValidationError(f"output folder is not writable: {folder}")
+        base = validate_archive_name(archive_name) if archive_name else name
+        report = self._config.validate(info.path / "conf.yaml")
+        if not report.ok:
+            raise ConfigValidationError("the profile configuration is invalid", report)
+        base, force = self._resolve_export_target(folder, base, on_conflict)
+        names = self._engine.profile_names()
+        call = self._engine.call(
+            "export", name, names, len(names), str(folder), base, force
+        )
+        archive = folder / f"{base}{self._engine.export_extension}"
+        ok = not call.failed and archive.is_file() and self._archive_has_config(archive)
+        notes: List[str] = []
+        if not ok:
+            # The policy above guarantees neither path existed before the call.
+            for leftover in (folder / base, folder / f"{base}.zip"):
+                if os.path.lexists(leftover):
+                    notes.append(self._remove_created(leftover))
+        return self._result(
+            "export",
+            ok,
+            call,
+            f"profile '{name}' exported to {archive}",
+            "export failed",
+            archive,
+            report.warnings,
+            notes,
+        )
+
+    def import_profile(
+        self,
+        archive_path: Path,
+        *,
+        confirmed: bool = False,
+        allow_outside_home: bool = False,
+    ) -> OperationResult:
+        """Imports a ``.knsv`` file (``import_profile``).
+
+        Destructive: the original writes the archive's ``export`` section into
+        the live system immediately, overwriting files. The archive's own
+        ``conf.yaml`` decides the destinations, so they are checked first.
+
+        Args:
+            archive_path: Path of the ``.knsv`` file.
+            confirmed: Must be ``True``; the caller asks the user first.
+            allow_outside_home: Allow destinations outside the home folder.
+
+        Returns:
+            OperationResult: Outcome, with the new profile folder as ``path``.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not true.
+            ValidationError: If the file is not an acceptable archive.
+            ConfigValidationError: If the archive configuration is unsafe.
+            ProfileExistsError: If a profile with that name exists.
+        """
+        self._require_confirmation(confirmed, "import")
+        path = Path(archive_path)
+        suffix = self._engine.export_extension
+        if not path.is_file():
+            raise ValidationError(f"archive not found: {path}")
+        if not path.name.endswith(suffix) or path.name == suffix:
+            raise ValidationError(f"archive must be a '*{suffix}' file")
+        name = validate_profile_name(path.name[: -len(suffix)])
+        report = self._read_archive_config(path)
+        if not report.ok or report.resolved is None:
+            raise ConfigValidationError("the archive configuration is invalid", report)
+        if not allow_outside_home:
+            outside = self._outside_home_problems(report.resolved, ("export", "save"))
+            if outside:
+                raise ConfigValidationError(
+                    "the archive writes outside the home folder",
+                    report.with_errors(outside),
+                )
+        if name in self._engine.profile_names():
+            raise ProfileExistsError(f"profile already exists: {name}")
+        staging = self._engine.temp_dir / name
+        if os.path.lexists(staging):
+            raise ValidationError(
+                f"stale import folder found, remove it first: {staging}"
+            )
+        target = self._engine.profiles_dir / name
+        call = self._engine.call("import_profile", str(path))
+        ok = (
+            not call.failed
+            and (target / "conf.yaml").is_file()
+            and not os.path.lexists(staging)
+        )
+        notes: List[str] = []
+        if not ok:
+            for leftover in (target, staging):
+                if os.path.lexists(leftover):
+                    notes.append(self._remove_created(leftover))
+        return self._result(
+            "import",
+            ok,
+            call,
+            f"profile '{name}' imported",
+            "import failed (files of the export section may already be written)",
+            target,
+            report.warnings,
+            notes,
+        )
+
+    def wipe_all(self, *, confirmed: bool = False) -> OperationResult:
+        """Deletes every profile (``wipe``). Irreversible.
+
+        The original asks for the word ``WIPE`` through ``input()``; here the
+        caller's confirmation replaces it by overriding ``input`` on the private
+        engine module only for the duration of the call. ``conf.yaml`` is kept.
+
+        Args:
+            confirmed: Must be ``True``; the caller asks the user first.
+
+        Returns:
+            OperationResult: Outcome.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not true.
+        """
+        self._require_confirmation(confirmed, "wipe_all")
+        call = self._engine.call("wipe", overrides={"input": lambda _prompt="": "WIPE"})
+        self._engine.ensure_runtime_dirs()
+        ok = not call.failed and not self._engine.profile_names()
+        return self._result("wipe_all", ok, call, "all profiles removed", "wipe failed")
+
+    # ------------------------------------------------ documented, not implemented
+
+    def create_backup(self, *_args: Any, **_kwargs: Any) -> None:
+        """Not implemented: backup of live files before apply/import.
+
+        Raises:
+            NotImplementedOperationError: Always.
+        """
+        raise NotImplementedOperationError(NOT_IMPLEMENTED_OPERATIONS["create_backup"])
+
+    def restore_backup(self, *_args: Any, **_kwargs: Any) -> None:
+        """Not implemented: restore of a backup.
+
+        Raises:
+            NotImplementedOperationError: Always.
+        """
+        raise NotImplementedOperationError(NOT_IMPLEMENTED_OPERATIONS["restore_backup"])
+
+    def inspect_archive(self, *_args: Any, **_kwargs: Any) -> None:
+        """Not implemented: full read-only preview of a ``.knsv``.
+
+        Raises:
+            NotImplementedOperationError: Always.
+        """
+        raise NotImplementedOperationError(
+            NOT_IMPLEMENTED_OPERATIONS["inspect_archive"]
+        )
+
+    def replace_profile(self, *_args: Any, **_kwargs: Any) -> None:
+        """Not implemented: save that replaces instead of merging.
+
+        Raises:
+            NotImplementedOperationError: Always.
+        """
+        raise NotImplementedOperationError(
+            NOT_IMPLEMENTED_OPERATIONS["replace_profile"]
+        )
+
+    # ------------------------------------------------------------------ helpers
+
+    @staticmethod
+    def _require_confirmation(confirmed: bool, operation: str) -> None:
+        """Refuses destructive operations that were not confirmed.
+
+        Args:
+            confirmed: Value passed by the caller.
+            operation: Operation name for the message.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not exactly ``True``.
+        """
+        if confirmed is not True:
+            raise ConfirmationRequiredError(
+                f"'{operation}' is destructive; call it with confirmed=True"
+            )
+
+    def _require_config(self) -> None:
+        """Ensures the active configuration exists.
+
+        Raises:
+            ConfigMissingError: If there is no ``conf.yaml``.
+        """
+        if not self._config.exists():
+            raise ConfigMissingError(
+                "no conf.yaml; call ConfigService.ensure_default_config() first"
+            )
+
+    def _require_valid_profile(self, name: str) -> ProfileInfo:
+        """Returns a profile that has its own ``conf.yaml``.
+
+        Args:
+            name: Profile name.
+
+        Returns:
+            ProfileInfo: The profile.
+
+        Raises:
+            ProfileInvalidError: If the profile has no ``conf.yaml``.
+        """
+        info = self.get_profile(name)
+        if not info.has_config:
+            raise ProfileInvalidError(f"profile '{name}' has no conf.yaml")
+        return info
+
+    def _outside_home_problems(
+        self, resolved: Dict[str, Any], kinds: Iterable[str]
+    ) -> List[str]:
+        """Finds locations that resolve outside the home folder.
+
+        Args:
+            resolved: Output of the original ``read_konsave_config``.
+            kinds: Top-level keys to check.
+
+        Returns:
+            List[str]: One message per offending section.
+        """
+        home = os.path.realpath(self._engine.home)
+        problems = []
+        for kind in kinds:
+            for section, data in resolved.get(kind, {}).items():
+                location = data["location"]
+                real = os.path.realpath(location)
+                if real != home and not real.startswith(home + os.sep):
+                    problems.append(
+                        f"{kind}.{section}: '{location}' is outside the home folder"
+                    )
+        return problems
+
+    @staticmethod
+    def _apply_problems(resolved: Dict[str, Any], profile_dir: Path) -> List[str]:
+        """Finds problems the original would hide behind a success message.
+
+        Args:
+            resolved: Output of the original ``read_konsave_config``.
+            profile_dir: Folder of the profile being applied.
+
+        Returns:
+            List[str]: One message per problem.
+        """
+        problems = []
+        for section, data in resolved.get("save", {}).items():
+            if not (profile_dir / section).is_dir():
+                problems.append(f"save.{section}: folder missing in the profile")
+            location = data["location"]
+            parent = os.path.dirname(os.path.normpath(location))
+            if not os.path.isdir(location) and not os.path.isdir(parent):
+                problems.append(
+                    f"save.{section}: neither '{location}' nor its parent exists"
+                )
+        return problems
+
+    def _resolve_export_target(
+        self, folder: Path, base: str, policy: str
+    ) -> Tuple[str, bool]:
+        """Applies the conflict policy for an export.
+
+        Args:
+            folder: Output folder.
+            base: Requested archive base name.
+            policy: One of :data:`ON_CONFLICT_CHOICES`.
+
+        Returns:
+            Tuple[str, bool]: Base name to pass to the engine and whether the
+            original ``force`` flag may be set (only to replace an existing
+            ``.knsv`` file).
+
+        Raises:
+            ArchiveExistsError: If the policy forbids the target.
+        """
+        suffix = self._engine.export_extension
+
+        def candidates(name: str) -> Tuple[Path, Path, Path]:
+            return folder / name, folder / f"{name}{suffix}", folder / f"{name}.zip"
+
+        def taken(name: str) -> List[Path]:
+            return [path for path in candidates(name) if os.path.lexists(path)]
+
+        if policy == "error":
+            if taken(base):
+                raise ArchiveExistsError(f"already exists: {taken(base)[0]}")
+            return base, False
+        if policy == "unique":
+            name, counter = base, 1
+            while taken(name):
+                counter += 1
+                if counter > 1000:
+                    raise ArchiveExistsError("no free archive name found")
+                name = f"{base}-{counter}"
+            return name, False
+        stage, archive, zipped = candidates(base)
+        for blocker in (stage, zipped):
+            if os.path.lexists(blocker):
+                raise ArchiveExistsError(
+                    f"refusing to overwrite: {blocker} exists and the original "
+                    "export would delete or replace it"
+                )
+        if os.path.lexists(archive):
+            if archive.is_symlink() or not archive.is_file():
+                raise ArchiveExistsError(f"not a regular file: {archive}")
+            return base, True
+        return base, False
+
+    @staticmethod
+    def _archive_has_config(archive: Path) -> bool:
+        """Tells whether a file is a ZIP containing ``conf.yaml``.
+
+        Args:
+            archive: File to test.
+
+        Returns:
+            bool: ``True`` if it looks like a valid ``.knsv``.
+        """
+        try:
+            with zipfile.ZipFile(archive) as handle:
+                return "conf.yaml" in handle.namelist()
+        except (zipfile.BadZipFile, OSError):
+            return False
+
+    def _read_archive_config(self, archive: Path) -> ValidationReport:
+        """Validates the structure and ``conf.yaml`` of a ``.knsv`` read-only.
+
+        Nothing is extracted to the real folders: only ``conf.yaml`` is copied
+        to a temporary folder so that the original code can resolve it.
+
+        Args:
+            archive: Path of the ``.knsv``.
+
+        Returns:
+            ValidationReport: Report for the archive configuration.
+
+        Raises:
+            ValidationError: If the file is not a usable archive.
+        """
+        try:
+            with zipfile.ZipFile(archive) as handle:
+                members = handle.namelist()
+                for member in members:
+                    parts = PurePosixPath(member).parts
+                    if (
+                        member.startswith("/")
+                        or ".." in parts
+                        or "\\" in member
+                        or "\0" in member
+                    ):
+                        raise ValidationError(f"unsafe path inside archive: {member!r}")
+                if "conf.yaml" not in members:
+                    raise ValidationError("archive has no conf.yaml")
+                if not any(member.startswith("save/") for member in members):
+                    raise ValidationError("archive has no 'save/' folder")
+                if (
+                    handle.getinfo("conf.yaml").file_size
+                    > ConfigService.MAX_CONFIG_BYTES
+                ):
+                    raise ValidationError("archive conf.yaml is too large")
+                data = handle.read("conf.yaml")
+        except (zipfile.BadZipFile, OSError, RuntimeError) as error:
+            raise ValidationError(f"not a readable archive: {error}") from error
+        with tempfile.TemporaryDirectory(prefix="kongui-import-") as folder:
+            candidate = Path(folder) / "conf.yaml"
+            candidate.write_bytes(data)
+            return self._config.validate(candidate)
+
+    @staticmethod
+    def _remove_created(path: Path) -> str:
+        """Removes a leftover that the caller proved did not exist before.
+
+        Args:
+            path: File or folder to remove.
+
+        Returns:
+            str: Message describing what happened.
+        """
+        try:
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        except OSError as error:
+            return f"could not remove leftover {path}: {error}"
+        return f"removed leftover {path}"
+
+    @staticmethod
+    def _result(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        operation: str,
+        ok: bool,
+        call: EngineCall,
+        success: str,
+        failure: str,
+        path: Optional[Path] = None,
+        warnings: Iterable[str] = (),
+        notes: Iterable[str] = (),
+    ) -> OperationResult:
+        """Builds an :class:`OperationResult`.
+
+        Args:
+            operation: Operation name.
+            ok: Final verdict (log *and* post-conditions).
+            call: What the engine did.
+            success: Message for success.
+            failure: Message prefix for failure.
+            path: Main path produced.
+            warnings: Non-blocking observations.
+            notes: Clean-up notes, appended to the warnings.
+
+        Returns:
+            OperationResult: The result.
+        """
+        errors = call.error_messages
+        if ok:
+            message = success
+        elif errors:
+            message = f"{failure}: {errors[0]}"
+        else:
+            message = failure
+        return OperationResult(
+            operation=operation,
+            ok=ok,
+            message=message,
+            stdout=call.stdout,
+            stderr=call.stderr,
+            errors=errors,
+            warnings=tuple(warnings) + tuple(notes),
+            path=path,
+        )
