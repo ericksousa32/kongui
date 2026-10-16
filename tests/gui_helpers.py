@@ -1,0 +1,153 @@
+"""Shared pieces of the GUI tests (offscreen Qt, no real data)."""
+
+from __future__ import annotations
+
+import os
+import shutil
+import tempfile
+import time
+import unittest
+from typing import Callable, Optional
+from unittest import mock
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+try:
+    from PySide6.QtWidgets import QApplication
+
+    HAVE_QT = True
+except ImportError:  # pragma: no cover - depends on the machine
+    HAVE_QT = False
+
+
+@unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
+class GuiTestCase(unittest.TestCase):
+    """Base class: one shared ``QApplication``, a private ``$HOME``, cleanup.
+
+    Attributes:
+        app: The running application.
+        window: Main window created by :meth:`make_window`, if any.
+    """
+
+    app: "QApplication"
+    window = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Creates (or reuses) the application."""
+        super().setUpClass()
+        from kongui.gui.app import create_app
+
+        cls.app = create_app([])
+
+    def setUp(self) -> None:
+        """Isolates ``$HOME`` and restores the theme afterwards."""
+        super().setUp()
+        folder = tempfile.mkdtemp(prefix="kongui-gui-test-")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        self.home = folder
+        patcher = mock.patch.dict(os.environ, {"HOME": folder})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(mock.patch.stopall)
+        from kongui.gui.theme import ThemeMode, get_theme
+
+        self.addCleanup(lambda: get_theme().set_mode(ThemeMode.SYSTEM))
+
+    def make_window(self, **kwargs):
+        """Creates and shows a main window with in-memory settings.
+
+        Args:
+            **kwargs: Passed to ``MainWindow``.
+
+        Returns:
+            MainWindow: The visible window (closed automatically at cleanup).
+        """
+        from kongui.gui.main_window import MainWindow
+        from kongui.gui.state import AppSettings
+
+        kwargs.setdefault("settings", AppSettings())
+        window = MainWindow(**kwargs)
+        window.show()
+        self.addCleanup(self.destroy_window, window)
+        self.flush()
+        self.window = window
+        return window
+
+    def destroy_window(self, window) -> None:
+        """Closes and deletes a window so it stops costing time on theme changes.
+
+        Args:
+            window: The window to dispose of.
+        """
+        from PySide6.QtCore import QEvent
+
+        window.close()
+        window.deleteLater()
+        self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+
+    def flush(self) -> None:
+        """Processes pending events."""
+        for _ in range(3):
+            self.app.processEvents()
+
+    def wait_until(self, condition: Callable[[], bool], timeout: float = 3.0) -> bool:
+        """Runs the event loop until a condition holds.
+
+        Args:
+            condition: Callable returning ``True`` when done.
+            timeout: Maximum seconds to wait.
+
+        Returns:
+            bool: Whether the condition became true in time.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if condition():
+                return True
+            time.sleep(0.005)
+        self.app.processEvents()
+        return condition()
+
+    @staticmethod
+    def button_with_text(root, text: str):
+        """Finds a visible push button by its label.
+
+        Args:
+            root: Widget to search in.
+            text: Exact button text.
+
+        Returns:
+            Optional[QPushButton]: The button, or ``None``.
+        """
+        from PySide6.QtWidgets import QPushButton
+
+        for button in root.findChildren(QPushButton):
+            if button.text() == text and button.isVisibleTo(root.window()):
+                return button
+        return None
+
+    @staticmethod
+    def accept_dialogs(fill: Optional[Callable] = None):
+        """Patches ``ProfileDialog.exec`` so it fills itself and is accepted.
+
+        Args:
+            fill: Called with the dialog before it is "accepted".
+
+        Returns:
+            mock._patch: Started patcher; stopped by ``mock.patch.stopall``.
+        """
+        from PySide6.QtWidgets import QDialog
+
+        from kongui.gui.widgets.dialogs import ProfileDialog
+
+        def fake_exec(dialog):
+            if fill:
+                fill(dialog)
+            return QDialog.DialogCode.Accepted
+
+        patcher = mock.patch.object(ProfileDialog, "exec", new=fake_exec)
+        patcher.start()
+        return patcher

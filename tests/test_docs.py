@@ -59,11 +59,14 @@ class IntegrationDocTests(unittest.TestCase):
 
     def test_every_test_module_is_mentioned(self):
         folder = Path(__file__).resolve().parent
+        docs = "\n".join(
+            path.read_text(encoding="utf-8") for path in sorted(DOC.parent.glob("*.md"))
+        )
         for path in sorted(folder.glob("test_*.py")):
             if path.stem == "test_zz_real_home_guard":
                 continue
             with self.subTest(module=path.stem):
-                self.assertIn(f"tests.{path.stem}", self.text)
+                self.assertIn(f"tests.{path.stem}", docs)
 
 
 if __name__ == "__main__":
