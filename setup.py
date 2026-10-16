@@ -43,7 +43,7 @@ setup(
     long_description=_read_desc(),
     long_description_content_type="text/markdown",
     url="https://www.github.com/prayag2/konsave/",
-    packages=find_packages(),
+    packages=find_packages(exclude=["tests", "tests.*"]),
     package_data={"config": ["conf.yaml"]},
     include_package_data=True,
     python_requires=">=3.6",

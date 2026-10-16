@@ -58,4 +58,4 @@ maintclean: distclean
 #		 mypy -p tests --no-strict-optional --ignore-missing-imports --install-types
 
 tests:
-		python3 ./test.py
+		python3 -m unittest discover -s tests -t . -v
