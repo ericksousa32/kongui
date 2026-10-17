@@ -16,6 +16,9 @@ from kongui.core import (
     ConfigValidationError,
     ConfirmationRequiredError,
     KonGuiError,
+    LockBusyError,
+    LockCancelledError,
+    LockUnavailableError,
     OperationFailedError,
     OperationResult,
     Problem,
@@ -424,6 +427,26 @@ def describe_error(  # pylint: disable=too-many-return-statements
         return (
             "O conf.yaml foi alterado por outro programa depois de aberto aqui. "
             "Nada foi gravado.",
+        )
+    if isinstance(error, LockBusyError):
+        lines = [
+            "Outra operação do Konsave está em andamento (no terminal ou em outra "
+            "janela do KonGUI). Nada foi alterado; tente de novo quando ela terminar."
+        ]
+        holder = error.holder
+        if holder:
+            lines.append(
+                f"Indício (não verificado): “{holder.get('operation') or 'operação'}”, "
+                f"processo {holder.get('pid')}."
+            )
+        return tuple(lines)
+    if isinstance(error, LockCancelledError):
+        return ("A espera foi cancelada. Nada foi alterado.",)
+    if isinstance(error, LockUnavailableError):
+        return (
+            "Não foi possível usar o arquivo de trava do Konsave "
+            "(~/.config/konsave/.kongui.lock). Nada foi alterado.",
+            f"Detalhe: {error}",
         )
     if isinstance(error, SnapshotNotFoundError):
         return ("Essa cópia de segurança não existe mais. A lista foi atualizada.",)

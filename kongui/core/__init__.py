@@ -1,5 +1,7 @@
 """Integration layer between a future GUI and the original Konsave engine."""
 
+# pylint: disable=duplicate-code
+
 from kongui.core.cli import READ_ONLY_FLAGS, CliRunner
 from kongui.core.config import ConfigService
 from kongui.core.confedit import (
@@ -36,6 +38,17 @@ from kongui.core.profiles import (
     NOT_IMPLEMENTED_OPERATIONS,
     ProfileService,
 )
+from kongui.core.lock import (
+    EngineLock,
+    LockBusyError,
+    LockCancelledError,
+    LockError,
+    LockPolicy,
+    LockTimeoutError,
+    LockUnavailableError,
+    LockUsageError,
+    describe_holder,
+)
 from kongui.core.snapshot import (
     KEPT_PREFIX,
     UNDO_PREFIX,
@@ -53,6 +66,15 @@ from kongui.core.results import (
 )
 
 __all__ = [
+    "EngineLock",
+    "LockBusyError",
+    "LockCancelledError",
+    "LockError",
+    "LockPolicy",
+    "LockTimeoutError",
+    "LockUnavailableError",
+    "LockUsageError",
+    "describe_holder",
     "KEPT_PREFIX",
     "UNDO_PREFIX",
     "SnapshotError",

@@ -92,8 +92,10 @@ class SaveIntegrationTests(IntegrationCase):
             with self.subTest(name=bad):
                 with self.assertRaises(ValidationError):
                     self.profiles.save(bad)
+        # only the (empty) lock file may appear next to the configuration
         self.assertEqual(
-            sorted(os.listdir(self.engine.konsave_dir)), ["conf.yaml", "profiles"]
+            sorted(os.listdir(self.engine.konsave_dir)),
+            [".kongui.lock", "conf.yaml", "profiles"],
         )
         self.assertEqual(os.listdir(self.engine.profiles_dir), [])
 

@@ -7,9 +7,9 @@ from importlib.resources import files
 
 from konsave.consts import (
     CONFIG_FILE,
+    KONSAVE_DIR,
+    PROFILES_DIR,
     VERSION,
-    length_of_lop,
-    list_of_profiles,
 )
 from konsave.funcs import (
     apply_profile,
@@ -20,6 +20,7 @@ from konsave.funcs import (
     save_profile,
     wipe,
 )
+from konsave.lock import EXCLUSIVE, SHARED, command_lock  # KONGUI-PATCH(lock)
 
 
 def _get_parser() -> argparse.ArgumentParser:
@@ -132,19 +133,69 @@ def _get_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _lock_request(args):  # KONGUI-PATCH(lock)
+    """Returns ``(mode, operation)`` of the lock a command needs.
+
+    ``mode`` is ``None`` for commands that touch no shared data.
+
+    Args:
+        args: Parsed command line.
+    """
+    # Same order as the if/elif chain in ``_run``: the first match runs.
+    if args.list:
+        return SHARED, "list"
+    if args.save:
+        return EXCLUSIVE, "save"
+    if args.remove:
+        return EXCLUSIVE, "remove"
+    if args.apply:
+        return EXCLUSIVE, "apply"
+    if args.export_profile:
+        return SHARED, "export"
+    if args.import_profile:
+        return EXCLUSIVE, "import"
+    if args.version:
+        return None, ""
+    if args.wipe:
+        return EXCLUSIVE, "wipe"
+    return None, ""
+
+
 def main():
     """The main function that handles all the arguments and options."""
 
     if not os.path.exists(CONFIG_FILE):
-        if os.path.expandvars("$XDG_CURRENT_DESKTOP") == "KDE":
-            default_config_path = str(files("konsave") / "conf_kde.yaml")
-            shutil.copy(default_config_path, CONFIG_FILE)
-        else:
-            default_config_path = str(files("konsave") / "conf_other.yaml")
-            shutil.copy(default_config_path, CONFIG_FILE)
+        # KONGUI-PATCH(lock): create the default configuration under the lock
+        # and check again inside it (another process may have just done it).
+        with command_lock(KONSAVE_DIR, EXCLUSIVE, "create the default configuration"):
+            if not os.path.exists(CONFIG_FILE):
+                if os.path.expandvars("$XDG_CURRENT_DESKTOP") == "KDE":
+                    default_config_path = str(files("konsave") / "conf_kde.yaml")
+                    shutil.copy(default_config_path, CONFIG_FILE)
+                else:
+                    default_config_path = str(files("konsave") / "conf_other.yaml")
+                    shutil.copy(default_config_path, CONFIG_FILE)
 
     parser = _get_parser()
     args = parser.parse_args()
+
+    # KONGUI-PATCH(lock): the command runs under a cross-process lock.
+    mode, operation = _lock_request(args)
+    with command_lock(KONSAVE_DIR, mode, operation):
+        _run(parser, args)
+
+
+def _run(parser, args):  # KONGUI-PATCH(lock): former body of main() after parsing
+    """Runs the chosen command (unchanged from upstream apart from the list).
+
+    Args:
+        parser: The argument parser (used to print the help).
+        args: Parsed command line.
+    """
+    # KONGUI-PATCH(lock): upstream reads this list when ``konsave.consts`` is
+    # imported, i.e. *before* any waiting for the lock. Read it again now.
+    list_of_profiles = os.listdir(PROFILES_DIR)
+    length_of_lop = len(list_of_profiles)
 
     if args.list:
         list_profiles(list_of_profiles, length_of_lop)

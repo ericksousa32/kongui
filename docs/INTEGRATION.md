@@ -15,13 +15,17 @@ ou execução em diretório temporário.
 2. **Subprocesso só onde é o objetivo.** `CliRunner` executa a CLI real
    (`python -m konsave`) para diagnóstico e verificação de compatibilidade. É
    **somente leitura por padrão** (ver §6).
-3. **Sem root.** Todos os pontos de entrada (`KonsaveEngine`, `CliRunner`)
+3. **Trava entre processos.** Toda operação que usa os dados do Konsave passa por
+   `fcntl.flock` em `~/.config/konsave/.kongui.lock` ([`CONCURRENCY.md`](CONCURRENCY.md)).
+   É a única alteração no pacote `konsave/` (lista em
+   [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md)).
+4. **Sem root.** Todos os pontos de entrada (`KonsaveEngine`, `CliRunner`)
    recusam `euid == 0` com `RunningAsRootError`, antes de tocar o disco. Nada na
    camada usa `sudo`, `pkexec` ou troca de usuário.
-4. **Nada de shell.** Comandos são listas (`shell=False`); os argumentos são
+5. **Nada de shell.** Comandos são listas (`shell=False`); os argumentos são
    validados; o ambiente do subprocesso é reconstruído a partir de uma lista de
    variáveis permitidas.
-5. **Testes nunca tocam o `HOME` real.** Cada teste usa um diretório temporário e
+6. **Testes nunca tocam o `HOME` real.** Cada teste usa um diretório temporário e
    substitui `$HOME`; o último teste compara `~/.config/konsave` e o log reais
    antes e depois da suíte.
 
@@ -121,6 +125,7 @@ converte uma falha em `OperationFailedError`.
 | `funcs`, `parse` | Cópias privadas dos módulos originais |
 | `profile_names()` | Nomes das entradas da pasta de perfis, lidos do disco |
 | `ensure_runtime_dirs()` | Cria a pasta de perfis e `~/.cache` |
+| `lock` | `EngineLock` da pasta do Konsave: `lock.path`, `lock.policy` (`LockPolicy`: `timeout`, `cancel`, `on_wait`), `lock.hold(modo, operação)`; ver [`CONCURRENCY.md`](CONCURRENCY.md) |
 | `call(name, *args, overrides=None, **kwargs)` | Chama uma função da lista permitida e devolve `EngineCall` (`returned`, `stdout`, `stderr`, `errors`, `raised`, `failed`) |
 
 Sem o pacote instalado, `version` vale `0+unknown`.
@@ -258,8 +263,8 @@ antes de `apply`/`import` (requisito RN-01) existe desde a §9.
   bloqueantes.
 * Limites de tamanho, verificação de espaço em disco e proteção contra "zip
   bomb" em `export`/`import`.
-* Trava entre processos: dois programas usando as mesmas pastas ao mesmo tempo
-  podem corromper o estado.
+* Controles visuais da espera pela trava (aviso, cancelar, desabilitar ações):
+  ver [`CONCURRENCY.md`](CONCURRENCY.md) §4. A trava em si já existe.
 * Suporte a `XDG_CONFIG_HOME` (o original fixa `~/.config`).
 * Validação em Fedora KDE (Plasma 6) real: valor de `XDG_CURRENT_DESKTOP` na
   sessão, caminhos dos arquivos do Plasma 6, sobrescrita pelo Plasma em execução,

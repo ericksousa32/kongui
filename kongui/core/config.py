@@ -23,6 +23,7 @@ from kongui.core.errors import (
     ConfigValidationError,
     ValidationError,
 )
+from kongui.core.lock import EXCLUSIVE, guarded
 from kongui.core.results import (
     BackupInfo,
     OperationResult,
@@ -229,8 +230,10 @@ class ConfigService:
         if self.exists():
             return self.config_path
         source = self._template_path(kind, desktop)
-        self._engine.ensure_runtime_dirs()
-        shutil.copy(source, self.config_path)
+        with self._engine.lock.hold(EXCLUSIVE, "ensure_default_config"):
+            if not self.exists():  # another process may have created it meanwhile
+                self._engine.ensure_runtime_dirs()
+                shutil.copy(source, self.config_path)
         return self.config_path
 
     @staticmethod
@@ -400,6 +403,7 @@ class ConfigService:
         except OSError:
             return None
 
+    @guarded(EXCLUSIVE)
     def write_text(
         self, text: str, *, expected_digest: Optional[str] = _ANY
     ) -> OperationResult:

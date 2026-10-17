@@ -34,6 +34,7 @@ from kongui.core.errors import (
     ProfileNotFoundError,
     ValidationError,
 )
+from kongui.core.lock import EXCLUSIVE, SHARED, guarded
 from kongui.core.results import (
     ArchiveInspection,
     OperationResult,
@@ -135,6 +136,7 @@ class ProfileService:
 
     # ------------------------------------------------------------------ queries
 
+    @guarded(SHARED)
     def list_profiles(self) -> List[ProfileInfo]:
         """Lists the saved profiles, fresh from disk.
 
@@ -156,6 +158,7 @@ class ProfileService:
             )
         return profiles
 
+    @guarded(SHARED)
     def get_profile(self, name: str) -> ProfileInfo:
         """Returns one profile.
 
@@ -177,6 +180,7 @@ class ProfileService:
 
     # --------------------------------------------------------------- operations
 
+    @guarded(EXCLUSIVE)
     def save(self, name: str, *, overwrite: bool = False) -> OperationResult:
         """Saves the current configuration as a profile (``save_profile``).
 
@@ -223,6 +227,7 @@ class ProfileService:
             notes,
         )
 
+    @guarded(EXCLUSIVE)
     def replace(self, name: str, *, confirmed: bool = False) -> OperationResult:
         """Replaces a profile with the current configuration.
 
@@ -344,6 +349,7 @@ class ProfileService:
             notes,
         )
 
+    @guarded(EXCLUSIVE)
     def apply(
         self,
         name: str,
@@ -407,6 +413,7 @@ class ProfileService:
         )
         return self._with_snapshot(result, snapshot)
 
+    @guarded(EXCLUSIVE)
     def remove(self, name: str, *, confirmed: bool = False) -> OperationResult:
         """Deletes a profile (``remove_profile``). Irreversible.
 
@@ -431,6 +438,7 @@ class ProfileService:
             "remove", ok, call, f"profile '{name}' removed", "remove failed"
         )
 
+    @guarded(SHARED)
     def export(
         self,
         name: str,
@@ -505,6 +513,7 @@ class ProfileService:
             notes,
         )
 
+    @guarded(EXCLUSIVE)
     def import_profile(
         self,
         archive_path: Path,
@@ -647,6 +656,7 @@ class ProfileService:
                 )
         return name, report
 
+    @guarded(EXCLUSIVE)
     def wipe_all(self, *, confirmed: bool = False) -> OperationResult:
         """Deletes every profile (``wipe``). Irreversible.
 
@@ -671,6 +681,7 @@ class ProfileService:
 
     # ------------------------------------------------------------ safety copies
 
+    @guarded(SHARED)
     def list_backups(self) -> List[SnapshotInfo]:
         """Lists the safety copies made before apply/import (RN-01).
 
@@ -682,6 +693,7 @@ class ProfileService:
         """
         return self._snapshots.list()
 
+    @guarded(EXCLUSIVE)
     def restore_backup(
         self,
         backup_id: str,
@@ -712,6 +724,7 @@ class ProfileService:
             backup_id, confirmed=confirmed, allow_outside_home=allow_outside_home
         )
 
+    @guarded(EXCLUSIVE)
     def delete_backup(
         self, backup_id: str, *, confirmed: bool = False
     ) -> OperationResult:

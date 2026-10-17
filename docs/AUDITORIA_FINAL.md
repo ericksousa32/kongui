@@ -1,7 +1,7 @@
 # Auditoria final do KonGUI
 
 **Veredito: o projeto NÃO está completo.** Há requisitos obrigatórios
-pendentes (ver §4: P-2 e P-3). O P-1 (RN-01, cópia de segurança antes de
+pendentes (ver §4: P-3 e a interface de espera do P-2). O P-1 (RN-01, cópia de segurança antes de
 aplicar/importar) foi implementado e testado depois do primeiro relatório. Tudo o que foi comprovadamente quebrado e
 estava ao alcance foi corrigido; o que depende de alterar o Konsave
 (`konsave/` não pode ser modificado) ou de uma sessão Plasma real está marcado
@@ -104,7 +104,7 @@ não existe e é requisito; **Bloqueado** = depende de algo fora do alcance
 
 | Id | Requisito | Status | Motivo |
 |---|---|---|---|
-| P-2 | Trava entre processos (dois KonGUI ou KonGUI + `konsave`) | **Pendente** | só há exclusão dentro do processo |
+| P-2 | Trava entre processos (dois KonGUI ou KonGUI + `konsave`) | Testado (mecanismo, CLI e serviços); interface visual de espera pendente | `fcntl.flock` em `~/.config/konsave/.kongui.lock`; `tests.test_locking`; ver `CONCURRENCY.md` e `KONSAVE_PATCHES.md`. O B-1 abaixo deixou de valer para as alterações mínimas autorizadas só para a trava |
 | P-3 | Limites de zip-bomb, tamanho total e espaço em disco ao importar/exportar | **Pendente** | não há checagem de tamanho/espaço |
 | B-1 | Progresso e cancelamento de operações | Bloqueado | o motor não é interrompível e `konsave/` não pode ser alterado; hoje só “ocupado” |
 | B-2 | Descrição e seções do perfil | Bloqueado | o Konsave não armazena esses dados |
@@ -112,14 +112,14 @@ não existe e é requisito; **Bloqueado** = depende de algo fora do alcance
 
 ## 4. Por que não está completo
 
-P-2 (trava entre processos) e P-3 (limites de tamanho, zip-bomb e espaço em
-disco) são riscos de perda de dados/disponibilidade que a GUI não mitiga e
-seguem pendentes; enquanto existirem, o projeto não é declarado completo. Os
+P-3 (limites de tamanho, zip-bomb e espaço em disco) é um risco de perda de
+dados/disponibilidade que a GUI não mitiga e segue pendente; do P-2, a trava
+existe e é testada, mas falta a interface de espera/cancelamento; enquanto existirem, o projeto não é declarado completo. Os
 bloqueios B-1 a B-3 não impedem o uso, mas limitam o que pode ser afirmado.
 
 Limites do P-1, já documentados: a cópia de um `import` não desfaz o perfil
-importado; a restauração não protege contra programas que alterem os mesmos
-arquivos ao mesmo tempo (P-2); a cópia não tem limite de tamanho (P-3).
+importado; a restauração não protege contra programas que não usam a trava
+(ferramentas externas, ver `CONCURRENCY.md` §5); a cópia não tem limite de tamanho (P-3).
 
 ## 5. Decisões e pontos em aberto para o dono do projeto
 

@@ -165,7 +165,8 @@ python3 -m unittest tests.test_config_editor tests.test_gui_config -v
   comentário escrito na mesma linha de um item removido some com ele. Se a edição
   for exótica demais, o caminho de regeneração perde os comentários (e avisa).
 * Os backups não são removidos automaticamente (são arquivos pequenos).
-* Não há trava entre processos: a verificação de mudança externa é feita só no
-  momento de gravar.
+* A comparação de resumo e a gravação do `conf.yaml` acontecem sob a trava entre
+  processos ([`CONCURRENCY.md`](CONCURRENCY.md)); outros programas que não usam a
+  trava ainda podem alterar o arquivo, e isso só é detectado no momento de gravar.
 * A pasta de origem de um grupo é validada, mas o conteúdo dos itens não é
   conferido no disco (o Konsave ignora, em silêncio, o que não existe).

@@ -668,9 +668,12 @@ def _profile_name_of(result: OperationResult) -> str:
 
 def _is_expected(error: BaseException) -> bool:
     """Tells whether an exception is a normal ``KonGuiError`` outcome."""
-    from kongui.core import KonGuiError  # pylint: disable=import-outside-toplevel
+    from kongui.core import (  # pylint: disable=import-outside-toplevel
+        KonGuiError,
+        LockError,
+    )
 
-    return isinstance(error, (KonGuiError, OSError))
+    return isinstance(error, (KonGuiError, LockError, OSError))
 
 
 __all__: List[Any] = ["LoadState", "Outcome", "ProfileController"]

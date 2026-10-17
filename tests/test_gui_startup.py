@@ -267,9 +267,17 @@ class IsolationTests(unittest.TestCase):
     """The prototype must not reach Konsave or the services."""
 
     def test_importing_the_gui_does_not_load_konsave(self):
+        """No Konsave code with side effects runs at import time.
+
+        ``konsave`` itself (a package that only reads its version) and
+        ``konsave.lock`` (constants and classes, standard library only) are
+        loaded on purpose by ``kongui.core.lock``; ``consts`` (creates folders),
+        ``funcs`` and ``parse`` are only loaded by the engine, on demand.
+        """
         code = (
             "import sys, kongui.gui.main_window, kongui.gui.app;"
-            "bad=[m for m in sys.modules if m=='konsave' or m.startswith('konsave.')];"
+            "ok={'konsave','konsave.lock'};"
+            "bad=[m for m in sys.modules if (m=='konsave' or m.startswith('konsave.')) and m not in ok];"
             "print(bad)"
         )
         env = dict(os.environ, PYTHONPATH=str(ROOT), QT_QPA_PLATFORM="offscreen")
