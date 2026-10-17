@@ -48,7 +48,7 @@ class AboutPage(Page):
         texts.addLayout(heading)
         texts.addWidget(
             Label(
-                "Interface gráfica para salvar, aplicar e compartilhar a aparência do KDE Plasma, "
+                "Interface gráfica para salvar, aplicar e compartilhar a customização do KDE Plasma, "
                 "construída sobre o Konsave.",
                 "muted",
                 wrap=True,
