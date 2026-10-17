@@ -2,10 +2,20 @@
 
 from kongui.core.cli import READ_ONLY_FLAGS, CliRunner
 from kongui.core.config import ConfigService
+from kongui.core.confedit import (
+    ConfigModel,
+    ConfigParseError,
+    EditResult,
+    Group,
+    apply_model,
+    parse_model,
+)
 from kongui.core.engine import EngineCall, KonsaveEngine
 from kongui.core.errors import (
     ArchiveExistsError,
+    BackupNotFoundError,
     CliExecutionError,
+    ConfigConflictError,
     ConfigMissingError,
     ConfigValidationError,
     ConfirmationRequiredError,
@@ -22,15 +32,27 @@ from kongui.core.errors import (
 from kongui.core.profiles import NOT_IMPLEMENTED_OPERATIONS, ProfileService
 from kongui.core.results import (
     ArchiveInspection,
+    BackupInfo,
     CliResult,
     OperationResult,
     ProfileInfo,
+    Problem,
     ValidationReport,
 )
 
 __all__ = [
     "ArchiveExistsError",
     "ArchiveInspection",
+    "BackupInfo",
+    "BackupNotFoundError",
+    "ConfigConflictError",
+    "ConfigModel",
+    "ConfigParseError",
+    "EditResult",
+    "Group",
+    "Problem",
+    "apply_model",
+    "parse_model",
     "CliExecutionError",
     "CliResult",
     "CliRunner",

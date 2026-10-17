@@ -50,6 +50,14 @@ class ConfigValidationError(ValidationError):
         self.report = report
 
 
+class ConfigConflictError(KonGuiError):
+    """Raised when ``conf.yaml`` changed on disk after it was loaded for editing."""
+
+
+class BackupNotFoundError(KonGuiError):
+    """Raised when a requested ``conf.yaml`` backup does not exist."""
+
+
 class ConfigMissingError(KonGuiError):
     """Raised when the active ``conf.yaml`` does not exist."""
 
