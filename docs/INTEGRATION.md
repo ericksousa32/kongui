@@ -1,191 +1,211 @@
-# Camada de integração KonGUI ↔ Konsave
+# KonGUI ↔ Konsave integration layer
 
-Este documento descreve a primeira versão da camada que a futura interface
-gráfica (PySide6) usará para falar com o motor original do Konsave. **Não há
-interface gráfica nesta etapa.** O código está em `kongui/core/`; os testes, em
-`tests/`.
+This document describes the layer the graphical interface (PySide6) uses to talk
+to the original Konsave engine. The code lives in `kongui/core/`; the tests live
+in `tests/`.
 
-Convenção: **[CONFIRMADO]** = lido no código do Konsave e comprovado por teste
-ou execução em diretório temporário.
+Convention: **[CONFIRMED]** = read in the Konsave source and proven by a test or by
+a run in a temporary directory.
 
-## 1. Princípios
+## 1. Principles
 
-1. **Reutilizar o motor original.** As operações chamam as funções de
-   `konsave/funcs.py` dentro do mesmo processo. Nenhum serviço usa subprocesso.
-2. **Subprocesso só onde é o objetivo.** `CliRunner` executa a CLI real
-   (`python -m konsave`) para diagnóstico e verificação de compatibilidade. É
-   **somente leitura por padrão** (ver §6).
-3. **Sem root.** Todos os pontos de entrada (`KonsaveEngine`, `CliRunner`)
-   recusam `euid == 0` com `RunningAsRootError`, antes de tocar o disco. Nada na
-   camada usa `sudo`, `pkexec` ou troca de usuário.
-4. **Nada de shell.** Comandos são listas (`shell=False`); os argumentos são
-   validados; o ambiente do subprocesso é reconstruído a partir de uma lista de
-   variáveis permitidas.
-5. **Testes nunca tocam o `HOME` real.** Cada teste usa um diretório temporário e
-   substitui `$HOME`; o último teste compara `~/.config/konsave` e o log reais
-   antes e depois da suíte.
+1. **Reuse the original engine.** Operations call the functions of
+   `konsave/funcs.py` inside the same process. No service uses a subprocess.
+2. **Subprocess only where it is the goal.** `CliRunner` runs the real CLI
+   (`python -m konsave`) for diagnostics and compatibility checks. It is
+   **read-only by default** (see §6).
+3. **Cross-process lock.** Every operation that uses Konsave data goes through
+   `fcntl.flock` on `~/.config/konsave/.kongui.lock` ([`CONCURRENCY.md`](CONCURRENCY.md)).
+   It is the only change to the `konsave/` package (listed in
+   [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md)).
+4. **No root.** Every entry point (`KonsaveEngine`, `CliRunner`) refuses
+   `euid == 0` with `RunningAsRootError`, before touching the disk. Nothing in the
+   layer uses `sudo`, `pkexec` or switches user.
+5. **No shell.** Commands are lists (`shell=False`); arguments are validated; the
+   subprocess environment is rebuilt from a list of allowed variables.
+6. **Tests never touch the real `HOME`.** Each test uses a temporary directory and
+   replaces `$HOME`; the last test compares the real `~/.config/konsave` and log
+   before and after the suite.
 
-## 2. APIs do Konsave confirmadas e usadas
+## 2. Confirmed Konsave APIs in use
 
-Só existem estas; a camada não chama nada além delas.
+Only these exist; the layer calls nothing else.
 
-| Arquivo | Nome | Uso na camada |
+| File | Name | Use in the layer |
 |---|---|---|
-| `konsave/consts.py` | `HOME`, `KONSAVE_DIR`, `PROFILES_DIR`, `CONFIG_FILE`, `EXPORT_EXTENSION`, `VERSION` | Caminhos e versão (lidos de uma cópia do módulo ligada ao `HOME` escolhido) |
-| `konsave/parse.py` | `tokens`, `TOKEN_SYMBOL` | Lista de placeholders suportados |
-| `konsave/funcs.py` | `save_profile`, `apply_profile`, `remove_profile`, `export`, `import_profile`, `wipe`, `read_konsave_config` | Operações e leitura/resolução do `conf.yaml` |
-| `konsave/conf_kde.yaml`, `conf_other.yaml` | arquivos de dados | Modelos de configuração padrão (via `importlib.resources`) |
-| `konsave/__main__.py` | `main()` (L127–133) | **Não é chamada.** A criação do `conf.yaml` é replicada em `ConfigService.ensure_default_config` |
+| `konsave/consts.py` | `HOME`, `KONSAVE_DIR`, `PROFILES_DIR`, `CONFIG_FILE`, `EXPORT_EXTENSION`, `VERSION` | Paths and version (read from a copy of the module bound to the chosen `HOME`) |
+| `konsave/parse.py` | `tokens`, `TOKEN_SYMBOL` | List of supported placeholders |
+| `konsave/funcs.py` | `save_profile`, `apply_profile`, `remove_profile`, `export`, `import_profile`, `wipe`, `read_konsave_config` | Operations, and reading/resolving `conf.yaml` |
+| `konsave/conf_kde.yaml`, `conf_other.yaml` | data files | Default configuration templates (through `importlib.resources`) |
+| `konsave/__main__.py` | `main()` (L127–133) | **Not called.** The creation of `conf.yaml` is replicated in `ConfigService.ensure_default_config` |
 
-Funções do original que **não** são usadas: `list_profiles` (só imprime),
-`copy` e `mkdir` (internas), `log`, `exception_handler`, `main` (lê `sys.argv`).
+Functions of the original that are **not** used: `list_profiles` (only prints),
+`copy` and `mkdir` (internal), `log`, `exception_handler`, `main` (reads `sys.argv`).
 
-## 3. Arquitetura
+## 3. Architecture
 
 ```
 kongui/core/
-├── engine.py    KonsaveEngine   carrega o motor para um HOME, captura stdout/stderr e o log
-├── config.py    ConfigService   conf.yaml: criar padrão, validar, resolver, gravar
-├── profiles.py  ProfileService  perfis: salvar, aplicar, remover, exportar, importar, apagar todos
-├── cli.py       CliRunner       CLI real (diagnóstico, somente leitura por padrão)
-├── safety.py    validação de nomes e guarda contra root
-├── results.py   OperationResult, ValidationReport, CliResult, ProfileInfo
-└── errors.py    hierarquia de exceções
+├── engine.py    KonsaveEngine   loads the engine for a HOME, captures stdout/stderr and the log
+├── config.py    ConfigService   conf.yaml: create default, validate (with positions), resolve, write, backups
+├── confedit.py  parse_model/apply_model  comment-preserving conf.yaml editing (see GUI_CONFIG.md)
+├── yamlmap.py   line/column and end of content from PyYAML nodes
+├── profiles.py  ProfileService  profiles: save, apply, remove, export, import, wipe all
+├── cli.py       CliRunner       real CLI (diagnostics, read-only by default)
+├── safety.py    name validation and root guard
+├── results.py   OperationResult, ValidationReport, Problem, BackupInfo, CliResult, ProfileInfo
+└── errors.py    exception hierarchy
 ```
 
-### Por que `KonsaveEngine` carrega uma cópia privada do motor
+### Why `KonsaveEngine` loads a private copy of the engine
 
-[CONFIRMADO] `konsave.consts` lê `$HOME` na importação, cria a pasta de perfis e
-guarda uma lista de perfis que nunca é atualizada. Para que testes e instâncias
-diferentes não compartilhem estado, o engine importa uma cópia privada de
-`consts`, `parse` e `funcs` ligada ao `HOME` escolhido e, em seguida, restaura
-`sys.modules`, os atributos do pacote `konsave`, `konsave.__version__` e
-`os.environ["HOME"]`. As listas de perfis passadas às funções originais são
-sempre recalculadas do disco (`KonsaveEngine.profile_names`).
+[CONFIRMED] `konsave.consts` reads `$HOME` at import time, creates the profiles
+folder and keeps a profile list that is never refreshed. So that tests and
+different instances do not share state, the engine imports a private copy of
+`consts`, `parse` and `funcs` bound to the chosen `HOME` and then restores
+`sys.modules`, the attributes of the `konsave` package, `konsave.__version__` and
+`os.environ["HOME"]`. The profile lists passed to the original functions are always
+recomputed from disk (`KonsaveEngine.profile_names`).
 
-## 4. Erros, códigos de saída, stdout e stderr
+## 4. Errors, exit codes, stdout and stderr
 
-O motor original **sempre retorna `None`**, engole todas as exceções, imprime o
-erro em stdout e grava o traceback em `~/.cache/konsave_log.txt` [CONFIRMADO].
-Por isso:
+The original engine **always returns `None`**, swallows every exception, prints the
+error to stdout and writes the traceback to `~/.cache/konsave_log.txt` [CONFIRMED].
+Therefore:
 
-* `KonsaveEngine.call` executa a função, captura **stdout** e **stderr**
-  separadamente e lê só o trecho do log escrito durante a chamada. Cada erro
-  registrado vira um resumo `Tipo: mensagem`. Uma exceção que escape do tratador
-  também é capturada. As chamadas são serializadas por um lock.
-* `OperationResult.ok` só é verdadeiro se **nenhum erro foi registrado** *e* as
-  pós-condições valem (perfil e `conf.yaml` existem, o `.knsv` existe e contém
-  `conf.yaml`, a pasta sumiu após `remove`, etc.). Assim, um `apply` que imprime
-  "applied successfully" depois de uma seção falhar [CONFIRMADO] é relatado como
-  falha.
-* `CliResult.ok` exige código de saída 0 **e** ausência da marca de erro do
-  original na saída. [CONFIRMADO] A CLI original sai com **0 mesmo quando falha**
-  (a marca é `Please check the log at`). Se `~/.cache` não existe, o próprio
-  tratador de erros quebra e a CLI sai com **1**, stdout vazio e um traceback em
-  stderr. Em ambos os casos `ok` é falso. Um `timeout` devolve `returncode=None`
-  e `timed_out=True`, com a saída parcial. Código diferente de zero é um
-  resultado, não uma exceção.
+* `KonsaveEngine.call` runs the function, captures **stdout** and **stderr**
+  separately and reads only the part of the log written during the call. Each
+  recorded error becomes a `Type: message` summary. An exception that escapes the
+  handler is also captured. Calls are serialized by a lock.
+* `OperationResult.ok` is true only if **no error was recorded** *and* the
+  post-conditions hold (the profile and `conf.yaml` exist, the `.knsv` exists and
+  contains `conf.yaml`, the folder is gone after `remove`, and so on). So an
+  `apply` that prints "applied successfully" after a section failed [CONFIRMED] is
+  reported as a failure.
+* `CliResult.ok` requires exit code 0 **and** the absence of the original's error
+  marker in the output. [CONFIRMED] The original CLI exits with **0 even when it
+  fails** (the marker is `Please check the log at`). If `~/.cache` does not exist,
+  the error handler itself breaks and the CLI exits with **1**, empty stdout and a
+  traceback on stderr. In both cases `ok` is false. A `timeout` returns
+  `returncode=None` and `timed_out=True`, with the partial output. A non-zero code
+  is a result, not an exception.
 
-Regra geral: **pré-condições inválidas lançam exceção antes de tocar o disco**
+General rule: **invalid preconditions raise an exception before touching the disk**
 (`ValidationError`, `ProfileNotFoundError`, `ConfirmationRequiredError`, ...);
-**resultados do motor voltam em `OperationResult`** (`ok`, `message`, `stdout`,
+**engine results come back in `OperationResult`** (`ok`, `message`, `stdout`,
 `stderr`, `errors`, `warnings`, `path`). `OperationResult.raise_for_status()`
-converte uma falha em `OperationFailedError`.
+turns a failure into `OperationFailedError`.
 
-## 5. Regras de segurança aplicadas
+## 5. Safety rules applied
 
-| Risco (auditoria) | Proteção |
+| Risk (audit) | Protection |
 |---|---|
-| Nome de perfil `../x` ou `.` escapa/polui a pasta de perfis | `validate_profile_name` recusa separadores, `.`/`..`, caracteres de controle, espaços nas pontas, `-` inicial e `.knsv` |
-| `apply`, `import`, `remove`, `wipe` são destrutivos | Exigem `confirmed=True` (exatamente `True`; `1` ou `"yes"` não valem) |
-| `export` com `force` apaga a pasta `<destino>/<nome>` | `force` nunca é usado para pastas; `on_conflict` = `error` (padrão), `unique` ou `overwrite` (só substitui um `.knsv` regular) |
-| `save` com entrada aninhada (`a/b`) aborta no meio | O `conf.yaml` é validado antes; entradas com `/`, `..` ou absolutas são erro |
-| `ENDS_WITH` sem correspondência cria uma pasta literal no diretório atual | Placeholder não resolvido é erro de validação; `apply` recusa |
-| `apply` com destino inexistente mostra sucesso | Pré-verificação do destino; pós-verificação pelo log |
-| `.knsv` grava onde o `conf.yaml` do arquivo mandar | Destinos fora do `HOME` (inclusive via link simbólico) são recusados (`allow_outside_home=True` libera); membros com `..` ou caminho absoluto são recusados |
-| `import` de `x.knsv.knsv` mescla em perfil existente | Nomes contendo `.knsv` são recusados |
-| Perfil parcial após uma falha | Resíduos que a própria chamada criou são removidos (só se não existiam antes) |
-| `wipe` usa `input()` | A resposta `WIPE` é dada pelo engine só durante a chamada, e só com `confirmed=True` |
-| O tratador original falha sem `~/.cache` | O engine cria `~/.cache` e a pasta de perfis antes de cada chamada |
-| Subprocesso | Lista de argumentos, `shell=False`, ambiente mínimo, `stdin` fechado, timeout, flags de leitura apenas |
+| A profile named `../x` or `.` escapes/pollutes the profiles folder | `validate_profile_name` refuses separators, `.`/`..`, control characters, leading/trailing spaces, a leading `-`, `.knsv` and the reserved prefix `.kongui-` (listing hides that prefix: the profile would be invisible). The limit is 200 UTF-8 **bytes** (Linux limits bytes, not characters) |
+| `apply`, `import`, `remove`, `wipe` are destructive | They require `confirmed=True` (exactly `True`; `1` or `"yes"` do not count) |
+| `export` with `force` deletes the `<destination>/<name>` folder | `force` is never used for folders; `on_conflict` = `error` (default), `unique` or `overwrite` (only replaces a regular `.knsv`) |
+| `save` with a nested entry (`a/b`) aborts halfway | `conf.yaml` is validated first; entries with `/`, `..` or absolute paths are an error |
+| An unmatched `ENDS_WITH` creates a literal folder in the current directory | An unresolved placeholder is a validation error; `apply` refuses |
+| `apply` with a missing destination reports success | Destination pre-check; post-check through the log |
+| A `.knsv` writes wherever its `conf.yaml` says | Destinations outside `HOME` (including through a symbolic link) are refused (`allow_outside_home=True` allows them); members with `..` or an absolute path are refused |
+| `import` of `x.knsv.knsv` merges into an existing profile | Names containing `.knsv` are refused |
+| Partial profile after a failure | Leftovers the call itself created are removed (only if they did not exist before) |
+| `wipe` uses `input()` | The engine supplies the `WIPE` answer only during the call, and only with `confirmed=True` |
+| The original handler fails without `~/.cache` | The engine creates `~/.cache` and the profiles folder before every call |
+| Subprocess | Argument list, `shell=False`, minimal environment, closed `stdin`, timeout, read-only flags |
 
-## 6. Serviços
+## 6. Services
 
 ### `KonsaveEngine(home=None, *, euid_provider=...)`
 
-| Membro | Descrição |
+| Member | Description |
 |---|---|
-| `home`, `konsave_dir`, `profiles_dir`, `config_file`, `temp_dir`, `log_file`, `export_extension`, `version` | Caminhos e versão do motor carregado |
-| `funcs`, `parse` | Cópias privadas dos módulos originais |
-| `profile_names()` | Nomes das entradas da pasta de perfis, lidos do disco |
-| `ensure_runtime_dirs()` | Cria a pasta de perfis e `~/.cache` |
-| `call(name, *args, overrides=None, **kwargs)` | Chama uma função da lista permitida e devolve `EngineCall` (`returned`, `stdout`, `stderr`, `errors`, `raised`, `failed`) |
+| `home`, `konsave_dir`, `profiles_dir`, `config_file`, `temp_dir`, `log_file`, `export_extension`, `version` | Paths and version of the loaded engine |
+| `funcs`, `parse` | Private copies of the original modules |
+| `profile_names()` | Names of the entries in the profiles folder, read from disk |
+| `ensure_runtime_dirs()` | Creates the profiles folder and `~/.cache` |
+| `lock` | `EngineLock` of the Konsave folder: `lock.path`, `lock.policy` (`LockPolicy`: `timeout`, `cancel`, `on_wait`), `lock.hold(mode, operation)`; see [`CONCURRENCY.md`](CONCURRENCY.md) |
+| `call(name, *args, overrides=None, **kwargs)` | Calls a function from the allowed list and returns `EngineCall` (`returned`, `stdout`, `stderr`, `errors`, `raised`, `failed`) |
 
-Sem o pacote instalado, `version` vale `0+unknown`.
+Without the package installed, `version` is `0+unknown`.
 
 ### `ConfigService(engine)`
 
-| Método | Descrição |
+| Method | Description |
 |---|---|
-| `config_path`, `exists()` | Localização e existência do `conf.yaml` ativo |
-| `MAX_CONFIG_BYTES` | Tamanho máximo aceito (1 MiB); acima disso a validação falha |
-| `ensure_default_config(kind=None, *, desktop=None)` | Cria o padrão se não existir: `conf_kde.yaml` quando `XDG_CURRENT_DESKTOP == "KDE"`, senão `conf_other.yaml`. Nunca altera um arquivo existente |
-| `placeholders()` | Placeholders suportados, lidos de `parse.tokens` |
-| `validate(path=None)`, `validate_text(text)` | `ValidationReport(errors, warnings, resolved)`; não gravam nada |
-| `read_resolved(path=None)` | Configuração com placeholders resolvidos, ou `ConfigValidationError` |
-| `read_text(path=None)` | Texto bruto |
-| `write_text(text)` | Valida, guarda a versão anterior como `conf.yaml.bak-<data>` e troca de forma atômica |
+| `config_path`, `exists()` | Location and existence of the active `conf.yaml` |
+| `MAX_CONFIG_BYTES` | Maximum accepted size (1 MiB); above it validation fails |
+| `ensure_default_config(kind=None, *, desktop=None)` | Creates the default if it does not exist: `conf_kde.yaml` when `XDG_CURRENT_DESKTOP == "KDE"`, otherwise `conf_other.yaml`. Never changes an existing file |
+| `placeholders()` | Supported placeholders, read from `parse.tokens` |
+| `validate(path=None)`, `validate_text(text)` | `ValidationReport(errors, warnings, resolved)`; they write nothing |
+| `read_resolved(path=None)` | Configuration with placeholders resolved, or `ConfigValidationError` |
+| `read_text(path=None)` | Raw text |
+| `default_text(kind=None, *, desktop=None)` | Text of the default template, without creating a file |
+| `digest()` | SHA-256 of the active file (`None` if it does not exist), to detect external changes |
+| `write_text(text, *, expected_digest=...)` | Validates, keeps the previous version as `conf.yaml.bak-<date>` and swaps atomically (follows symlinks, keeps permissions). With `expected_digest`, refuses with `ConfigConflictError` if the file changed. `ValidationReport.problems` carries each finding with path, line and column |
+| `list_backups()`, `backup_path(name)`, `read_backup(name)` | `conf.yaml.bak-*` backups (newest first); names containing folders are never accepted (`BackupNotFoundError`) |
+| `restore_backup(name, *, expected_digest=...)` | Validates the backup, keeps the current file as a new backup and restores it |
+
+The `conf.yaml` editor (form model and comment-preserving text editing) lives in
+`kongui/core/confedit.py` and `yamlmap.py`; see [`GUI_CONFIG.md`](GUI_CONFIG.md).
 
 ### `ProfileService(engine, config=None)`
 
-| Método | Delega a | Observações |
+| Method | Delegates to | Notes |
 |---|---|---|
-| `list_profiles()`, `get_profile(name)` | leitura do disco | Lista fresca; ignora arquivos soltos; `has_config` indica perfil completo |
-| `save(name, *, overwrite=False)` | `save_profile` | `overwrite` **mescla** no perfil existente (ver §8) |
-| `apply(name, *, confirmed, allow_outside_home=False)` | `apply_profile` | Sem backup; pastas são mescladas |
-| `remove(name, *, confirmed)` | `remove_profile` | Irreversível |
-| `export(name, *, directory, archive_name=None, on_conflict="error")` | `export` | A pasta de saída precisa existir; a pasta temporária de montagem fica nela |
-| `import_profile(archive_path, *, confirmed, allow_outside_home=False)` | `import_profile` | Grava a seção `export` do arquivo no sistema imediatamente |
-| `wipe_all(*, confirmed)` | `wipe` | Apaga todos os perfis; mantém `conf.yaml` |
+| `list_profiles()`, `get_profile(name)` | disk read | Fresh list; ignores stray files; `has_config` marks a complete profile |
+| `save(name, *, overwrite=False)` | `save_profile` | `overwrite` **merges** into the existing profile (see §8). To really replace, use `replace` |
+| `replace(name, *, confirmed)` | `save_profile` (temporary name) | Real replacement: saves the current configuration to `.kongui-new-…`, swaps with `rename` and deletes the old one; if anything fails, the old profile stays (or returns) in place. Does not change Konsave's code. The temporaries never appear in `list_profiles` |
+| `apply(name, *, confirmed, allow_outside_home=False)` | `apply_profile` | Before writing, copies the files it will overwrite (safety copy, §9); if the copy fails, **nothing is applied** (`SnapshotError`). Folders are merged |
+| `remove(name, *, confirmed)` | `remove_profile` | Irreversible |
+| `export(name, *, directory, archive_name=None, on_conflict="error")` | `export` | The output folder must exist; the temporary assembly folder is created in it. Requires the active `conf.yaml` (`ConfigMissingError` if missing: the original copies it into the archive). Returns a **warning** (`CONF_DIFFERS_PREFIX`) when the active `conf.yaml`, which goes into the `.knsv`, has different groups from the profile's, from which `save/` and `export/` are taken |
+| `import_profile(archive_path, *, confirmed, allow_outside_home=False)` | `import_profile` | Writes the archive's `export` section into the system immediately, after making a safety copy of the files it will overwrite (§9) |
+| `inspect_archive(archive_path, *, allow_outside_home=False)` | (read-only) | Applies the same checks as `import_profile` and returns `ArchiveInspection` (name, size, `save`/`export` sections, warnings, `name_taken`) without extracting anything. Warnings include groups without a folder in `save/` (the imported profile could not be applied) and folders the archive's `conf.yaml` does not list (ignored when applying) |
+| `wipe_all(*, confirmed)` | `wipe` | Deletes every profile; keeps `conf.yaml` |
+| `list_backups()` | (read) | Safety copies from `apply`/`import`/restore, newest to oldest (`SnapshotInfo`) |
+| `restore_backup(backup_id, *, confirmed, allow_outside_home=False)` | (safety copy) | Puts the files back to the stored state; first stores the current state as a new copy (so it can be undone) |
+| `delete_backup(backup_id, *, confirmed)` | (safety copy) | Deletes one copy. No copy is deleted automatically |
 
 ### `CliRunner(home, *, python=None, timeout=60, extra_pythonpath=(), allow_mutating=False, ...)`
 
-`run(args)` executa `python -m konsave <args>` e devolve `CliResult`; `version()`
-devolve a versão da CLI. Exige que o pacote `konsave` esteja instalado (ou que a
-pasta com seus metadados esteja em `extra_pythonpath`).
+`run(args)` executes `python -m konsave <args>` and returns `CliResult`; `version()`
+returns the CLI version. It requires the `konsave` package to be installed (or the
+folder with its metadata to be in `extra_pythonpath`).
 
-* **Somente leitura por padrão:** só aceita os tokens exatos de `READ_ONLY_FLAGS`
-  (`-h`, `--help`, `-v`, `--version`, `-l`, `--list`), um por elemento. Abreviações
-  como `--sav`, flags combinadas como `-lv` e qualquer valor são recusados.
-* `allow_mutating=True` libera qualquer argumento (cada um continua sendo um
-  único elemento da lista, nunca interpretado por shell). Os serviços nunca usam
-  esse modo; quem o usar assume a responsabilidade.
-* Limites: `DEFAULT_TIMEOUT` (60 s), `MAX_ARGS` (64 argumentos) e
-  `MAX_ARG_LENGTH` (4096 caracteres por argumento; sem bytes NUL).
-* Mesmo as flags de leitura têm um efeito colateral herdado: o `main` original
-  cria `~/.config/konsave/conf.yaml` e a pasta de perfis na primeira execução.
+* **Read-only by default:** it only accepts the exact tokens of `READ_ONLY_FLAGS`
+  (`-h`, `--help`, `-v`, `--version`, `-l`, `--list`), one per element.
+  Abbreviations such as `--sav`, combined flags such as `-lv` and any value are
+  refused.
+* `allow_mutating=True` allows any argument (each is still a single list element,
+  never interpreted by a shell). The services never use this mode; whoever uses it
+  takes responsibility.
+* Limits: `DEFAULT_TIMEOUT` (60 s), `MAX_ARGS` (64 arguments) and `MAX_ARG_LENGTH`
+  (4096 characters per argument; no NUL bytes).
+* Even the read-only flags have an inherited side effect: the original `main`
+  creates `~/.config/konsave/conf.yaml` and the profiles folder on first run.
 
-## 7. Como validar cada serviço
+## 7. How to validate each service
 
-Todos os comandos rodam na raiz do repositório, **como usuário comum** (a suíte
-recusa operações reais de arquivo como root), e **não tocam em
-`~/.config/konsave`**. Só a biblioteca padrão e o PyYAML são necessários.
+All commands run from the repository root, **as a regular user** (the suite
+refuses real file operations as root), and **do not touch `~/.config/konsave`**.
+Only the standard library and PyYAML are needed.
 
 ```bash
-# Tudo (mais o teste final que compara o HOME real antes e depois)
+# Everything (plus the final test that compares the real HOME before and after)
 python3 -m unittest discover -s tests -t . -v
 
-# Por serviço
-python3 -m unittest tests.test_safety -v                        # guardas e nomes
+# Per service
+python3 -m unittest tests.test_safety -v                        # guards and names
 python3 -m unittest tests.test_engine -v                        # KonsaveEngine
 python3 -m unittest tests.test_config_service -v                # ConfigService
-python3 -m unittest tests.test_profile_service_mocked -v        # ProfileService, motor simulado
-python3 -m unittest tests.test_profile_service_integration -v   # ProfileService, motor original real
-python3 -m unittest tests.test_cli_runner -v                    # CliRunner (simulado e subprocesso real)
-python3 -m unittest tests.test_docs -v                          # esta documentação x o código
+python3 -m unittest tests.test_config_editor -v                 # conf.yaml editing, backups, the original's placeholders
+python3 -m unittest tests.test_profile_service_mocked -v        # ProfileService, simulated engine
+python3 -m unittest tests.test_profile_service_integration -v   # ProfileService, real original engine
+python3 -m unittest tests.test_cli_runner -v                    # CliRunner (simulated and real subprocess)
+python3 -m unittest tests.test_core_audit -v                   # findings of the final audit (core)
+python3 -m unittest tests.test_docs -v                          # this documentation vs. the code
 ```
 
-Verificação manual, num `HOME` descartável:
+Manual check, in a disposable `HOME`:
 
 ```bash
 python3 - <<'EOF'
@@ -197,9 +217,9 @@ home = Path(tempfile.mkdtemp(prefix="kongui-manual-"))
 (home / ".config").mkdir()
 (home / ".config" / "kdeglobals").write_text("demo")
 
-engine = KonsaveEngine(home)                      # recusa root
+engine = KonsaveEngine(home)                      # refuses root
 config = ConfigService(engine)
-config.ensure_default_config(kind="kde")          # cria o conf.yaml padrão
+config.ensure_default_config(kind="kde")          # creates the default conf.yaml
 report = config.validate()
 print(report.ok, report.warnings[:1])
 
@@ -213,66 +233,91 @@ print(profiles.remove("demo", confirmed=True).ok)
 EOF
 ```
 
-O que observar em cada serviço:
+What to look for in each service:
 
-* **KonsaveEngine**: `engine.profiles_dir` está dentro do `HOME` informado; depois
-  de criar o engine, `os.environ["HOME"]` e `sys.modules` continuam iguais.
-* **ConfigService**: `validate_text` com `entries: ["a/b"]` devolve erro e não
-  grava nada; `write_text` repetido cria `conf.yaml.bak-*`.
-* **ProfileService**: `apply`/`remove`/`import_profile`/`wipe_all` sem
-  `confirmed=True` lançam `ConfirmationRequiredError`; `export` com
-  `on_conflict="overwrite"` sobre uma pasta de mesmo nome lança
-  `ArchiveExistsError` e não apaga a pasta.
-* **CliRunner**: `CliRunner(home, extra_pythonpath=[...]).run(["--list"])` num
-  `HOME` com `~/.cache` e sem perfis devolve `returncode == 0` mas `ok == False`;
-  `run(["--save", "x"])` lança `ValidationError`.
+* **KonsaveEngine**: `engine.profiles_dir` is inside the given `HOME`; after the
+  engine is created, `os.environ["HOME"]` and `sys.modules` are unchanged.
+* **ConfigService**: `validate_text` with `entries: ["a/b"]` returns an error and
+  writes nothing; a repeated `write_text` creates `conf.yaml.bak-*`.
+* **ProfileService**: `apply`/`remove`/`import_profile`/`wipe_all` without
+  `confirmed=True` raise `ConfirmationRequiredError`; `export` with
+  `on_conflict="overwrite"` over a folder with the same name raises
+  `ArchiveExistsError` and does not delete the folder.
+* **CliRunner**: `CliRunner(home, extra_pythonpath=[...]).run(["--list"])` in a
+  `HOME` with `~/.cache` and no profiles returns `returncode == 0` but
+  `ok == False`; `run(["--save", "x"])` raises `ValidationError`.
 
-## 8. Operações não implementadas e limitações herdadas
+## 8. Unimplemented operations and inherited limitations
 
-### Não implementadas (a API existe e lança `NotImplementedOperationError`)
+### Not implemented
 
-Listadas em `NOT_IMPLEMENTED_OPERATIONS` (`kongui/core/profiles.py`):
+`NOT_IMPLEMENTED_OPERATIONS` (`kongui/core/profiles.py`) is **empty**: the backup
+before `apply`/`import` (requirement RN-01) has existed since §9.
 
-| Operação | Situação |
-|---|---|
-| `create_backup` | Backup dos arquivos vivos antes de `apply`/`import` (requisito RN-01). Hoje `apply` e `import` **sobrescrevem sem backup** [CONFIRMADO] |
-| `restore_backup` | Restauração desse backup (RN-01) |
-| `inspect_archive` | Pré-visualização completa de um `.knsv` (RN-02). Já existe uma verificação interna (nomes dos membros, `conf.yaml`, destinos fora do `HOME`) executada antes de importar, mas ainda não há API pública de inspeção |
-| `replace_profile` | Salvar *substituindo* o perfil. O `save(overwrite=True)` do original **mescla** e mantém arquivos que já não existem no sistema [CONFIRMADO] |
+### Out of scope
 
-### Fora desta etapa
+* Progress and cancellation of operations already running: the engine has no
+  progress callbacks and cannot be interrupted; calls are serialized and blocking.
+* Size limits, free-disk-space checks and "zip bomb" protection in
+  `export`/`import`.
+* Nothing regarding the lock: it and the waiting interface are described in
+  [`CONCURRENCY.md`](CONCURRENCY.md).
+* `XDG_CONFIG_HOME` support (the original hardcodes `~/.config`).
+* Validation on a real Fedora KDE (Plasma 6) session, **in progress**: value of
+  `XDG_CURRENT_DESKTOP` in the session, Plasma 6 file paths, overwriting by a
+  running Plasma, SELinux and Flatpak ("to investigate" items of the audit).
+* Decision on the name/distribution of the `kongui` package and of `deploy.yml`
+  (currently publishes to PyPI on `v*` tags).
 
-* Interface gráfica (PySide6), progresso e cancelamento: o motor não tem retornos
-  de progresso nem como ser interrompido; as chamadas são serializadas e
-  bloqueantes.
-* Limites de tamanho, verificação de espaço em disco e proteção contra "zip
-  bomb" em `export`/`import`.
-* Trava entre processos: dois programas usando as mesmas pastas ao mesmo tempo
-  podem corromper o estado.
-* Suporte a `XDG_CONFIG_HOME` (o original fixa `~/.config`).
-* Validação em Fedora KDE (Plasma 6) real: valor de `XDG_CURRENT_DESKTOP` na
-  sessão, caminhos dos arquivos do Plasma 6, sobrescrita pelo Plasma em execução,
-  SELinux e Flatpak (itens "a investigar" da auditoria).
-* Decisão de nome/distribuição do pacote `kongui` e do `deploy.yml` (hoje
-  publica no PyPI em tags `v*`).
+### Limitations of the original engine that the layer does **not** fix
 
-### Limitações do motor original que a camada **não** corrige
+* The executable bit and metadata do not survive the export → import cycle;
+  symbolic links become files [CONFIRMED, covered by a test].
+* `apply` merges folders: files that are not in the profile stay.
+* `export` reads the `export` section from the live system at export time and
+  writes the current **global** `conf.yaml` into the `.knsv`, which may differ from
+  the profile's `conf.yaml` [CONFIRMED].
+* `import` needs the destination folder of each `export` section to exist already
+  (for example `~/.local/share`); otherwise the copy fails, the original still
+  prints success, and the layer reports a failure and removes the profile it
+  created [CONFIRMED, covered by a test].
+* `ConfigService.ensure_default_config` keeps the original rule
+  `XDG_CURRENT_DESKTOP == "KDE"`: composite values such as `KDE:GNOME` pick the
+  generic template.
+* The engine iterates over **all** top-level keys of `conf.yaml` as if they were
+  section groups and fails if any is not a mapping [CONFIRMED]; the layer treats
+  this as a validation error.
+* Without `~/.cache`, the original CLI breaks when trying to record an error (exit
+  1 and a traceback). In-process calls do not suffer from this because the engine
+  creates the folder.
 
-* O bit executável e os metadados não sobrevivem ao ciclo export → import; links
-  simbólicos viram arquivos [CONFIRMADO, coberto por teste].
-* `apply` mescla pastas: arquivos que não estão no perfil permanecem.
-* `export` lê a seção `export` do sistema vivo no momento da exportação e grava
-  no `.knsv` o `conf.yaml` **global** atual, que pode diferir do `conf.yaml` do
-  perfil [CONFIRMADO].
-* `import` precisa que a pasta de destino de cada seção `export` já exista (por
-  exemplo `~/.local/share`); caso contrário a cópia falha, o original ainda
-  imprime sucesso, e a camada reporta falha e remove o perfil que criou
-  [CONFIRMADO, coberto por teste].
-* `ConfigService.ensure_default_config` mantém a regra original
-  `XDG_CURRENT_DESKTOP == "KDE"`: valores compostos como `KDE:GNOME` escolhem o
-  modelo genérico.
-* O motor percorre **todas** as chaves de topo do `conf.yaml` como se fossem
-  grupos de seções e falha se alguma não for um mapeamento [CONFIRMADO]; a camada
-  trata isso como erro de validação.
-* Sem `~/.cache`, a CLI original quebra ao tentar registrar um erro (saída 1 e
-  traceback). Chamadas em processo não sofrem disso porque o engine cria a pasta.
+## 9. Safety copies before apply and import (RN-01)
+
+`kongui/core/snapshot.py` (`SnapshotService`, used by `ProfileService`).
+
+* **What is copied:** only the files the operation will overwrite, computed before
+  it runs. For `apply`: each file in the folder of each group of the profile, at
+  the `location/…` destination. For `import`: each `export/<group>/…` file of the
+  `.knsv` whose first level is in `entries`. Files that **do not exist yet** are
+  noted (the restore removes them, and removes the folders the operation created if
+  they end up empty). Symbolic links are recreated as links (and, if `import`
+  writes through the link, the target's content is also stored). File mode is
+  preserved.
+* **Where:** `~/.config/konsave/kongui-backups/<date>-<time>-<µs>-<operation>/`
+  (`apply`, `import` or `restore`), with `manifest.json` and `files/`. Folders use
+  mode 0700.
+* **Fail closed:** if the copy cannot be made (no space, no permission, folder in
+  the way), `SnapshotError` is raised and the operation **does not start**; the
+  partial folder is deleted.
+* **Result:** `OperationResult.backup` points to the folder and `warnings` carries
+  `KEPT_PREFIX + id`. The manifest records whether the operation finished well
+  (`SnapshotInfo.succeeded`); an operation that failed halfway still has its copy.
+* **Restoring** requires `confirmed=True`, validates the whole manifest before
+  touching any file (id only in the expected format, absolute paths inside the
+  home, names stored only as `files/NNNN`), writes file by file through a
+  temporary file + `os.replace`, continues with the rest if one fails (`ok=False`
+  and `errors`) and first stores the current state (a `restore` copy, note
+  `UNDO_PREFIX`). If that copy fails, nothing is restored.
+* **Does not:** undo the profile created by an `import` (it stays in the list);
+  protect against changes made by another program during the operation; limit the
+  total size (see §8). Nothing is deleted by itself: use `delete_backup`.

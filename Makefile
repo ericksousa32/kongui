@@ -1,4 +1,4 @@
-.PHONY: help all setup dev-setup fmt clean distclean maintclean pyfmt black usort tests
+.PHONY: help all setup dev-setup fmt clean distclean maintclean pyfmt black usort tests translations
 
 all: setup
 
@@ -11,6 +11,7 @@ help:
 		@echo " - clean:        Remove all pyc files"
 		@echo " - distclean:    Remove any eggs/builds"
 		@echo " - maintclean:   Remove virtual env and dist files"
+		@echo " - translations: Update the GUI .ts files and rebuild the .qm catalogs"
 		@echo ""
 
 setup:
@@ -59,3 +60,14 @@ maintclean: distclean
 
 tests:
 		python3 -m unittest discover -s tests -t . -v
+
+# GUI texts: extract the strings from the code into the .ts files (keeping the
+# existing translations), then compile them. Translate any message left
+# "unfinished" in kongui/gui/translations/*.ts before running the tests.
+translations:
+		@pyside6-lupdate $$(find kongui/gui -name '*.py' | sort) \
+				-ts kongui/gui/translations/kongui_en.ts kongui/gui/translations/kongui_pt_BR.ts \
+				-no-obsolete -locations none
+		@for lang in en pt_BR; do \
+				pyside6-lrelease kongui/gui/translations/kongui_$$lang.ts -qm kongui/gui/translations/kongui_$$lang.qm; \
+		done

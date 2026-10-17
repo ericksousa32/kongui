@@ -17,7 +17,8 @@ from PySide6.QtWidgets import (
 )
 
 from kongui import __version__
-from kongui.gui import icons
+from kongui.gui import i18n, icons
+from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.theme import get_theme
 from kongui.gui.widgets.common import Badge, Button, Label
 
@@ -34,8 +35,12 @@ class Sidebar(QFrame):
     theme_toggle_requested = Signal()
     WIDTH = 232
 
-    def __init__(self) -> None:
-        """Creates the empty sidebar; add items with :meth:`add_item`."""
+    def __init__(self, demo: bool = True) -> None:
+        """Creates the empty sidebar; add items with :meth:`add_item`.
+
+        Args:
+            demo: Show the "prototype / fictitious data" footer.
+        """
         super().__init__()
         self.setObjectName("Sidebar")
         self.setFixedWidth(self.WIDTH)
@@ -62,7 +67,7 @@ class Sidebar(QFrame):
         names = QVBoxLayout()
         names.setSpacing(0)
         names.addWidget(Label("KonGUI", "brand"))
-        names.addWidget(Label("para Konsave", "caption"))
+        names.addWidget(Label(lambda: self.tr("for Konsave"), "caption"))
         brand.addLayout(names, 1)
         outer.addLayout(brand)
         outer.addSpacing(18)
@@ -76,11 +81,34 @@ class Sidebar(QFrame):
         footer.setContentsMargins(6, 0, 0, 0)
         stack = QVBoxLayout()
         stack.setSpacing(2)
-        stack.addWidget(Badge("Protótipo", "warning"), 0, Qt.AlignmentFlag.AlignLeft)
-        stack.addWidget(Label(f"v{__version__} · dados fictícios", "caption"))
+        if demo:
+            stack.addWidget(
+                Badge(lambda: self.tr("Prototype"), "warning"),
+                0,
+                Qt.AlignmentFlag.AlignLeft,
+            )
+            stack.addWidget(
+                Label(
+                    lambda: self.tr("v{version} · fictitious data").format(
+                        version=__version__
+                    ),
+                    "caption",
+                )
+            )
+        else:
+            stack.addWidget(
+                Label(
+                    lambda: self.tr("v{version} · real profiles").format(
+                        version=__version__
+                    ),
+                    "caption",
+                )
+            )
         footer.addLayout(stack, 1)
         self.theme_button = Button(
-            variant="icon", icon_name="moon", tooltip="Alternar tema claro/escuro"
+            variant="icon",
+            icon_name="moon",
+            tooltip=lambda: self.tr("Switch between light and dark theme"),
         )
         self.theme_button.clicked.connect(self.theme_toggle_requested)
         footer.addWidget(self.theme_button, 0, Qt.AlignmentFlag.AlignBottom)
@@ -90,27 +118,26 @@ class Sidebar(QFrame):
         self._refresh()
 
     def add_item(
-        self, key: str, label: str, icon_name: str, shortcut_hint: str = ""
+        self, key: str, label: Text, icon_name: str, shortcut_hint: str = ""
     ) -> None:
         """Adds a navigation button.
 
         Args:
             key: Page key emitted on click.
-            label: Visible text.
+            label: Visible text, or a function returning it in the current
+                language (the button follows language changes).
             icon_name: Icon name.
             shortcut_hint: Shortcut shown in the tooltip.
         """
         button = QToolButton()
         button.setObjectName("NavButton")
-        button.setText(label)
         button.setCheckable(True)
         button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         button.setIconSize(QSize(20, 20))
         button.setFixedHeight(42)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.setAccessibleName(label)
-        button.setToolTip(f"{label} ({shortcut_hint})" if shortcut_hint else label)
+        i18n.bind(button, lambda: self._set_label(button, label, shortcut_hint))
         button.clicked.connect(
             lambda _checked=False, k=key: self.page_requested.emit(k)
         )
@@ -119,6 +146,14 @@ class Sidebar(QFrame):
         self._buttons[key] = button
         self._icon_names[key] = icon_name
         self._refresh()
+
+    @staticmethod
+    def _set_label(button: QToolButton, label: Text, shortcut_hint: str) -> None:
+        """Sets the text, accessible name and tooltip of a navigation button."""
+        text = resolve_text(label)
+        button.setText(text)
+        button.setAccessibleName(text)
+        button.setToolTip(f"{text} ({shortcut_hint})" if shortcut_hint else text)
 
     def keys(self) -> List[str]:
         """Returns the page keys in display order."""

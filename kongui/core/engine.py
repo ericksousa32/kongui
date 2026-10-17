@@ -24,13 +24,14 @@ import os
 import re
 import sys
 import threading
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple
 
 from kongui.core.errors import EngineLoadError, ValidationError
+from kongui.core.lock import EXCLUSIVE, SHARED, EngineLock
 from kongui.core.safety import EuidProvider, current_euid, ensure_not_root
 
 #: Serialises imports, ``HOME`` patching and stdout redirection (all global).
@@ -40,6 +41,18 @@ ENGINE_LOCK = threading.RLock()
 FALLBACK_VERSION = "0+unknown"
 
 _MODULE_NAMES = ("consts", "parse", "funcs")
+
+#: Lock each original function needs (see ``docs/CONCURRENCY.md``). Functions
+#: that are not listed take no lock. ``export`` only reads profiles (it writes the
+#: archive outside Konsave's folder), so a shared lock is enough.
+CALL_LOCK_MODES = {
+    "save_profile": EXCLUSIVE,
+    "apply_profile": EXCLUSIVE,
+    "remove_profile": EXCLUSIVE,
+    "import_profile": EXCLUSIVE,
+    "wipe": EXCLUSIVE,
+    "export": SHARED,
+}
 
 #: The only functions of ``konsave.funcs`` this layer is allowed to call.
 ALLOWED_CALLS = frozenset(
@@ -240,6 +253,12 @@ class KonsaveEngine:
             raise EngineLoadError(f"Konsave lacks expected functions: {missing}")
         if self._consts.HOME != str(self._home):
             raise EngineLoadError("the Konsave engine did not honour the home folder")
+        self._lock = EngineLock(self.konsave_dir)
+
+    @property
+    def lock(self) -> EngineLock:
+        """Cross-process lock of this home's Konsave folder."""
+        return self._lock
 
     @property
     def home(self) -> Path:
@@ -337,6 +356,36 @@ class KonsaveEngine:
             return ""
 
     def call(
+        self,
+        name: str,
+        *args: Any,
+        overrides: Optional[Mapping[str, Callable[..., Any]]] = None,
+        **kwargs: Any,
+    ) -> EngineCall:
+        """Calls one original function under the cross-process lock.
+
+        Safety net: the services already hold the lock around whole operations
+        (the lock is re-entrant per thread), but any other caller of the engine
+        is covered too. See :data:`CALL_LOCK_MODES`.
+
+        Args:
+            name: Function name; must be in :data:`ALLOWED_CALLS`.
+            *args: Positional arguments for the function.
+            overrides: See :meth:`_call_unlocked`.
+            **kwargs: Keyword arguments for the function.
+
+        Returns:
+            EngineCall: Return value, stdout, stderr and logged errors.
+
+        Raises:
+            ValueError: If ``name`` is not an allowed function.
+            LockError: If the lock could not be obtained (see ``konsave.lock``).
+        """
+        mode = CALL_LOCK_MODES.get(name)
+        with self._lock.hold(mode, name) if mode else nullcontext():
+            return self._call_unlocked(name, *args, overrides=overrides, **kwargs)
+
+    def _call_unlocked(
         self,
         name: str,
         *args: Any,

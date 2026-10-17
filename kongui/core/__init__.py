@@ -1,11 +1,23 @@
 """Integration layer between a future GUI and the original Konsave engine."""
 
+# pylint: disable=duplicate-code
+
 from kongui.core.cli import READ_ONLY_FLAGS, CliRunner
 from kongui.core.config import ConfigService
+from kongui.core.confedit import (
+    ConfigModel,
+    ConfigParseError,
+    EditResult,
+    Group,
+    apply_model,
+    parse_model,
+)
 from kongui.core.engine import EngineCall, KonsaveEngine
 from kongui.core.errors import (
     ArchiveExistsError,
+    BackupNotFoundError,
     CliExecutionError,
+    ConfigConflictError,
     ConfigMissingError,
     ConfigValidationError,
     ConfirmationRequiredError,
@@ -17,18 +29,71 @@ from kongui.core.errors import (
     ProfileInvalidError,
     ProfileNotFoundError,
     RunningAsRootError,
+    SnapshotError,
+    SnapshotNotFoundError,
     ValidationError,
 )
-from kongui.core.profiles import NOT_IMPLEMENTED_OPERATIONS, ProfileService
+from kongui.core.profiles import (
+    CONF_DIFFERS_PREFIX,
+    NOT_IMPLEMENTED_OPERATIONS,
+    ProfileService,
+)
+from kongui.core.lock import (
+    EngineLock,
+    LockBusyError,
+    LockCancelledError,
+    LockError,
+    LockPolicy,
+    LockTimeoutError,
+    LockUnavailableError,
+    LockUsageError,
+    describe_holder,
+)
+from kongui.core.snapshot import (
+    KEPT_PREFIX,
+    UNDO_PREFIX,
+    SnapshotInfo,
+    SnapshotService,
+)
 from kongui.core.results import (
+    ArchiveInspection,
+    BackupInfo,
     CliResult,
     OperationResult,
     ProfileInfo,
+    Problem,
     ValidationReport,
 )
 
 __all__ = [
+    "EngineLock",
+    "LockBusyError",
+    "LockCancelledError",
+    "LockError",
+    "LockPolicy",
+    "LockTimeoutError",
+    "LockUnavailableError",
+    "LockUsageError",
+    "describe_holder",
+    "KEPT_PREFIX",
+    "UNDO_PREFIX",
+    "SnapshotError",
+    "SnapshotInfo",
+    "SnapshotNotFoundError",
+    "SnapshotService",
     "ArchiveExistsError",
+    "ArchiveInspection",
+    "BackupInfo",
+    "BackupNotFoundError",
+    "ConfigConflictError",
+    "ConfigModel",
+    "ConfigParseError",
+    "EditResult",
+    "Group",
+    "Problem",
+    "apply_model",
+    "parse_model",
+    "CONF_DIFFERS_PREFIX",
     "CliExecutionError",
     "CliResult",
     "CliRunner",

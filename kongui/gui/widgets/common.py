@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kongui.gui import icons
+from kongui.gui import i18n, icons
+from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.theme import get_theme
 
 #: Font scale of each label role, relative to the application font.
@@ -66,17 +67,20 @@ class Label(QLabel):
     """A label with a typographic role (``title``, ``h2``, ``muted`` ...)."""
 
     def __init__(
-        self, text: str = "", role: str = "body", *, wrap: bool = False
+        self, text: Text = "", role: str = "body", *, wrap: bool = False
     ) -> None:
         """Creates the label.
 
         Args:
-            text: Label text.
+            text: Label text, or a function returning it in the current
+                language (re-evaluated when the language changes).
             role: One of ``body``, ``muted``, ``caption``, ``title``, ``h2``,
                 ``stat``, ``brand``, ``danger``.
             wrap: Whether long text wraps.
         """
-        super().__init__(text)
+        super().__init__(resolve_text(text))
+        if callable(text):
+            i18n.bind(self, lambda: self.setText(text()), now=False)
         self.setProperty("role", role)
         self.setWordWrap(wrap)
         font = QFont(self.font())
@@ -92,14 +96,16 @@ class Label(QLabel):
 class Badge(QLabel):
     """A small rounded status label."""
 
-    def __init__(self, text: str = "", tone: str = "neutral") -> None:
+    def __init__(self, text: Text = "", tone: str = "neutral") -> None:
         """Creates the badge.
 
         Args:
-            text: Badge text.
+            text: Badge text, or a function returning it in the current language.
             tone: ``neutral``, ``accent``, ``success``, ``warning`` or ``danger``.
         """
-        super().__init__(text)
+        super().__init__(resolve_text(text))
+        if callable(text):
+            i18n.bind(self, lambda: self.setText(text()), now=False)
         self.setProperty("role", "badge")
         self.setProperty("tone", tone)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -129,27 +135,28 @@ class Button(QPushButton):
 
     def __init__(
         self,
-        text: str = "",
+        text: Text = "",
         *,
         variant: str = "default",
         icon_name: Optional[str] = None,
-        tooltip: str = "",
+        tooltip: Text = "",
         icon_size: int = 18,
     ) -> None:
         """Creates the button.
 
         Args:
-            text: Button label; empty for icon-only buttons.
+            text: Button label (or a function returning it in the current
+                language); empty for icon-only buttons.
             variant: One of :attr:`VARIANTS`.
             icon_name: Name from :data:`kongui.gui.icons.ICON_NAMES`.
-            tooltip: Tooltip, also used as the accessible name when there is
-                no text.
+            tooltip: Tooltip (or a function returning it), also used as the
+                accessible name when there is no text.
             icon_size: Icon size in pixels.
 
         Raises:
             ValueError: If ``variant`` is unknown.
         """
-        super().__init__(text)
+        super().__init__(resolve_text(text))
         if variant not in self.VARIANTS:
             raise ValueError(f"unknown button variant: {variant!r}")
         self._variant = variant
@@ -158,12 +165,23 @@ class Button(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._icon_size = icon_size
         self.setIconSize(QSize(icon_size, icon_size))
-        if tooltip:
-            self.setToolTip(tooltip)
-            if not text:
-                self.setAccessibleName(tooltip)
+        self._text = text
+        self._tooltip = tooltip
+        self._apply_texts()
+        if callable(text) or callable(tooltip):
+            i18n.bind(self, self._apply_texts, now=False)
         get_theme().changed.connect(self._refresh_icon)
         self._refresh_icon()
+
+    def _apply_texts(self) -> None:
+        """Sets the label, tooltip and accessible name in the current language."""
+        if callable(self._text):
+            self.setText(self._text())
+        tip = resolve_text(self._tooltip)
+        if tip:
+            self.setToolTip(tip)
+            if not resolve_text(self._text):
+                self.setAccessibleName(tip)
 
     def set_icon_name(self, name: Optional[str]) -> None:
         """Changes the icon.
@@ -283,11 +301,12 @@ class SegmentedControl(QWidget):
 
     selected = Signal(str)
 
-    def __init__(self, options: Iterable[Tuple[str, str, Optional[str]]]) -> None:
+    def __init__(self, options: Iterable[Tuple[str, Text, Optional[str]]]) -> None:
         """Creates the control.
 
         Args:
-            options: ``(value, label, icon_name)`` tuples, in order.
+            options: ``(value, label, icon_name)`` tuples, in order; ``label`` is
+                a string or a function returning it in the current language.
         """
         super().__init__()
         layout = QHBoxLayout(self)
@@ -296,7 +315,7 @@ class SegmentedControl(QWidget):
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self._buttons: dict = {}
-        items: List[Tuple[str, str, Optional[str]]] = list(options)
+        items: List[Tuple[str, Text, Optional[str]]] = list(options)
         for index, (value, label, icon_name) in enumerate(items):
             button = Button(
                 label, variant="segment", icon_name=icon_name, tooltip=label

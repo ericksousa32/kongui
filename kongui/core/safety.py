@@ -8,7 +8,14 @@ from typing import Callable, Optional
 from kongui.core.errors import RunningAsRootError, ValidationError
 
 KNSV_SUFFIX = ".knsv"
-MAX_NAME_LENGTH = 200
+#: Longest name accepted, in UTF-8 *bytes*. Linux limits a file name to 255
+#: bytes (not characters), and the service adds a prefix and a timestamp to it
+#: when it builds the temporary folders of ``ProfileService.replace``.
+MAX_NAME_BYTES = 200
+#: Names starting with this are reserved for the temporary folders created by
+#: ``ProfileService.replace``. ``list_profiles`` hides them, so a profile with
+#: such a name would be saved but never shown (and could not be removed).
+RESERVED_PREFIX = ".kongui-"
 
 EuidProvider = Callable[[], Optional[int]]
 
@@ -41,6 +48,27 @@ def ensure_not_root(euid_provider: EuidProvider = current_euid) -> None:
         )
 
 
+def is_plain_name(value: object) -> bool:
+    """Tells whether a value is a single, relative path component.
+
+    This is the rule for group names and entries of a ``conf.yaml``: they are
+    joined to a folder, so they must not climb out of it or nest.
+
+    Args:
+        value: Candidate name.
+
+    Returns:
+        bool: ``True`` if safe to join to a folder.
+    """
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and value not in {".", ".."}
+        and "/" not in value
+        and "\0" not in value
+    )
+
+
 def _validate_component(value: object, label: str) -> str:
     """Validates a single file-name component.
 
@@ -58,8 +86,11 @@ def _validate_component(value: object, label: str) -> str:
         raise ValidationError(f"{label} must be a string")
     if not value or value != value.strip():
         raise ValidationError(f"{label} must not be empty or start/end with whitespace")
-    if len(value) > MAX_NAME_LENGTH:
-        raise ValidationError(f"{label} is longer than {MAX_NAME_LENGTH} characters")
+    if len(value.encode("utf-8", "surrogatepass")) > MAX_NAME_BYTES:
+        raise ValidationError(
+            f"{label} is longer than {MAX_NAME_BYTES} bytes in UTF-8 "
+            "(accented letters and emoji take more than one byte)"
+        )
     if value in {".", ".."}:
         raise ValidationError(f"{label} must not be '.' or '..'")
     if value.startswith("-"):
@@ -77,7 +108,9 @@ def validate_profile_name(name: object) -> str:
     The original ``save_profile`` joins the name to the profiles folder without
     any check, so ``../x`` would escape that folder and ``.`` would pollute it.
     A name containing ``.knsv`` is refused because ``import_profile`` derives
-    two different names from it and could merge into an existing profile.
+    two different names from it and could merge into an existing profile. A
+    name starting with :data:`RESERVED_PREFIX` is refused because the service
+    hides such folders (they are its own temporary folders).
 
     Args:
         name: Candidate profile name.
@@ -91,6 +124,10 @@ def validate_profile_name(name: object) -> str:
     value = _validate_component(name, "profile name")
     if KNSV_SUFFIX in value:
         raise ValidationError(f"profile name must not contain '{KNSV_SUFFIX}'")
+    if value.startswith(RESERVED_PREFIX):
+        raise ValidationError(
+            f"profile name must not start with '{RESERVED_PREFIX}' (reserved)"
+        )
     return value
 
 

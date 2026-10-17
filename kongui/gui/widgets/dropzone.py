@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
-from kongui.gui import icons
+from kongui.gui import i18n, icons
 from kongui.gui.theme import get_theme
 from kongui.gui.widgets.common import Button, Label, repolish
 
@@ -46,7 +46,10 @@ class DropZone(QFrame):
         self.setObjectName("DropZone")
         self.setProperty("dragging", False)
         self.setAcceptDrops(True)
-        self.setAccessibleName("Área para soltar um arquivo .knsv")
+        i18n.bind(
+            self,
+            lambda: self.setAccessibleName(self.tr("Area to drop a .knsv file")),
+        )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 26, 20, 26)
         layout.setSpacing(8)
@@ -54,13 +57,13 @@ class DropZone(QFrame):
         self._icon = QLabel()
         self._icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._icon)
-        title = Label("Arraste um arquivo .knsv aqui", "h2")
+        title = Label(lambda: self.tr("Drag a .knsv file here"), "h2")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
-        or_label = Label("ou", "muted")
+        or_label = Label(lambda: self.tr("or"), "muted")
         or_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(or_label)
-        self.browse_button = Button("Escolher arquivo…", icon_name="folder")
+        self.browse_button = Button(lambda: self.tr("Choose file…"), icon_name="folder")
         self.browse_button.clicked.connect(self.browse_requested)
         layout.addWidget(self.browse_button, 0, Qt.AlignmentFlag.AlignHCenter)
         get_theme().changed.connect(self._refresh)

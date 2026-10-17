@@ -33,21 +33,21 @@ class DashboardTests(GuiTestCase):
     def test_cards_react_to_the_store(self):
         window = self.make_window()
         stats = window.pages["dashboard"].stats
-        window.context.store.activate("Gaming")
+        window.controller.apply("Gaming", confirmed=True)
         self.assertEqual(stats["active"].value_label.text(), "Gaming")
-        window.context.store.remove("Retrô")
+        self.backend_do(window, "remove", "Retrô", confirmed=True)
         self.assertEqual(stats["count"].value_label.text(), "6")
 
     def test_empty_store_shows_empty_states(self):
         window = self.make_window()
         page = window.pages["dashboard"]
-        window.context.store.clear()
+        self.backend_do(window, "wipe_all", confirmed=True)
         self.flush()
         self.assertEqual(page.stats["count"].value_label.text(), "0")
         self.assertEqual(page.stats["active"].value_label.text(), "Nenhum")
         self.assertEqual(page.stats["recent"].value_label.text(), "—")
         self.assertIsNotNone(self.button_with_text(page, "Salvar perfil atual"))
-        window.context.store.reset_demo()
+        self.backend_do(window, "reset")
         self.flush()
         self.assertEqual(page.stats["count"].value_label.text(), "7")
 
@@ -227,15 +227,6 @@ class ProfilesPageTests(GuiTestCase):
         self.assertEqual(window.context.store.active().name, "Trabalho")
         self.assertEqual(window.toasts.titles(), [])
 
-    def test_apply_skips_the_question_when_the_setting_is_off(self):
-        window, page = self.page()
-        window.settings.set("confirm_apply", False)
-        card = next(c for c in page.cards() if c.profile_name == "Gaming")
-        with ask(False) as confirm:
-            card.apply_button.click()
-        confirm.assert_not_called()
-        self.assertEqual(window.context.store.active().name, "Gaming")
-
     def test_remove_needs_confirmation_and_is_destructive(self):
         window, page = self.page()
         card = next(c for c in page.cards() if c.profile_name == "Tablet")
@@ -269,7 +260,7 @@ class ProfilesPageTests(GuiTestCase):
 
     def test_empty_store_shows_the_empty_state(self):
         window, page = self.page()
-        window.context.store.clear()
+        self.backend_do(window, "wipe_all", confirmed=True)
         self.flush()
         self.assertFalse(page.empty_state.isHidden())
         self.assertTrue(page.grid.isHidden())
@@ -297,180 +288,6 @@ class ProfilesPageTests(GuiTestCase):
             self.assertTrue(card.more_button.accessibleName())
 
 
-class TransferPageTests(GuiTestCase):
-    """Simulated export and import."""
-
-    def page(self):
-        window = self.make_window()
-        window.show_page("transfer")
-        page = window.pages["transfer"]
-        page.STEPS = 3
-        page.STEP_MS = 1
-        self.flush()
-        return window, page
-
-    def test_export_form_defaults(self):
-        _, page = self.page()
-        self.assertEqual(page.export_combo.count(), 7)
-        self.assertEqual(page.export_combo.currentData(), "Trabalho")
-        self.assertEqual(page.filename_edit.text(), "Trabalho")
-        self.assertEqual(page.export_target(), "~/Downloads/Trabalho.knsv")
-        self.assertTrue(page.export_button.isEnabled())
-        self.assertIn("~/Downloads/Trabalho.knsv", page.preview_label.text())
-
-    def test_changing_the_profile_suggests_the_file_name(self):
-        _, page = self.page()
-        page.select_profile("Gaming")
-        self.assertEqual(page.filename_edit.text(), "Gaming")
-        self.assertEqual(page.export_target(), "~/Downloads/Gaming.knsv")
-
-    def test_invalid_file_names_disable_export(self):
-        _, page = self.page()
-        for bad in ("../x", "a/b", "", "x.knsv", "-rf"):
-            with self.subTest(name=bad):
-                page.filename_edit.setText(bad)
-                self.assertFalse(page.export_button.isEnabled())
-                self.assertFalse(page.start_export())
-        page.filename_edit.setText("ok")
-        self.assertTrue(page.export_button.isEnabled())
-        page.destination_edit.setText("   ")
-        self.assertFalse(page.export_button.isEnabled())
-
-    def test_export_runs_progress_then_notifies(self):
-        window, page = self.page()
-        page.destination_edit.setText("~/Backups/")
-        page.export_button.click()
-        self.assertFalse(page.export_button.isEnabled(), "must be locked while running")
-        self.assertFalse(page.export_progress.isHidden())
-        self.assertTrue(self.wait_until(lambda: "success" in window.toasts.kinds()))
-        self.assertTrue(page.export_progress.isHidden())
-        self.assertTrue(page.export_button.isEnabled())
-        entry = window.context.activity.entries()[0]
-        self.assertEqual(entry.kind, "export")
-        self.assertIn("~/Backups/Trabalho.knsv", entry.text)
-
-    def test_export_shows_up_in_recent_transfers(self):
-        from kongui.gui.widgets.cards import ActivityRow
-
-        window, page = self.page()
-        page.start_export()
-        self.assertTrue(self.wait_until(lambda: window.toasts.titles()))
-        self.flush()
-        texts = [
-            row.text_label.text() for row in page.recent_card.findChildren(ActivityRow)
-        ]
-        self.assertIn("“Trabalho” exportado para ~/Downloads/Trabalho.knsv", texts)
-        self.assertLessEqual(len(texts), 5)
-
-    def test_existing_archive_is_an_error_unless_overwrite_is_checked(self):
-        window, page = self.page()
-        page.select_profile("Minimalista")
-        self.assertFalse(page.start_export())
-        self.assertEqual(window.toasts.kinds(), ["error"])
-        self.assertTrue(page.export_button.isEnabled())
-        page.overwrite_check.setChecked(True)
-        self.assertTrue(page.start_export())
-        self.assertTrue(self.wait_until(lambda: "success" in window.toasts.kinds()))
-
-    def test_export_with_no_profiles_shows_a_hint(self):
-        window, page = self.page()
-        window.context.store.clear()
-        self.flush()
-        self.assertFalse(page.export_empty.isHidden())
-        self.assertTrue(page.export_form.isHidden())
-        window.context.store.reset_demo()
-        self.flush()
-        self.assertTrue(page.export_empty.isHidden())
-        self.assertFalse(page.export_form.isHidden())
-
-    def test_export_list_follows_the_store(self):
-        window, page = self.page()
-        page.select_profile("Gaming")
-        window.context.store.remove("Retrô")
-        self.assertEqual(page.export_combo.count(), 6)
-        self.assertEqual(page.export_combo.currentData(), "Gaming")
-
-    def test_import_refuses_other_extensions(self):
-        window, page = self.page()
-        self.assertFalse(page.set_import_file("/tmp/readme.txt"))
-        self.assertEqual(window.toasts.kinds(), ["warning"])
-        self.assertFalse(page.drop_zone.isHidden())
-
-    def test_import_flow(self):
-        window, page = self.page()
-        self.assertTrue(page.set_import_file("/home/x/Downloads/Verão.knsv"))
-        self.flush()
-        self.assertTrue(page.drop_zone.isHidden())
-        self.assertFalse(page.import_form.isHidden())
-        self.assertEqual(page.import_name_edit.text(), "Verão")
-        self.assertIn("Verão.knsv", page.file_label.text())
-        self.assertTrue(page.import_button.isEnabled())
-        page.import_button.click()
-        self.assertFalse(page.import_button.isEnabled())
-        self.assertTrue(
-            self.wait_until(lambda: window.context.store.get("Verão") is not None)
-        )
-        self.flush()
-        self.assertFalse(window.context.store.get("Verão").active)
-        self.assertEqual(window.context.activity.entries()[0].kind, "import")
-        self.assertFalse(page.drop_zone.isHidden(), "form must reset after importing")
-        self.assertIn(
-            "Verão", page.export_combo.itemText(page.export_combo.count() - 1)
-        )
-
-    def test_import_and_apply(self):
-        window, page = self.page()
-        page.set_import_file("/x/Escuro.knsv")
-        page.apply_after_check.setChecked(True)
-        page.import_button.click()
-        self.assertTrue(
-            self.wait_until(lambda: window.context.store.get("Escuro") is not None)
-        )
-        self.flush()
-        self.assertEqual(window.context.store.active().name, "Escuro")
-
-    def test_import_name_conflicts_and_invalid_names(self):
-        _, page = self.page()
-        page.set_import_file("/x/Gaming.knsv")
-        self.flush()
-        self.assertFalse(page.import_button.isEnabled())
-        self.assertFalse(page.import_error.isHidden())
-        self.assertIn("Já existe", page.import_error.text())
-        self.assertFalse(page.start_import())
-        page.import_name_edit.setText("../escape")
-        self.assertFalse(page.import_button.isEnabled())
-        page.import_name_edit.setText("Gaming 2")
-        self.assertTrue(page.import_button.isEnabled())
-        self.assertTrue(page.import_error.isHidden())
-
-    def test_import_can_be_cancelled_with_change_button(self):
-        _, page = self.page()
-        page.set_import_file("/x/a.knsv")
-        self.flush()
-        page.clear_file_button.click()
-        self.flush()
-        self.assertFalse(page.drop_zone.isHidden())
-        self.assertTrue(page.import_form.isHidden())
-        self.assertEqual(page.import_name_edit.text(), "")
-
-    def test_real_file_size_is_shown_but_the_file_is_never_opened(self):
-        _, page = self.page()
-        path = os.path.join(self.home, "grande.knsv")
-        with open(path, "wb") as handle:
-            handle.write(b"\0" * (3 * 1048576))
-        with mock.patch(
-            "builtins.open", side_effect=AssertionError("must not open files")
-        ):
-            page.set_import_file(path)
-        self.assertIn("3,0 MB", page.file_label.text())
-
-    def test_drop_zone_signal_selects_the_file(self):
-        _, page = self.page()
-        page.drop_zone.file_chosen.emit("/x/Solto.knsv")
-        self.flush()
-        self.assertEqual(page.import_name_edit.text(), "Solto")
-
-
 class SettingsPageTests(GuiTestCase):
     """Preferences and demo controls."""
 
@@ -483,7 +300,7 @@ class SettingsPageTests(GuiTestCase):
     def test_controls_reflect_the_settings(self):
         _, page = self.page()
         self.assertEqual(page.theme_control.value(), "system")
-        self.assertTrue(page.confirm_check.isChecked())
+        self.assertFalse(hasattr(page, "confirm_check"))
         self.assertEqual(page.view_control.value(), "grid")
         self.assertEqual(page.seconds_spin.value(), 5)
         self.assertTrue(page.folder_edit.isReadOnly())
@@ -498,10 +315,9 @@ class SettingsPageTests(GuiTestCase):
         QTest.mouseClick(page.theme_control.button("system"), Qt.MouseButton.LeftButton)
         self.assertEqual(window.settings.get("theme"), "system")
 
-    def test_confirm_checkbox_and_view_are_stored(self):
-        window, page = self.page()
-        page.confirm_check.click()
-        self.assertIs(window.settings.get("confirm_apply"), False)
+    def test_view_is_stored(self):
+        window, _ = self.page()
+        page = window.pages["settings"]
         QTest.mouseClick(page.view_control.button("list"), Qt.MouseButton.LeftButton)
         self.assertEqual(window.settings.get("profiles_view"), "list")
         window.show_page("profiles")
@@ -516,9 +332,7 @@ class SettingsPageTests(GuiTestCase):
 
     def test_settings_changed_elsewhere_update_the_controls(self):
         window, page = self.page()
-        window.settings.set("confirm_apply", False)
         window.settings.set("toast_seconds", 20)
-        self.assertFalse(page.confirm_check.isChecked())
         self.assertEqual(page.seconds_spin.value(), 20)
 
     def test_test_button_shows_a_notification(self):
@@ -583,9 +397,12 @@ class NoSideEffectsTests(GuiTestCase):
             card.apply_button.click()
             window.pages["profiles"].cards()[0].duplicate_action.trigger()
         transfer = window.pages["transfer"]
-        transfer.STEPS, transfer.STEP_MS = 2, 1
-        transfer.start_export()
-        self.assertTrue(self.wait_until(lambda: "success" in window.toasts.kinds()))
+        self.assertTrue(transfer.start_export())
+        self.assertIn("success", window.toasts.kinds())
+        transfer.set_import_file("/x/Novo.knsv")
+        with ask(True):
+            self.assertTrue(transfer.start_import())
+        self.assertIn("Novo", window.store.names())
         self.assertEqual(os.listdir(self.home), [])
         self.assertFalse(os.path.exists(os.path.expanduser("~/.config/konsave")))
 

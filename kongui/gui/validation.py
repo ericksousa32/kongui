@@ -1,11 +1,17 @@
-"""Input checks for names typed in the interface, with pt-BR messages."""
+"""Input checks for names typed in the interface, with translated messages."""
 
 from __future__ import annotations
 
 from typing import Collection, Optional
 
+from PySide6.QtCore import QCoreApplication as Q
+
 from kongui.core.errors import ValidationError
-from kongui.core.safety import validate_profile_name
+from kongui.core.safety import (
+    is_plain_name,
+    validate_archive_name,
+    validate_profile_name,
+)
 
 
 def profile_name_problem(name: str, existing: Collection[str] = ()) -> Optional[str]:
@@ -20,18 +26,70 @@ def profile_name_problem(name: str, existing: Collection[str] = ()) -> Optional[
         existing: Names already in use.
 
     Returns:
-        Optional[str]: A pt-BR message, or ``None`` if the name is fine.
+        Optional[str]: A message in the interface language, or ``None`` if the name is fine.
     """
     if not name.strip():
-        return "Informe um nome para o perfil."
+        return Q.translate("validation", "Enter a name for the profile.")
     try:
         validate_profile_name(name)
     except ValidationError:
-        return (
-            "Nome inválido. Não use barras, “.” ou “..”, hífen no início, "
-            "espaços nas pontas, caracteres de controle ou a extensão .knsv "
-            "(máximo de 200 caracteres)."
+        return Q.translate(
+            "validation",
+            "Invalid name. Do not use slashes, “.” or “..”, a leading hyphen, "
+            "spaces at the ends, control characters, the .knsv extension or the "
+            "reserved prefix “.kongui-”. Maximum 200 bytes (accented letters and "
+            "emojis take more than one).",
         )
     if name in existing:
-        return "Já existe um perfil com esse nome."
+        return Q.translate("validation", "A profile with that name already exists.")
+    return None
+
+
+def archive_name_problem(name: str) -> Optional[str]:
+    """Explains why an exported file name (without extension) cannot be used.
+
+    Uses :func:`kongui.core.safety.validate_archive_name`, so the interface
+    refuses exactly what the export service would refuse.
+
+    Args:
+        name: Name typed by the user.
+
+    Returns:
+        Optional[str]: A message in the interface language, or ``None`` if the name is fine.
+    """
+    if not name.strip():
+        return Q.translate("validation", "Enter a name for the file.")
+    try:
+        validate_archive_name(name)
+    except ValidationError:
+        return Q.translate(
+            "validation",
+            "Invalid name. Do not use slashes, “.” or “..”, a leading hyphen, "
+            "spaces at the ends, control characters, or the .knsv or .zip "
+            "extensions. Maximum 200 bytes (accented letters and emojis take "
+            "more than one).",
+        )
+    return None
+
+
+def group_name_problem(name: str, existing: Collection[str] = ()) -> Optional[str]:
+    """Explains why a ``save``/``export`` group name cannot be used.
+
+    Args:
+        name: Name typed by the user.
+        existing: Other group names of the same section.
+
+    Returns:
+        Optional[str]: A message in the interface language, or ``None`` if the name is fine.
+    """
+    if not name.strip():
+        return Q.translate("validation", "Enter a name for the group.")
+    if not is_plain_name(name):
+        return Q.translate(
+            "validation", "Invalid name. Use a plain folder name: no “/”, “.” or “..”."
+        )
+    if name in existing:
+        return Q.translate(
+            "validation", "A group with that name already exists in this section."
+        )
     return None

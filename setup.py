@@ -44,9 +44,13 @@ setup(
     long_description_content_type="text/markdown",
     url="https://www.github.com/prayag2/konsave/",
     packages=find_packages(exclude=["tests", "tests.*"]),
-    package_data={"config": ["conf.yaml"]},
+    package_data={
+        "config": ["conf.yaml"],
+        # Interface translations: sources (.ts) and compiled catalogs (.qm).
+        "kongui.gui": ["translations/*.qm", "translations/*.ts"],
+    },
     include_package_data=True,
-    python_requires=">=3.6",
+    python_requires=">=3.9",
     install_requires=_REQUIREMENTS,
     extras_require={"dev": _REQUIREMENTS_DEV, "gui": ["PySide6>=6.8"]},
     classifiers=[

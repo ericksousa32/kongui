@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Type
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -13,16 +14,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from kongui.gui import i18n, messages
+from kongui.gui.actions import OutcomeNotifier
+from kongui.gui.backend import FakeBackend, ProfileBackend
 from kongui.gui.context import AppContext
-from kongui.gui.mock_data import demo_activity, demo_profiles
+from kongui.gui.controller import ProfileController
+from kongui.gui.mock_data import demo_activity
 from kongui.gui.pages.about import AboutPage
+from kongui.gui.pages.config import ConfigPage
 from kongui.gui.pages.base import Page
 from kongui.gui.pages.dashboard import DashboardPage
 from kongui.gui.pages.profiles import ProfilesPage
 from kongui.gui.pages.settings import SettingsPage
 from kongui.gui.pages.transfer import TransferPage
 from kongui.gui.state import ActivityLog, AppSettings, ProfileStore
+from kongui.gui.tasks import Executor, ThreadExecutor
 from kongui.gui.theme import ThemeMode, get_theme
+from kongui.gui.widgets.feedback import BusyBar, WaitBanner
 from kongui.gui.widgets.shell import Sidebar, TopBar
 from kongui.gui.widgets.toast import ToastHost
 
@@ -31,6 +39,7 @@ PAGE_CLASSES: List[Type[Page]] = [
     ProfilesPage,
     TransferPage,
     SettingsPage,
+    ConfigPage,
     AboutPage,
 ]
 
@@ -38,7 +47,7 @@ PAGE_CLASSES: List[Type[Page]] = [
 class MainWindow(QMainWindow):
     """The application window.
 
-    Shortcuts: ``Ctrl+1`` … ``Ctrl+5`` switch pages, ``Ctrl+F`` focuses the
+    Shortcuts: ``Ctrl+1`` … ``Ctrl+6`` switch pages, ``Ctrl+F`` focuses the
     profile search, ``Ctrl+N`` / ``Ctrl+S`` open the "save profile" dialog
     while the matching page is visible.
     """
@@ -46,24 +55,30 @@ class MainWindow(QMainWindow):
     def __init__(
         self,
         settings: Optional[AppSettings] = None,
-        store: Optional[ProfileStore] = None,
+        backend: Optional[ProfileBackend] = None,
         activity: Optional[ActivityLog] = None,
+        executor: Optional[Executor] = None,
     ) -> None:
         """Builds the window.
 
         Args:
             settings: Preferences; defaults to in-memory settings.
-            store: Profile model; defaults to the fictitious profiles.
-            activity: Activity feed; defaults to the fictitious feed.
+            backend: Profile services; defaults to the in-memory demo backend.
+            activity: Activity feed; defaults to the fictitious feed in demo
+                mode and to an empty one with a real backend.
+            executor: Where blocking work runs; defaults to a worker thread.
         """
         super().__init__()
         self.setWindowTitle("KonGUI")
         self.setMinimumSize(900, 600)
         self.resize(1140, 740)
         self.settings = settings or AppSettings()
+        self.language = i18n.manager()
+        self.language.follow(self.settings)
         self.theme = get_theme()
         self.theme.set_mode(ThemeMode.parse(self.settings.get("theme")))
 
+        self.backend = backend or FakeBackend()
         root = QWidget()
         root.setObjectName("Root")
         self.setCentralWidget(root)
@@ -71,21 +86,36 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self.sidebar = Sidebar()
+        self.sidebar = Sidebar(demo=self.backend.capabilities.demo)
         self.top_bar = TopBar()
         self.stack = QStackedWidget()
         column = QVBoxLayout()
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
         column.addWidget(self.top_bar)
+        self.busy_bar = BusyBar()
+        column.addWidget(self.busy_bar)
+        self.wait_banner = WaitBanner()
+        column.addWidget(self.wait_banner)
         column.addWidget(self.stack, 1)
         layout.addWidget(self.sidebar)
         layout.addLayout(column, 1)
 
         self.toasts = ToastHost(root, int(self.settings.get("toast_seconds")))  # type: ignore[call-overload]
+        self.executor = executor or ThreadExecutor()
+        self.store = ProfileStore()
+        self.controller = ProfileController(
+            self.backend, self.executor, self.store, self.settings
+        )
+        if activity is None:
+            activity = ActivityLog(
+                demo_activity() if self.backend.capabilities.demo else []
+            )
         self.context = AppContext(
-            store=store or ProfileStore(demo_profiles),
-            activity=activity or ActivityLog(demo_activity()),
+            store=self.store,
+            backend=self.backend,
+            controller=self.controller,
+            activity=activity,
             settings=self.settings,
             theme=self.theme,
             toasts=self.toasts,
@@ -97,7 +127,12 @@ class MainWindow(QMainWindow):
             page = page_class(self.context)
             self.pages[page.key] = page
             self.stack.addWidget(page)
-            self.sidebar.add_item(page.key, page.title, page.icon_name, f"Ctrl+{index}")
+            self.sidebar.add_item(
+                page.key,
+                lambda page=page: page.title,  # type: ignore[misc]
+                page.icon_name,
+                f"Ctrl+{index}",
+            )
             QShortcut(
                 QKeySequence(f"Ctrl+{index}"),
                 self,
@@ -108,7 +143,68 @@ class MainWindow(QMainWindow):
         self.sidebar.page_requested.connect(self.show_page)
         self.sidebar.theme_toggle_requested.connect(self.toggle_theme)
         self.settings.changed.connect(self._on_setting_changed)
+        self.notifier = OutcomeNotifier(self.context)
+        self.controller.state_changed.connect(self._sync_busy)
+        self.wait_banner.cancel_requested.connect(self.controller.cancel_wait)
+        i18n.bind(self, self._retranslate, now=False)
         self.show_page("dashboard")
+        QTimer.singleShot(0, self.controller.refresh)
+
+    def _retranslate(self) -> None:
+        """Updates the window texts after a language change.
+
+        The sidebar buttons, the pages and the toasts translate themselves; the
+        top bar and the window title belong to the page being shown. The wait
+        banner is rebuilt from the controller state.
+        """
+        page = self.stack.currentWidget()
+        if page is None:
+            return
+        self.top_bar.set_page(page.title, page.subtitle, page.header_actions())  # type: ignore[attr-defined]
+        self.setWindowTitle(f"{page.title} — KonGUI")  # type: ignore[attr-defined]
+        self._sync_busy()
+
+    def _sync_busy(self) -> None:
+        """Shows the busy bar while an operation is running."""
+        self.busy_bar.set_busy(self.controller.busy)
+        controller = self.controller
+        if controller.waiting:
+            title, lines = messages.describe_wait(controller.waiting_holder)
+        else:
+            title, lines = "", ()
+        self.wait_banner.set_waiting(
+            controller.waiting, title, lines, cancelling=controller.cancelling
+        )
+
+    def closeEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Refuses while an operation runs; asks about unsaved work; then closes.
+
+        An operation of the original Konsave cannot be interrupted, and closing
+        the window used to freeze it for five seconds, hide it and leave the
+        operation running in a process nobody could see. Now the window stays
+        until the operation is over.
+        """
+        if self.controller.busy:
+            text = (
+                self.tr(
+                    "Cancel the wait or wait for the other operation to finish "
+                    "before closing."
+                )
+                if self.controller.waiting
+                else self.tr(
+                    "Wait for it to finish before closing: closing now could "
+                    "leave files half-written."
+                )
+            )
+            self.toasts.show_message("warning", self.tr("Operation in progress"), text)
+            event.ignore()
+            return
+        for page in self.pages.values():
+            if not page.confirm_leave(self):
+                event.ignore()
+                return
+        self.executor.shutdown()
+        super().closeEvent(event)
 
     def _page_shortcut(self, key: str):
         """Returns a callback that opens one page."""
@@ -124,7 +220,7 @@ class MainWindow(QMainWindow):
 
         Args:
             key: Page key (``dashboard``, ``profiles``, ``transfer``,
-                ``settings`` or ``about``).
+                ``config``, ``settings`` or ``about``).
 
         Returns:
             Page: The page now visible.
@@ -133,6 +229,11 @@ class MainWindow(QMainWindow):
             KeyError: If the key is unknown.
         """
         page = self.pages[key]
+        current = self.stack.currentWidget()
+        if current is not None and current is not page:
+            if not current.confirm_leave(self):  # type: ignore[attr-defined]
+                self.sidebar.set_current(current.key)  # type: ignore[attr-defined]
+                return current  # type: ignore[return-value]
         self.stack.setCurrentWidget(page)
         self.sidebar.set_current(key)
         self.top_bar.set_page(page.title, page.subtitle, page.header_actions())
@@ -143,7 +244,8 @@ class MainWindow(QMainWindow):
     def focus_search(self) -> None:
         """Opens the profiles page and focuses its search box."""
         page = self.show_page("profiles")
-        page.focus_search()  # type: ignore[attr-defined]
+        if page.key == "profiles":
+            page.focus_search()  # type: ignore[attr-defined]
 
     def open_export(self, name: str) -> None:
         """Opens the export form with a profile selected.
@@ -152,7 +254,8 @@ class MainWindow(QMainWindow):
             name: Profile name.
         """
         page = self.show_page("transfer")
-        page.select_profile(name)  # type: ignore[attr-defined]
+        if page.key == "transfer":
+            page.select_profile(name)  # type: ignore[attr-defined]
 
     def toggle_theme(self) -> None:
         """Switches between the light and dark themes."""

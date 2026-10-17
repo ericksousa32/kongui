@@ -50,6 +50,14 @@ class ConfigValidationError(ValidationError):
         self.report = report
 
 
+class ConfigConflictError(KonGuiError):
+    """Raised when ``conf.yaml`` changed on disk after it was loaded for editing."""
+
+
+class BackupNotFoundError(KonGuiError):
+    """Raised when a requested ``conf.yaml`` backup does not exist."""
+
+
 class ConfigMissingError(KonGuiError):
     """Raised when the active ``conf.yaml`` does not exist."""
 
@@ -72,6 +80,18 @@ class ArchiveExistsError(KonGuiError):
 
 class ConfirmationRequiredError(KonGuiError):
     """Raised when a destructive operation is called without confirmation."""
+
+
+class SnapshotError(KonGuiError):
+    """Raised when a safety copy cannot be made, read or restored.
+
+    When it is raised while *making* the copy, the operation that needed it
+    (apply, import) was not started.
+    """
+
+
+class SnapshotNotFoundError(SnapshotError):
+    """Raised when a safety copy does not exist."""
 
 
 class NotImplementedOperationError(KonGuiError):

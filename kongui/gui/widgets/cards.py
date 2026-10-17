@@ -15,10 +15,12 @@ from PySide6.QtWidgets import (
 )
 
 from kongui.gui import icons
-from kongui.gui.formatting import format_date, format_relative, format_size, plural
+from kongui.gui.formatting import format_date, format_relative, format_size
+from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.state import ActivityEntry, Profile
 from kongui.gui.theme import get_theme
 from kongui.gui.widgets.common import Badge, Button, Card, IconTile, Label
+from kongui.gui.widgets.feedback import BusyBar
 
 MAX_CHIPS = 3
 
@@ -27,13 +29,13 @@ class StatCard(Card):
     """A summary figure with an icon, a caption and a hint."""
 
     def __init__(
-        self, icon_name: str, caption: str, value: str, hint: str = ""
+        self, icon_name: str, caption: Text, value: str, hint: str = ""
     ) -> None:
         """Creates the card.
 
         Args:
             icon_name: Icon shown in the tile.
-            caption: What the figure measures.
+            caption: What the figure measures (text or function returning it).
             value: The figure.
             hint: Optional small text under the figure.
         """
@@ -52,7 +54,7 @@ class StatCard(Card):
         outer.addWidget(self.value_label)
         outer.addWidget(self.hint_label)
         self.hint_label.setVisible(bool(hint))
-        self.setAccessibleName(f"{caption}: {value}")
+        self.setAccessibleName(f"{resolve_text(caption)}: {value}")
 
     def set_content(self, value: str, hint: str = "") -> None:
         """Updates the figure and the hint.
@@ -76,20 +78,35 @@ class ProfileCard(Card):
     apply_requested = Signal(str)
     export_requested = Signal(str)
     duplicate_requested = Signal(str)
+    overwrite_requested = Signal(str)
     remove_requested = Signal(str)
 
-    def __init__(self, profile: Profile, *, list_mode: bool = False) -> None:
+    def __init__(  # pylint: disable=too-many-arguments
+        self,
+        profile: Profile,
+        *,
+        list_mode: bool = False,
+        can_export: bool = True,
+        can_duplicate: bool = True,
+        locked: bool = False,
+        busy_text: str = "",
+    ) -> None:
         """Creates the card.
 
         Args:
             profile: The profile to show.
             list_mode: Lay out as a wide row instead of a tall card.
+            can_export: Show the export button.
+            can_duplicate: Offer "Duplicate" in the menu.
+            locked: Disable every action (another operation is running).
+            busy_text: If given, this card is the one being processed: the text
+                (for example ``"Applying…"``) and a progress bar are shown.
         """
         super().__init__(hoverable=True)
         self.profile_name = profile.name
         self.setProperty("profile", profile.name)
         self.set_active(profile.active)
-        self.setAccessibleName(f"Perfil {profile.name}")
+        self.setAccessibleName(self.tr("Profile {name}").format(name=profile.name))
         self._outer = QBoxLayout(QBoxLayout.Direction.TopToBottom, self)
         self._outer.setContentsMargins(18, 16, 18, 16)
         self._outer.setSpacing(14)
@@ -104,31 +121,46 @@ class ProfileCard(Card):
         self.name_label = Label(profile.name, "h2")
         names.addWidget(self.name_label)
         names.addWidget(
-            Label(f"Atualizado {format_relative(profile.modified)}", "caption")
+            Label(
+                self.tr("Updated {when}").format(
+                    when=format_relative(profile.modified)
+                ),
+                "caption",
+            )
         )
         head.addLayout(names, 1)
         self.badge: Optional[Badge] = None
         if profile.active:
-            self.badge = Badge("Ativo", "accent")
+            self.badge = Badge(self.tr("Active"), "accent")
             head.addWidget(self.badge, 0, Qt.AlignmentFlag.AlignTop)
         info.addLayout(head)
-        self.description_label = Label(profile.description, "muted", wrap=True)
-        info.addWidget(self.description_label)
-        chips = QHBoxLayout()
-        chips.setSpacing(6)
-        for section in profile.sections[:MAX_CHIPS]:
-            chips.addWidget(Badge(section.split(" (", maxsplit=1)[0]))
-        extra = len(profile.sections) - MAX_CHIPS
-        if extra > 0:
-            chips.addWidget(Badge(f"+{extra}"))
-        chips.addStretch(1)
-        info.addLayout(chips)
-        meta = Label(
-            f"{format_size(profile.size_mb)} · {plural(len(profile.sections), 'seção', 'seções')}"
-            f" · {format_date(profile.modified)}",
-            "caption",
-        )
-        info.addWidget(meta)
+        self.description_label: Optional[Label] = None
+        if profile.description:
+            self.description_label = Label(profile.description, "muted", wrap=True)
+            info.addWidget(self.description_label)
+        if profile.sections:
+            chips = QHBoxLayout()
+            chips.setSpacing(6)
+            for section in profile.sections[:MAX_CHIPS]:
+                chips.addWidget(Badge(section.split(" (", maxsplit=1)[0]))
+            extra = len(profile.sections) - MAX_CHIPS
+            if extra > 0:
+                chips.addWidget(Badge(f"+{extra}"))
+            chips.addStretch(1)
+            info.addLayout(chips)
+        parts = [format_size(profile.size_mb)]
+        if profile.sections:
+            parts.append(self.tr("%n section(s)", "", len(profile.sections)))
+        parts.append(format_date(profile.modified))
+        info.addWidget(Label(" · ".join(parts), "caption"))
+        self.busy_label: Optional[Label] = None
+        self.busy_bar: Optional[BusyBar] = None
+        if busy_text:
+            self.busy_label = Label(busy_text, "caption")
+            self.busy_bar = BusyBar()
+            self.busy_bar.show()
+            info.addWidget(self.busy_label)
+            info.addWidget(self.busy_bar)
         info.addStretch(1)
         self._outer.addLayout(info, 1)
 
@@ -137,40 +169,64 @@ class ProfileCard(Card):
         self.actions_layout.setContentsMargins(0, 0, 0, 0)
         self.actions_layout.setSpacing(8)
         if profile.active:
-            self.apply_button = Button("Em uso", icon_name="check")
+            self.apply_button = Button(self.tr("In use"), icon_name="check")
             self.apply_button.setEnabled(False)
         else:
-            self.apply_button = Button("Aplicar", variant="primary", icon_name="play")
-        self.apply_button.setToolTip(f"Aplicar o perfil {profile.name}")
+            self.apply_button = Button(
+                self.tr("Apply"), variant="primary", icon_name="play"
+            )
+        self.apply_button.setToolTip(
+            self.tr("Apply profile {name}").format(name=profile.name)
+        )
         self.apply_button.clicked.connect(
             lambda: self.apply_requested.emit(self.profile_name)
         )
-        self.export_button = Button("Exportar", icon_name="export")
-        self.export_button.setToolTip(f"Exportar o perfil {profile.name}")
-        self.export_button.clicked.connect(
-            lambda: self.export_requested.emit(self.profile_name)
-        )
+        self.export_button: Optional[Button] = None
+        if can_export:
+            self.export_button = Button(self.tr("Export"), icon_name="export")
+            self.export_button.setToolTip(
+                self.tr("Export profile {name}").format(name=profile.name)
+            )
+            self.export_button.clicked.connect(
+                lambda: self.export_requested.emit(self.profile_name)
+            )
         self.more_button = Button(
-            variant="icon", icon_name="more", tooltip="Mais ações"
+            variant="icon", icon_name="more", tooltip=self.tr("More actions")
         )
-        self.more_button.setAccessibleName(f"Mais ações para {profile.name}")
+        self.more_button.setAccessibleName(
+            self.tr("More actions for {name}").format(name=profile.name)
+        )
         self.menu = QMenu(self.more_button)
-        self.duplicate_action = self.menu.addAction("Duplicar")
-        self.menu.addSeparator()
-        self.remove_action = self.menu.addAction("Remover…")
-        self.duplicate_action.triggered.connect(
-            lambda: self.duplicate_requested.emit(self.profile_name)
+        self.overwrite_action = self.menu.addAction(
+            self.tr("Overwrite with the current configuration…")
         )
+        self.overwrite_action.triggered.connect(
+            lambda: self.overwrite_requested.emit(self.profile_name)
+        )
+        self.duplicate_action = None
+        if can_duplicate:
+            self.duplicate_action = self.menu.addAction(self.tr("Duplicate"))
+            self.duplicate_action.triggered.connect(
+                lambda: self.duplicate_requested.emit(self.profile_name)
+            )
+        self.menu.addSeparator()
+        self.remove_action = self.menu.addAction(self.tr("Remove…"))
         self.remove_action.triggered.connect(
             lambda: self.remove_requested.emit(self.profile_name)
         )
         self.more_button.setMenu(self.menu)
         self.actions_layout.addWidget(self.apply_button)
-        self.actions_layout.addWidget(self.export_button)
+        if self.export_button is not None:
+            self.actions_layout.addWidget(self.export_button)
         self.actions_layout.addStretch(1)
         self.actions_layout.addWidget(self.more_button)
         self._outer.addWidget(self.actions, 0)
         self.set_list_mode(list_mode)
+        self.locked = locked or bool(busy_text)
+        if self.locked:
+            self.actions.setEnabled(False)
+        if busy_text:
+            self.setAccessibleDescription(busy_text)
 
     def set_list_mode(self, list_mode: bool) -> None:
         """Switches between the tall card and the wide row.

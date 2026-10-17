@@ -20,6 +20,68 @@ except ImportError:  # pragma: no cover - depends on the machine
     HAVE_QT = False
 
 
+class ManualExecutor:
+    """Executor that queues jobs until the test runs them.
+
+    It lets a test look at the "loading" state: the job is accepted but nothing
+    has happened yet; :meth:`run_next` runs the work and delivers the result.
+
+    Attributes:
+        queue: Pending ``(work, on_done)`` pairs.
+    """
+
+    def __init__(self) -> None:
+        """Creates an empty queue."""
+        self.queue: list = []
+
+    def submit(self, work, on_done) -> None:
+        """Queues a job."""
+        self.queue.append((work, on_done))
+
+    def run_next(self) -> bool:
+        """Runs the oldest queued job and delivers its result.
+
+        Returns:
+            bool: ``False`` if the queue was empty.
+        """
+        if not self.queue:
+            return False
+        work, on_done = self.queue.pop(0)
+        try:
+            value, error = work(), None
+        except Exception as exc:  # pylint: disable=broad-except
+            value, error = None, exc
+        on_done(value, error)
+        return True
+
+    def shutdown(self) -> None:
+        """Drops pending jobs."""
+        self.queue.clear()
+
+
+def pin_language(case: unittest.TestCase, locale_name: str = "pt_BR") -> None:
+    """Makes the interface run as if the system locale were ``locale_name``.
+
+    The detection reads the locale through ``kongui.gui.i18n.system_locale_name``,
+    which is patched here; the language is installed at once (a window applies it
+    again from its settings, with the same result) and removed at cleanup, so one
+    test never leaks its language into the next.
+
+    Args:
+        case: The running test.
+        locale_name: Locale name, for example ``pt_BR``, ``en_US`` or ``pt_PT``.
+    """
+    from kongui.gui import i18n
+    from kongui.gui.app import create_app
+
+    create_app([])
+    patcher = mock.patch.object(i18n, "system_locale_name", return_value=locale_name)
+    patcher.start()
+    case.addCleanup(patcher.stop)
+    case.addCleanup(i18n.manager().uninstall)
+    i18n.manager().apply_preference("")
+
+
 @unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
 class GuiTestCase(unittest.TestCase):
     """Base class: one shared ``QApplication``, a private ``$HOME``, cleanup.
@@ -31,6 +93,9 @@ class GuiTestCase(unittest.TestCase):
 
     app: "QApplication"
     window = None
+    #: System locale the test pretends to run in (the texts asserted by most
+    #: tests are Brazilian Portuguese). Tests of other languages override it.
+    LANGUAGE = "pt_BR"
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -53,6 +118,7 @@ class GuiTestCase(unittest.TestCase):
         from kongui.gui.theme import ThemeMode, get_theme
 
         self.addCleanup(lambda: get_theme().set_mode(ThemeMode.SYSTEM))
+        pin_language(self, self.LANGUAGE)
 
     def make_window(self, **kwargs):
         """Creates and shows a main window with in-memory settings.
@@ -63,10 +129,14 @@ class GuiTestCase(unittest.TestCase):
         Returns:
             MainWindow: The visible window (closed automatically at cleanup).
         """
+        from kongui.gui.backend import FakeBackend
         from kongui.gui.main_window import MainWindow
         from kongui.gui.state import AppSettings
+        from kongui.gui.tasks import InlineExecutor
 
         kwargs.setdefault("settings", AppSettings())
+        kwargs.setdefault("backend", FakeBackend())
+        kwargs.setdefault("executor", InlineExecutor())
         window = MainWindow(**kwargs)
         window.show()
         self.addCleanup(self.destroy_window, window)
@@ -82,10 +152,27 @@ class GuiTestCase(unittest.TestCase):
         """
         from PySide6.QtCore import QEvent
 
-        window.close()
+        try:
+            window.close()
+        except RuntimeError:  # already deleted by an earlier call
+            return
         window.deleteLater()
         self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()
+
+    def backend_do(self, window, operation: str, *args, **kwargs) -> None:
+        """Changes the window's fake backend behind the interface's back, then
+        reloads the list (as if another program had changed the profiles).
+
+        Args:
+            window: The main window.
+            operation: Backend method name.
+            *args: Positional arguments of the method.
+            **kwargs: Keyword arguments of the method.
+        """
+        getattr(window.backend, operation)(*args, **kwargs)
+        window.controller.refresh()
+        self.flush()
 
     def flush(self) -> None:
         """Processes pending events."""
@@ -151,3 +238,52 @@ class GuiTestCase(unittest.TestCase):
         patcher = mock.patch.object(ProfileDialog, "exec", new=fake_exec)
         patcher.start()
         return patcher
+
+
+class WindowCase(GuiTestCase):
+    """A window with a fake backend whose work only runs when told to."""
+
+    def open_window(self, backend=None, load=True, page="profiles"):
+        """Opens the window and (optionally) finishes the first listing.
+
+        Args:
+            backend: Backend to use; a fresh ``FakeBackend`` by default.
+            load: Run the initial listing.
+            page: Page to show.
+
+        Returns:
+            MainWindow: The window.
+        """
+        from kongui.gui.backend import FakeBackend
+
+        self.backend = backend or FakeBackend()
+        self.executor = ManualExecutor()
+        window = self.make_window(backend=self.backend, executor=self.executor)
+        self.outcomes: List = []
+        window.controller.operation_finished.connect(self.outcomes.append)
+        window.show_page(page)
+        self.flush()
+        if load:
+            self.run_all()
+        return window
+
+    def run_all(self) -> None:
+        """Runs every queued job."""
+        self.flush()
+        while self.executor.run_next():
+            self.flush()
+
+    def run_one(self) -> None:
+        """Runs exactly one queued job."""
+        self.assertTrue(self.executor.run_next(), "nothing was queued")
+        self.flush()
+
+    @staticmethod
+    def names(page):
+        """Names of the cards shown by the profiles page."""
+        return [card.profile_name for card in page.cards()]
+
+    @staticmethod
+    def card(page, name):
+        """The card of one profile."""
+        return next(c for c in page.cards() if c.profile_name == name)

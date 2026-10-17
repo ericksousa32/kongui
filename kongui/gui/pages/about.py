@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import platform
+from typing import Dict, List, Tuple
 
 import PySide6
-from PySide6.QtCore import Qt, QUrl, qVersion
+from PySide6.QtCore import QT_TRANSLATE_NOOP, Qt, QUrl, qVersion
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
 
 from kongui import __version__
 from kongui.gui.context import AppContext
+from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.pages.base import Page
 from kongui.gui.widgets.common import Badge, Button, Card, IconTile, Label, Separator
 from kongui.gui.widgets.rows import SettingRow
@@ -23,8 +25,8 @@ class AboutPage(Page):
     """Version, credits and environment."""
 
     key = "about"
-    title = "Sobre"
-    subtitle = "Informações sobre o aplicativo"
+    TITLE = QT_TRANSLATE_NOOP("AboutPage", "About")
+    SUBTITLE = QT_TRANSLATE_NOOP("AboutPage", "Information about the application")
     icon_name = "info"
 
     def __init__(self, ctx: AppContext) -> None:
@@ -48,16 +50,22 @@ class AboutPage(Page):
         texts.addLayout(heading)
         texts.addWidget(
             Label(
-                "Interface gráfica para salvar, aplicar e compartilhar a aparência do KDE Plasma, "
-                "construída sobre o Konsave.",
+                lambda: self.tr(
+                    "Graphical interface to save, apply and share your KDE Plasma "
+                    "customization, built on top of Konsave."
+                ),
                 "muted",
                 wrap=True,
             )
         )
         buttons = QHBoxLayout()
-        self.repository_button = Button("Repositório", icon_name="folder")
+        self.repository_button = Button(
+            lambda: self.tr("Repository"), icon_name="folder"
+        )
         self.repository_button.clicked.connect(lambda: self.open_url(REPOSITORY_URL))
-        self.konsave_button = Button("Projeto Konsave", icon_name="folder")
+        self.konsave_button = Button(
+            lambda: self.tr("Konsave project"), icon_name="folder"
+        )
         self.konsave_button.clicked.connect(lambda: self.open_url(KONSAVE_URL))
         buttons.addWidget(self.repository_button)
         buttons.addWidget(self.konsave_button)
@@ -70,36 +78,66 @@ class AboutPage(Page):
         notice = Card()
         notice_layout = QVBoxLayout(notice)
         notice_layout.setContentsMargins(20, 16, 20, 16)
-        notice_layout.addWidget(
-            Badge("Protótipo visual", "warning"), 0, Qt.AlignmentFlag.AlignLeft
-        )
-        notice_layout.addWidget(
-            Label(
-                "Esta versão usa dados fictícios. Nenhuma operação do Konsave é executada e "
-                "nenhum arquivo do sistema é lido ou alterado.",
-                wrap=True,
-            )
-        )
+        badge, text = self._notice_texts(ctx.backend.capabilities.demo)
+        notice_layout.addWidget(Badge(badge, "warning"), 0, Qt.AlignmentFlag.AlignLeft)
+        notice_layout.addWidget(Label(text, wrap=True))
         self.body.addWidget(notice)
 
         info = Card()
         info_layout = QVBoxLayout(info)
         info_layout.setContentsMargins(20, 16, 20, 14)
         info_layout.setSpacing(2)
-        info_layout.addWidget(self.section_title("Ambiente"))
+        info_layout.addWidget(self.section_title(lambda: self.tr("Environment")))
         info_layout.addWidget(Separator())
-        self.info_values = {
-            "Versão do KonGUI": __version__,
-            "Qt": qVersion(),
-            "PySide6": PySide6.__version__,
-            "Python": platform.python_version(),
-            "Sistema": f"{platform.system()} {platform.release()}",
-            "Licença": "GPL-3.0, como o Konsave",
-        }
-        for name, value in self.info_values.items():
+        for name, value in self._info_rows():
             info_layout.addWidget(SettingRow(name, "", Label(value, "muted")))
         self.body.addWidget(info)
         self.body.addStretch(1)
+
+    def _notice_texts(self, demo: bool) -> Tuple[Text, Text]:
+        """The badge and the notice of the page, as texts that follow the language."""
+        if demo:
+            return (
+                lambda: self.tr("Visual prototype"),
+                lambda: self.tr(
+                    "This version uses fictitious data. No Konsave operation is run "
+                    "and no system file is read or changed."
+                ),
+            )
+        return (
+            lambda: self.tr("In development"),
+            lambda: self.tr(
+                "Listing, saving, overwriting, applying, removing, clearing, "
+                "importing and exporting profiles use the real Konsave, and "
+                "conf.yaml can be edited (with validation and backup). Before "
+                "applying or importing, the files that would be overwritten are "
+                "copied and can be restored in Settings."
+            ),
+        )
+
+    def _info_rows(self) -> List[Tuple[Text, Text]]:
+        """The environment rows as ``(name, value)``; each may follow the language."""
+        engine_version = self.ctx.backend.engine_version
+        rows: List[Tuple[Text, Text]] = [
+            (lambda: self.tr("KonGUI version"), __version__),
+        ]
+        if engine_version:
+            rows.append((lambda: self.tr("Konsave version"), engine_version))
+        rows += [
+            ("Qt", qVersion()),
+            ("PySide6", PySide6.__version__),
+            ("Python", platform.python_version()),
+            (lambda: self.tr("System"), f"{platform.system()} {platform.release()}"),
+            (lambda: self.tr("License"), lambda: self.tr("GPL-3.0, same as Konsave")),
+        ]
+        return rows
+
+    @property
+    def info_values(self) -> Dict[str, str]:
+        """The environment rows as shown now: name -> value."""
+        return {
+            resolve_text(name): resolve_text(value) for name, value in self._info_rows()
+        }
 
     def open_url(self, url: str) -> bool:
         """Opens a link in the default browser.

@@ -371,6 +371,15 @@ QPushButton[variant="segment"]:checked {{ background: {accent_soft}; color: {c['
 #Page QLineEdit:focus, #Dialog QLineEdit:focus, QLineEdit#SearchField:focus {{ border-color: {c['accent']}; }}
 #Page QLineEdit:disabled, #Dialog QLineEdit:disabled {{ color: {c['muted']}; }}
 #Page QLineEdit[invalid="true"], #Dialog QLineEdit[invalid="true"] {{ border-color: {c['danger']}; }}
+#Page QListWidget, #Dialog QListWidget, #Page QPlainTextEdit, #Dialog QPlainTextEdit {{
+    background: {c['surface']}; border: 1px solid {c['border']}; border-radius: 8px;
+    padding: 4px; color: {c['text']}; selection-background-color: {c['accent']};
+    selection-color: {c['on_accent']}; }}
+#Page QListWidget:focus, #Dialog QListWidget:focus, #Page QPlainTextEdit:focus,
+#Dialog QPlainTextEdit:focus {{ border-color: {c['accent']}; }}
+#Page QListWidget::item, #Dialog QListWidget::item {{ padding: 6px 8px; border-radius: 6px; }}
+#Page QListWidget::item:selected, #Dialog QListWidget::item:selected {{
+    background: {accent_soft}; color: {c['accent']}; }}
 #Page QCheckBox, #Dialog QCheckBox, #Page QRadioButton {{ spacing: 8px; color: {c['text']}; }}
 #Dialog, #Dialog QWidget#DialogBody {{ background: {c['window']}; }}
 #Dialog QLabel, #Page QLabel {{ color: {c['text']}; }}

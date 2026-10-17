@@ -618,18 +618,10 @@ class WipeTests(MockedServiceCase):
 
 
 class NotImplementedTests(MockedServiceCase):
-    """Operations that are documented but absent."""
+    """Nothing is left unimplemented since the safety copies exist."""
 
-    def test_each_one_raises_with_its_documented_reason(self):
-        self.assertEqual(
-            set(NOT_IMPLEMENTED_OPERATIONS),
-            {"create_backup", "restore_backup", "inspect_archive", "replace_profile"},
-        )
-        for name, reason in NOT_IMPLEMENTED_OPERATIONS.items():
-            with self.subTest(operation=name):
-                with self.assertRaises(NotImplementedOperationError) as caught:
-                    getattr(self.profiles, name)("anything", key="value")
-                self.assertEqual(str(caught.exception), reason)
+    def test_the_list_of_missing_operations_is_empty(self):
+        self.assertEqual(dict(NOT_IMPLEMENTED_OPERATIONS), {})
 
 
 class ResultTests(unittest.TestCase):

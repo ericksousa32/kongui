@@ -18,15 +18,15 @@ GUI_SOURCES = sorted((ROOT / "kongui" / "gui").rglob("*.py"))
 class StartupTests(GuiTestCase):
     """The main window and its fixed structure."""
 
-    def test_window_opens_with_five_pages_in_order(self):
+    def test_window_opens_with_six_pages_in_order(self):
         window = self.make_window()
         self.assertTrue(window.isVisible())
         self.assertEqual(
             list(window.pages),
-            ["dashboard", "profiles", "transfer", "settings", "about"],
+            ["dashboard", "profiles", "transfer", "settings", "config", "about"],
         )
         self.assertEqual(window.sidebar.keys(), list(window.pages))
-        self.assertEqual(window.stack.count(), 5)
+        self.assertEqual(window.stack.count(), 6)
 
     def test_starts_on_the_dashboard(self):
         window = self.make_window()
@@ -39,7 +39,14 @@ class StartupTests(GuiTestCase):
         labels = [window.sidebar.button(key).text() for key in window.sidebar.keys()]
         self.assertEqual(
             labels,
-            ["Dashboard", "Perfis", "Importar / Exportar", "Configurações", "Sobre"],
+            [
+                "Dashboard",
+                "Perfis",
+                "Importar / Exportar",
+                "Configurações",
+                "Editar .YAML",
+                "Sobre",
+            ],
         )
         self.assertEqual(window.sidebar.minimumWidth(), window.sidebar.maximumWidth())
         for key in window.sidebar.keys():
@@ -107,6 +114,7 @@ class DocumentationTests(unittest.TestCase):
             "`dashboard`",
             "`profiles`",
             "`transfer`",
+            "`config`",
             "`settings`",
             "`about`",
             "Ctrl+1",
@@ -114,6 +122,7 @@ class DocumentationTests(unittest.TestCase):
             "Ctrl+3",
             "Ctrl+4",
             "Ctrl+5",
+            "Ctrl+6",
             "Ctrl+F",
             "Ctrl+N",
             "Ctrl+S",
@@ -148,7 +157,9 @@ class PreferencesTests(GuiTestCase):
 
         settings = AppSettings()
         self.assertEqual(settings.get("theme"), "system")
-        self.assertIs(settings.get("confirm_apply"), True)
+        self.assertEqual(settings.get("toast_seconds"), 5)
+        with self.assertRaises(KeyError):
+            settings.get("confirm_apply")
         self.assertEqual(settings.get("profiles_view"), "grid")
 
     def test_values_are_saved_to_the_given_file_only(self):
@@ -157,12 +168,12 @@ class PreferencesTests(GuiTestCase):
         path = os.path.join(self.home, "prefs.ini")
         first = AppSettings(path)
         first.set("theme", "dark")
-        first.set("confirm_apply", False)
+        first.set("last_applied", "Gaming")
         first.set("toast_seconds", 9)
         first.set("profiles_view", "list")
         second = AppSettings(path)
         self.assertEqual(second.get("theme"), "dark")
-        self.assertIs(second.get("confirm_apply"), False)
+        self.assertEqual(second.get("last_applied"), "Gaming")
         self.assertEqual(second.get("toast_seconds"), 9)
         self.assertEqual(second.get("profiles_view"), "list")
         self.assertEqual(os.listdir(self.home), ["prefs.ini"])
@@ -172,14 +183,14 @@ class PreferencesTests(GuiTestCase):
 
         path = os.path.join(self.home, "prefs.ini")
         Path(path).write_text(
-            "[General]\ntheme=neon\nprofiles_view=cube\ntoast_seconds=abc\nconfirm_apply=maybe\n",
+            "[General]\ntheme=neon\nprofiles_view=cube\ntoast_seconds=abc\nlast_applied=ok\n",
             encoding="utf-8",
         )
         settings = AppSettings(path)
         self.assertEqual(settings.get("theme"), "system")
         self.assertEqual(settings.get("profiles_view"), "grid")
         self.assertEqual(settings.get("toast_seconds"), 5)
-        self.assertIs(settings.get("confirm_apply"), False)
+        self.assertEqual(settings.get("last_applied"), "ok")
 
     def test_toast_seconds_is_clamped_and_unknown_keys_refused(self):
         from kongui.gui.state import AppSettings
@@ -207,6 +218,26 @@ class PreferencesTests(GuiTestCase):
 
 class EntryPointTests(GuiTestCase):
     """``main`` and the module entry point."""
+
+    def test_main_reports_a_missing_konsave(self):
+        from kongui.core.errors import EngineLoadError
+        from kongui.gui import app
+
+        with mock.patch.object(
+            app.ServiceBackend, "create", side_effect=EngineLoadError("sem konsave")
+        ):
+            with mock.patch.object(app, "create_app") as create:
+                self.assertEqual(app.main([]), 1)
+        create.assert_not_called()
+
+    def test_demo_flag_builds_the_fake_backend(self):
+        from kongui.gui import app
+        from kongui.gui.backend import FakeBackend
+
+        self.assertIsInstance(app.build_backend(True), FakeBackend)
+        with mock.patch.object(app.ServiceBackend, "create") as create:
+            app.build_backend(False)
+        create.assert_called_once_with()
 
     def test_main_refuses_to_run_as_root(self):
         from kongui.core.errors import RunningAsRootError
@@ -236,9 +267,17 @@ class IsolationTests(unittest.TestCase):
     """The prototype must not reach Konsave or the services."""
 
     def test_importing_the_gui_does_not_load_konsave(self):
+        """No Konsave code with side effects runs at import time.
+
+        ``konsave`` itself (a package that only reads its version) and
+        ``konsave.lock`` (constants and classes, standard library only) are
+        loaded on purpose by ``kongui.core.lock``; ``consts`` (creates folders),
+        ``funcs`` and ``parse`` are only loaded by the engine, on demand.
+        """
         code = (
             "import sys, kongui.gui.main_window, kongui.gui.app;"
-            "bad=[m for m in sys.modules if m=='konsave' or m.startswith('konsave.')];"
+            "ok={'konsave','konsave.lock'};"
+            "bad=[m for m in sys.modules if (m=='konsave' or m.startswith('konsave.')) and m not in ok];"
             "print(bad)"
         )
         env = dict(os.environ, PYTHONPATH=str(ROOT), QT_QPA_PLATFORM="offscreen")
@@ -257,22 +296,42 @@ class IsolationTests(unittest.TestCase):
             self.assertEqual(result.stdout.strip(), "[]")
             self.assertEqual(os.listdir(home), [], "importing created files in HOME")
 
-    def test_gui_sources_do_not_use_services_engine_or_subprocess(self):
+    def test_only_the_backend_module_uses_services_engine_or_config(self):
         forbidden = re.compile(
             r"^\s*(?:from|import)\s+(?:konsave\b|kongui\.core\.(?:engine|profiles|config|cli)\b|subprocess\b)",
             re.MULTILINE,
         )
         self.assertTrue(GUI_SOURCES)
         for source in GUI_SOURCES:
+            if source.name == "backend.py":
+                continue
             with self.subTest(source=source.name):
                 self.assertIsNone(forbidden.search(source.read_text(encoding="utf-8")))
 
-    def test_only_safety_and_errors_are_taken_from_the_core(self):
+    def test_backend_never_imports_konsave_or_subprocess(self):
+        text = (ROOT / "kongui" / "gui" / "backend.py").read_text(encoding="utf-8")
+        self.assertIsNone(
+            re.search(r"^\s*(?:from|import)\s+(?:konsave\b|subprocess\b)", text, re.M)
+        )
+
+    def test_core_modules_used_by_the_gui(self):
         pattern = re.compile(r"^\s*from\s+kongui\.core\.(\w+)", re.MULTILINE)
-        used = set()
+        used = {}
         for source in GUI_SOURCES:
-            used.update(pattern.findall(source.read_text(encoding="utf-8")))
-        self.assertLessEqual(used, {"safety", "errors"})
+            for module in pattern.findall(source.read_text(encoding="utf-8")):
+                used.setdefault(module, set()).add(source.name)
+        allowed = {
+            "safety",
+            "errors",
+            "engine",
+            "profiles",
+            "config",
+            "results",
+            "confedit",
+        }
+        self.assertLessEqual(set(used), allowed)
+        for module in ("engine", "profiles", "config"):
+            self.assertLessEqual(used.get(module, set()), {"backend.py"}, module)
 
 
 if __name__ == "__main__":
