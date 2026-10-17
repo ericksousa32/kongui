@@ -1,204 +1,213 @@
-# Interface ligada aos serviços
+# Interface wired to the services
 
-A janela deixa de usar só dados fictícios: as seis operações de perfil passam
-pelo `ProfileService` do KonGUI (e, por ele, pelo Konsave original). O código de
-`konsave/` **não foi alterado**.
+The window no longer uses only fictitious data: the profile operations go through
+KonGUI's `ProfileService` (and, through it, the original Konsave). The code in
+`konsave/` was **not changed**, except for the cross-process lock described in
+[`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md).
 
-## 1. Como usar
+Note on interface texts: the interface is currently in Brazilian Portuguese.
+Labels and messages are quoted below as they appear on screen, with an English
+gloss in parentheses where needed.
+
+## 1. How to use
 
 ```bash
-python3 -m kongui.gui           # perfis reais do usuário atual
-python3 -m kongui.gui --demo    # dados fictícios; nada é gravado nem aplicado
+python3 -m kongui.gui           # real profiles of the current user
+python3 -m kongui.gui --demo    # fictitious data; nothing is written or applied
 ```
 
-O programa recusa rodar como root e avisa se o Konsave não puder ser carregado.
-Importar e exportar estão descritos na §4.
+The program refuses to run as root and warns if Konsave cannot be loaded.
+Import and export are described in §4.
 
-## 2. Arquitetura
+## 2. Architecture
 
 ```
-Página ──► ProfileActions (diálogos) ──► ProfileController ──► Executor (thread)
-   ▲                                          │                     │
-   └────────── ProfileStore ◄─────────────────┘            ProfileBackend
+Page ──► ProfileActions (dialogs) ──► ProfileController ──► Executor (thread)
+  ▲                                          │                     │
+  └────────── ProfileStore ◄─────────────────┘            ProfileBackend
                                                   ServiceBackend │ FakeBackend
 ```
 
-* `ProfileBackend` (`backend.py`) é o que a interface precisa. `ServiceBackend`
-  chama `ProfileService`; `FakeBackend` guarda perfis em memória (modo demo e
-  testes). Os métodos bloqueiam e nunca tocam em objetos Qt.
-* `ProfileController` (`controller.py`) roda **uma operação por vez**. Pedidos
-  durante uma operação são recusados (a GUI avisa “Aguarde”). Depois de cada
-  operação, mesmo que ela falhe, a lista é lida de novo e publicada no
-  `ProfileStore`, e um `Outcome` é emitido.
-* `tasks.py`: `ThreadExecutor` executa o trabalho numa thread e devolve o
-  resultado à thread da interface por sinal; a interface não congela.
-* **Nada que toca o disco roda na thread da interface**: leituras (`conf.yaml`,
-  backups, inspeção de `.knsv`) passam por `controller.background`, e a
-  verificação da pasta de exportação (`probe_export`) também. A janela **não
-  fecha** enquanto uma operação roda (aviso “Operação em andamento”): o Konsave
-  não pode ser interrompido e fechar deixaria o processo órfão.
-* `OutcomeNotifier` (`actions.py`) mostra o aviso (erros ficam até serem
-  fechados) e registra a atividade.
-* `messages.py` traduz resultados e exceções para pt-BR. Exceções desconhecidas
-  aparecem com o tipo, para que um bug não fique escondido.
+* `ProfileBackend` (`backend.py`) is what the interface needs. `ServiceBackend`
+  calls `ProfileService`; `FakeBackend` keeps profiles in memory (demo mode and
+  tests). The methods block and never touch Qt objects.
+* `ProfileController` (`controller.py`) runs **one operation at a time**. Requests
+  made during an operation are refused (the GUI says "Aguarde", wait). After each
+  operation, even if it fails, the list is read again and published to the
+  `ProfileStore`, and an `Outcome` is emitted.
+* `tasks.py`: `ThreadExecutor` runs the work in a thread and hands the result back
+  to the interface thread through a signal; the interface does not freeze.
+* **Nothing that touches the disk runs on the interface thread**: reads
+  (`conf.yaml`, backups, `.knsv` inspection) go through `controller.background`,
+  and so does the check of the export folder (`probe_export`). The window **does
+  not close** while an operation runs (notice "Operação em andamento", operation
+  in progress): Konsave cannot be interrupted, and closing would leave the process
+  orphaned.
+* `OutcomeNotifier` (`actions.py`) shows the notice (errors stay until closed) and
+  records the activity.
+* `messages.py` translates results and exceptions to pt-BR. Unknown exceptions
+  appear with their type, so that a bug does not stay hidden.
 
-## 3. As seis operações
+## 3. The six operations
 
-| Operação | Serviço | Carregamento | Confirmação |
+| Operation | Service | Loading | Confirmation |
 |---|---|---|---|
-| Listar | `list_profiles` | “Carregando…” na página e no painel; barra fina sob a barra superior | — |
-| Salvar | `ConfigService.ensure_default_config` + `save` | botões travados, barra ocupada | — (nome validado antes) |
-| Sobrescrever | `ProfileService.replace` | cartão mostra “Sobrescrevendo…” | diálogo destrutivo |
-| Aplicar | `apply` | cartão mostra “Aplicando…” | diálogo destrutivo |
-| Remover | `remove` | cartão mostra “Removendo…” | diálogo destrutivo |
-| Limpar todos | `wipe_all` | botões travados | diálogo destrutivo **e** digitar `APAGAR` |
-| Exportar | `ProfileService.export` | barra ocupada, botão travado | só para substituir um arquivo (ver §4) |
-| Importar | `ProfileService.import_profile` | verificação em segundo plano, depois barra ocupada | sempre |
+| List | `list_profiles` | "Carregando…" (Loading…) on the page and panel; thin bar under the top bar | — |
+| Save | `ConfigService.ensure_default_config` + `save` | buttons locked, busy bar | — (name validated first) |
+| Overwrite | `ProfileService.replace` | card shows "Sobrescrevendo…" | destructive dialog |
+| Apply | `apply` | card shows "Aplicando…" | destructive dialog |
+| Remove | `remove` | card shows "Removendo…" | destructive dialog |
+| Clear all | `wipe_all` | buttons locked | destructive dialog **and** typing `APAGAR` |
+| Export | `ProfileService.export` | busy bar, button locked | only to replace a file (see §4) |
+| Import | `ProfileService.import_profile` | background check, then busy bar | always |
 
-Cada erro aparece como aviso persistente com a causa; falha ao listar mostra uma
-faixa com “Tentar novamente”. As camadas inferiores também exigem `confirmed=True`
-(valores “truthy” como `1` são recusados).
+Each error appears as a persistent notice with the cause; a failure to list shows a
+strip with "Tentar novamente" (Try again). The lower layers also require
+`confirmed=True` ("truthy" values such as `1` are refused).
 
-### Por que `replace` existe (única mudança fora da GUI)
+### Why `replace` exists (the only change outside the GUI)
 
-`konsave save -f` **mescla** o perfil antigo em vez de substituí-lo: arquivos que
-não existem mais continuam no perfil. Para “Sobrescrever” de verdade foi
-acrescentado `ProfileService.replace`, sem mexer no Konsave: salva num nome
-temporário (`.kongui-…`), confere o resultado e troca por `rename` com
-reversão se algo falhar. Entradas com esse prefixo nunca são listadas.
+`konsave save -f` **merges** the old profile instead of replacing it: files that no
+longer exist stay in the profile. For a real "Sobrescrever" (Overwrite),
+`ProfileService.replace` was added, without touching Konsave: it saves under a
+temporary name (`.kongui-…`), checks the result and swaps with `rename`, rolling
+back if anything fails. Entries with that prefix are never listed.
 
-### Operações sobre o `conf.yaml`
+### Operations on `conf.yaml`
 
-`ProfileBackend` também expõe `load_config`, `check_config`, `save_config`,
-`list_config_backups`, `read_config_backup` e `restore_config` (ver
-[`GUI_CONFIG.md`](GUI_CONFIG.md)). As leituras rodam em segundo plano sem contar
-como operação; `save_config` e `restore_config` usam o mesmo ciclo das outras
-(barra ocupada, aviso de sucesso ou erro) e não recarregam a lista de perfis.
+`ProfileBackend` also exposes `load_config`, `check_config`, `save_config`,
+`list_config_backups`, `read_config_backup` and `restore_config` (see
+[`GUI_CONFIG.md`](GUI_CONFIG.md)). Reads run in the background without counting as
+an operation; `save_config` and `restore_config` use the same cycle as the others
+(busy bar, success or error notice) and do not reload the profile list.
 
-## 4. Importar e exportar
+## 4. Import and export
 
-Formato: o `.knsv` **original** do Konsave (um zip com `conf.yaml`, `save/` e
-`export/`). A GUI não cria nenhum formato novo; os testes trocam arquivos com o
-`python -m konsave` original nos dois sentidos.
+Format: Konsave's **original** `.knsv` (a zip with `conf.yaml`, `save/` and
+`export/`). The GUI creates no new format; the tests exchange files with the
+original `python -m konsave` in both directions.
 
-### Opções do CLI e como aparecem
+### CLI options and how they appear
 
-| CLI original | Na interface | Comportamento real |
+| Original CLI | In the interface | Real behavior |
 |---|---|---|
-| `-e PERFIL` | lista “Perfil” | o perfil precisa existir e ter `conf.yaml` válido |
-| `-d PASTA` | “Pasta de destino” + **Escolher…** | o original usa a pasta atual; aqui o padrão é `~/Downloads`. A pasta precisa existir e aceitar escrita (checado antes, com mensagem clara). `~` vale a home do motor |
-| `-n NOME` | “Nome do arquivo (sem extensão)” | começa igual ao perfil; mesmas regras de nome do core (sem `/`, `.`/`..`, `-` inicial, `.knsv`/`.zip`) |
-| `-f` | diálogo “O arquivo já existe” | ver abaixo |
-| `-i ARQUIVO` | área de soltar / **Escolher arquivo** | só `.knsv`; o arquivo é verificado (somente leitura) assim que é escolhido |
-| (nenhuma) | “Nome do perfil importado” | o original usa o nome do arquivo; ver “Renomear” |
-| (nenhuma) | “Aplicar o perfil depois de importar” | segundo passo separado: se falhar, o perfil continua importado e um aviso explica |
+| `-e PROFILE` | "Perfil" list | the profile must exist and have a valid `conf.yaml` |
+| `-d FOLDER` | "Pasta de destino" (Destination folder) + **Escolher…** (Choose…) | the original uses the current folder; here the default is `~/Downloads`. The folder must exist and accept writing (checked first, with a clear message). `~` means the engine's home |
+| `-n NAME` | "Nome do arquivo (sem extensão)" (File name, without extension) | starts equal to the profile; same core name rules (no `/`, `.`/`..`, leading `-`, `.knsv`/`.zip`) |
+| `-f` | "O arquivo já existe" (The file already exists) dialog | see below |
+| `-i FILE` | drop area / **Escolher arquivo** (Choose file) | `.knsv` only; the file is checked (read-only) as soon as it is chosen |
+| (none) | "Nome do perfil importado" (Imported profile name) | the original uses the file name; see "Rename" |
+| (none) | "Aplicar o perfil depois de importar" (Apply the profile after importing) | a separate second step: if it fails, the profile stays imported and a warning explains |
 
-### Conflito ao exportar (semântica do `-f`)
+### Conflict on export (semantics of `-f`)
 
-Sem `-f` o original **não pergunta**: acrescenta data e hora ao nome. Com `-f`
-substitui. O `force` do original também apaga uma pasta com o nome do arquivo,
-por isso a GUI nunca o repassa para pastas. Não há seletor: quando o destino já
-existe, a GUI **sempre pergunta**:
+Without `-f` the original **does not ask**: it appends date and time to the name.
+With `-f` it replaces. The original's `force` also deletes a folder named like the
+file, which is why the GUI never passes it for folders. There is no selector: when
+the destination already exists, the GUI **always asks**:
 
-| Situação | Diálogo “O arquivo já existe” |
+| Situation | "O arquivo já existe" dialog |
 |---|---|
-| existe um `.knsv` | **Substituir** (só um arquivo regular), **Usar nome único** (`nome-2.knsv`, `nome-3.knsv`…) ou Cancelar |
-| existe pasta, `.zip` ou link com esse nome | só **Usar nome único** ou Cancelar (o original apagaria a pasta) |
+| a `.knsv` exists | **Replace** (regular file only), **Use unique name** (`name-2.knsv`, `name-3.knsv`…) or Cancel |
+| a folder, `.zip` or link with that name exists | only **Use unique name** or Cancel (the original would delete the folder) |
 
-Quando nada existe, a exportação vai com a política `error`: se alguém criar o
-arquivo no meio do caminho, ele **não** é sobrescrito. Diferença conhecida: o
-nome único do original é `nome_fDD-MM-AAAA:HH-MM-SS`; o do core é `nome-2`.
+When nothing exists, the export runs with the `error` policy: if someone creates the
+file along the way, it is **not** overwritten. Known difference: the original's
+unique name is `name_fDD-MM-YYYY:HH-MM-SS`; the core's is `name-2`.
 
-### Importar
+### Import
 
-* **Sempre confirma**: o original grava a seção `export` do arquivo direto no
-  sistema (por exemplo, `~/.local/share/icons`), sobrescrevendo (antes, os arquivos
-  que seriam sobrescritos são copiados: ver §7). O
-  diálogo lista as seções que serão gravadas.
-* Nunca substitui um perfil: se o nome já existe, o formulário recusa (o
-  original também recusa).
-* `ProfileService.inspect_archive` (novo, somente leitura) faz as mesmas
-  verificações da importação — zip legível, nomes de membros seguros, `conf.yaml`
-  e `save/` presentes, configuração válida e destinos dentro da home — e mostra
-  nome, tamanho e seções antes de qualquer gravação. Arquivo ausente, não-zip,
-  sem `conf.yaml`, com caminhos inseguros ou sem permissão de leitura aparecem
-  como erro no formulário.
-* Destinos **fora da home** continuam recusados (`allow_outside_home` não é
-  exposto na interface).
-* **Renomear**: o original nomeia o perfil pelo arquivo. Para usar outro nome,
-  o *mesmo* arquivo é copiado para uma pasta temporária privada com o nome
-  novo e importado de lá; a cópia é apagada no fim, mesmo em erro, e o original
-  não é tocado. Não é um formato novo.
+* **Always confirms**: the original writes the archive's `export` section straight
+  into the system (for example `~/.local/share/icons`), overwriting (beforehand,
+  the files that would be overwritten are copied: see §7). The dialog lists the
+  sections that will be written.
+* Never replaces a profile: if the name already exists, the form refuses (the
+  original also refuses).
+* `ProfileService.inspect_archive` (new, read-only) performs the same checks as
+  the import — readable zip, safe member names, `conf.yaml` and `save/` present,
+  valid configuration and destinations inside the home — and shows name, size and
+  sections before anything is written. A missing file, a non-zip, one without
+  `conf.yaml`, with unsafe paths or without read permission appears as an error in
+  the form.
+* Destinations **outside the home** are still refused (`allow_outside_home` is not
+  exposed in the interface).
+* **Rename**: the original names the profile after the file. To use another name,
+  the *same* file is copied to a private temporary folder under the new name and
+  imported from there; the copy is deleted at the end, even on error, and the
+  original is not touched. It is not a new format.
 
-### Erros
+### Errors
 
-Permissão negada, arquivo ou pasta ausente e demais `OSError` viram mensagens em
-pt-BR (e não são registrados como bug). Falhas de exportação ficam na tela até
-serem fechadas e o formulário continua preenchido.
+Permission denied, a missing file or folder and other `OSError`s become messages in
+pt-BR (and are not logged as bugs). Export failures stay on screen until closed and
+the form stays filled in.
 
-## 5. Testes
+## 5. Tests
 
-Nenhum teste aplica perfil na sessão real: usam `FakeBackend` ou `$HOME`
-temporário, e os testes com arquivos recusam rodar como root.
+No test applies a profile to the real session: they use `FakeBackend` or a
+temporary `$HOME`, and the tests with files refuse to run as root.
 
 ```bash
 QT_QPA_PLATFORM=offscreen python3 -m unittest tests.test_gui_operations tests.test_gui_real_backend tests.test_gui_support tests.test_gui_transfer tests.test_gui_transfer_roundtrip tests.test_gui_config tests.test_config_editor -v
 ```
 
-`tests.test_gui_transfer_roundtrip` exporta num home e importa em outro com o
-Konsave real, compara o perfil byte a byte e repete com o CLI original.
+`tests.test_gui_transfer_roundtrip` exports in one home and imports in another with
+the real Konsave, compares the profile byte by byte and repeats it with the original
+CLI.
 
-## 6. Limitações conhecidas
+## 6. Known limitations
 
-* Aplicar não é atômico: se falhar no
-  meio, parte dos arquivos já foi trocada (o aviso mostra os erros do Konsave).
-* Importar grava a seção `export` do arquivo **antes** de qualquer outra coisa;
-  se o Konsave falhar depois, o perfil é desfeito, mas esses arquivos já escritos
-  não voltam sozinhos: restaure a cópia de segurança (§7).
-* “Ativo” é apenas o último perfil aplicado por esta interface
-  (`last_applied`); o Konsave não registra isso.
-* O Konsave não guarda descrição nem seções: no modo real, o diálogo de salvar
-  pede só o nome e os cartões não mostram descrição.
-* Sem cancelamento nem progresso parcial; só “ocupado”. Exportar ou importar um
-  perfil grande pode demorar e bloqueia outras operações.
-* O `.knsv` não é assinado nem cifrado e o `conf.yaml` dele decide para onde os
-  arquivos vão: a GUI só aceita destinos dentro da home, mas importe apenas
-  arquivos de fontes confiáveis.
-* Exportar copia o `conf.yaml` **global** atual para dentro do `.knsv`, mas
-  monta `save/` e `export/` com os grupos do `conf.yaml` **do perfil**
-  (limitação do Konsave). Se eles diferirem, o arquivo se contradiz: grupo novo
-  impede aplicar o perfil importado; grupo removido é ignorado sem aviso. A GUI
-  avisa ao exportar e ao inspecionar o arquivo, mas **não reescreve** o
-  `conf.yaml` do arquivo (isso mudaria a saída do Konsave; decisão do projeto).
-* O bit executável e metadados de arquivos não sobrevivem ao ciclo exportar →
-  importar (limitação do Konsave).
-* `replace` usa `rename` (mesmo sistema de arquivos) e só deixa resíduo `.kongui-*`
-  se o processo morrer no meio.
-* Dois KonGUI (ou o `konsave` na linha de comando) ao mesmo tempo são serializados
-  pela trava entre processos; a interface mostra a espera e permite cancelá-la (ver
-  [`CONCURRENCY.md`](CONCURRENCY.md) §4).
-* O motor redireciona `stdout` de forma global durante cada chamada.
-* A edição do `conf.yaml` está descrita em [`GUI_CONFIG.md`](GUI_CONFIG.md).
-* Não testado em uma sessão Plasma real.
+* Apply is not atomic: if it fails halfway, part of the files has already been
+  swapped (the notice shows Konsave's errors).
+* Import writes the archive's `export` section **before** anything else; if Konsave
+  fails afterwards, the profile is undone, but those already-written files do not
+  come back on their own: restore the safety copy (§7).
+* "Active" is only the last profile applied from this interface (`last_applied`);
+  Konsave does not record it.
+* Konsave stores neither a description nor sections: in real mode the save dialog
+  asks only for the name and the cards show no description.
+* No cancellation or partial progress; only "busy". Exporting or importing a large
+  profile can take long and blocks other operations.
+* The `.knsv` is neither signed nor encrypted, and its `conf.yaml` decides where
+  the files go: the GUI only accepts destinations inside the home, but import only
+  archives from trusted sources.
+* Export copies the current **global** `conf.yaml` into the `.knsv`, but assembles
+  `save/` and `export/` from the groups of the **profile's** `conf.yaml` (a Konsave
+  limitation). If they differ, the archive contradicts itself: a new group prevents
+  applying the imported profile; a removed group is ignored without a warning. The
+  GUI warns on export and when inspecting the archive, but does **not rewrite** the
+  archive's `conf.yaml` (that would change Konsave's output; project decision).
+* The executable bit and file metadata do not survive the export → import cycle
+  (a Konsave limitation).
+* `replace` uses `rename` (same file system) and only leaves a `.kongui-*` leftover
+  if the process dies halfway.
+* Two KonGUI instances (or `konsave` on the command line) at the same time are
+  serialized by the cross-process lock; the interface shows the wait and lets you
+  cancel it (see [`CONCURRENCY.md`](CONCURRENCY.md) §4).
+* The engine redirects `stdout` globally during each call.
+* Editing `conf.yaml` is described in [`GUI_CONFIG.md`](GUI_CONFIG.md).
+* Testing in a real Plasma session is in progress.
 
-## 7. Cópias de segurança (RN-01)
+## 7. Safety copies (RN-01)
 
-Antes de **aplicar** ou **importar**, o serviço copia os arquivos que seriam
-sobrescritos (detalhes em [`INTEGRATION.md`](INTEGRATION.md) §9). Na interface:
+Before **applying** or **importing**, the service copies the files that would be
+overwritten (details in [`INTEGRATION.md`](INTEGRATION.md) §9). In the interface:
 
-* os avisos de aplicar/importar dizem o identificador da cópia (“Cópia de
-  segurança guardada…”), e os textos de confirmação deixaram de dizer “sem backup”;
-* **Configurações → Cópias de segurança → Gerenciar…** abre a lista (data,
-  operação, perfil, arquivos substituídos/criados, tamanho, mais nova primeiro);
-* **Restaurar** pede confirmação (destrutivo), guarda o estado atual como nova
-  cópia e devolve os arquivos; **Apagar** pede confirmação. Os botões ficam
-  travados enquanto outra operação roda, a lista é lida em segundo plano e é
-  relida após cada restauração ou exclusão;
-* se a cópia não puder ser feita, aparece o erro e **nada é aplicado ou importado**;
-* nenhuma cópia é apagada automaticamente; a cópia de um `import` não desfaz o
-  perfil importado;
-* modo demonstração: cópias fictícias, nada é gravado.
+* the apply/import notices state the copy identifier ("Cópia de segurança
+  guardada…", safety copy kept…), and the confirmation texts no longer say "no
+  backup";
+* **Configurações → Cópias de segurança → Gerenciar…** (Settings → Safety copies →
+  Manage…) opens the list (date, operation, profile, files replaced/created, size,
+  newest first);
+* **Restaurar** (Restore) asks for confirmation (destructive), keeps the current
+  state as a new copy and puts the files back; **Apagar** (Delete) asks for
+  confirmation. The buttons stay locked while another operation runs, the list is
+  read in the background and read again after each restore or delete;
+* if the copy cannot be made, the error appears and **nothing is applied or
+  imported**;
+* no copy is deleted automatically; the copy of an `import` does not undo the
+  imported profile;
+* demo mode: fictitious copies, nothing is written.
 
-Testes: `tests.test_snapshot` (núcleo, Konsave real num `$HOME` temporário) e
-`tests.test_gui_backups` (diálogo, controller, mensagens e ponta a ponta).
-
+Tests: `tests.test_snapshot` (core, real Konsave in a temporary `$HOME`) and
+`tests.test_gui_backups` (dialog, controller, messages and end to end).

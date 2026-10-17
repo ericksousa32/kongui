@@ -1,172 +1,183 @@
-# Editor do `conf.yaml`
+# The `conf.yaml` editor
 
-A página **Editar .YAML** (`config`, `Ctrl+5`, logo abaixo de Configurações) edita
-`~/.config/konsave/conf.yaml`: as seções `save` e `export` separadamente (nomes
-dos grupos, pastas de origem, itens, placeholders) e o texto inteiro, sempre
-validando com o código original do Konsave antes de gravar.
+The **Edit .YAML** page (UI label "Editar .YAML"; key `config`, `Ctrl+5`, right
+below Settings) edits `~/.config/konsave/conf.yaml`: the `save` and `export`
+sections separately (group names, source folders, items, placeholders) and the
+whole text, always validating with Konsave's original code before writing.
 
-## 1. Auditoria: o que o arquivo é e como o Konsave o lê
+Note on interface texts: the interface is currently in Brazilian Portuguese.
+Labels and messages are quoted below as they appear on screen, with an English
+gloss in parentheses where needed.
 
-Fontes: `konsave/funcs.py` (`read_konsave_config`), `konsave/parse.py`,
-`konsave/conf_kde.yaml`, `konsave/conf_other.yaml`, o `conf.yaml` do
-`tests/profile_test.knsv` (Plasma 6 real) e sondagens executadas contra o código
-original (os casos estão em `tests.test_config_editor.OriginalBehaviourTests`).
+## 1. Audit: what the file is and how Konsave reads it
 
-### Estrutura
+Sources: `konsave/funcs.py` (`read_konsave_config`), `konsave/parse.py`,
+`konsave/conf_kde.yaml`, `konsave/conf_other.yaml`, the `conf.yaml` of
+`tests/profile_test.knsv` (real Plasma 6) and probes run against the original code
+(the cases are in `tests.test_config_editor.OriginalBehaviourTests`).
+
+### Structure
 
 ```yaml
 ---
-save:                      # vai para dentro do perfil
-    <grupo>:               # nome do grupo = nome da pasta dentro do perfil
-        location: "..."    # pasta de origem, com placeholders
-        entries:           # nomes simples de arquivos ou pastas dentro de location
-            - nome
-export:                    # só viaja no .knsv
-    <grupo>: { location: ..., entries: [...] }
+save:                      # goes inside the profile
+    <group>:               # group name = name of the folder inside the profile
+        location: "..."    # source folder, with placeholders
+        entries:           # plain names of files or folders inside location
+            - name
+export:                    # only travels in the .knsv
+    <group>: { location: ..., entries: [...] }
 ...
 ```
 
-* Raiz com `save` e `export`, **as duas obrigatórias**; cada uma é um mapa de
-  grupos. `save:` vazio (valor nulo) faz o Konsave quebrar; `save: {}` é o certo.
-* Cada grupo tem `location` (texto) e `entries` (lista). `entries:` vazio ou
-  `null` vira lista vazia ao ler (`read_konsave_config`).
-* O arquivo real é cheio de comentários (inclusive exemplos comentados) e termina
-  com `...`. Os grupos do `tests/profile_test.knsv` são `save.configs` (29 itens),
-  `save.app_layouts`, `export.share_folder` e `export.home_folder`.
-* O motor percorre **todas** as chaves da raiz como se fossem grupos de seções
-  (`parse_keywords`/`parse_functions`). Uma chave desconhecida precisa, então,
-  ser um mapa de grupos; do contrário o Konsave falha (`TypeError`). A validação
-  aceita chaves desconhecidas válidas (com aviso) e recusa as que quebrariam.
+* Root with `save` and `export`, **both mandatory**; each is a map of groups. An
+  empty `save:` (null value) breaks Konsave; `save: {}` is the right form.
+* Each group has `location` (text) and `entries` (list). An empty or `null`
+  `entries:` becomes an empty list when read (`read_konsave_config`).
+* The real file is full of comments (including commented-out examples) and ends
+  with `...`. The groups of `tests/profile_test.knsv` are `save.configs` (29
+  items), `save.app_layouts`, `export.share_folder` and `export.home_folder`.
+* The engine iterates over **all** root keys as if they were section groups
+  (`parse_keywords`/`parse_functions`). An unknown key must therefore be a map of
+  groups; otherwise Konsave fails (`TypeError`). Validation accepts valid unknown
+  keys (with a warning) and refuses those that would break.
 
-### Onde o `conf.yaml` é usado
+### Where `conf.yaml` is used
 
-| Operação | Que arquivo lê |
+| Operation | Which file it reads |
 |---|---|
-| `save` | o `conf.yaml` **global** (`save`); copia-o para dentro do perfil |
-| `apply` | o `conf.yaml` **do perfil** (`save`) |
-| `export` | o `conf.yaml` do perfil (`export`); grava no `.knsv` uma cópia do **global** |
-| `import` | o `conf.yaml` do arquivo; guarda-o no novo perfil |
+| `save` | the **global** `conf.yaml` (`save`); copies it into the profile |
+| `apply` | the **profile's** `conf.yaml` (`save`) |
+| `export` | the profile's `conf.yaml` (`export`); writes a copy of the **global** one into the `.knsv` |
+| `import` | the archive's `conf.yaml`; stores it in the new profile |
 
-Editar o arquivo global, portanto, vale para os **próximos** salvamentos e
-exportações; perfis já salvos mantêm a cópia que tinham.
+Editing the global file therefore applies to **future** saves and exports; profiles
+already saved keep the copy they had.
 
-### Placeholders (todos conferidos no código original)
+### Placeholders (all checked in the original code)
 
-Só valem em `location`, nunca em `entries`.
+They only work in `location`, never in `entries`.
 
-| Texto | Comportamento real |
+| Text | Real behavior |
 |---|---|
-| `$HOME`, `$CONFIG_DIR`, `$SHARE_DIR`, `$BIN_DIR` | substituição simples de texto; a barra final é mantida (`"$HOME/"` → `/home/u/`) |
-| `${ENDS_WITH='x'}`, `${BEGINS_WITH='x'}` (aspas simples ou duplas) | troca **todo o caminho** pela primeira pasta do diretório pai cujo nome termina/começa com `x`. O argumento não pode ter espaços (`\S+`). Com duas ou mais pastas candidatas, vale a primeira na ordem de listagem do sistema de arquivos |
-| `$KONSAVE_DIR` | **citado no `conf_other.yaml`, mas não existe** no código: fica literal. O editor não o oferece e o recusa |
-| função sem pasta correspondente | o Konsave **não falha**: devolve o texto literal `${FUNC='x'}` como `location` e segue (o grupo é silenciosamente inútil). A validação recusa |
-| função cujo diretório pai não existe | o Konsave falha com `FileNotFoundError` (a validação mostra “O Konsave não conseguiu interpretar o arquivo”) |
-| duas funções no mesmo `location` | só a última age; sobra texto literal. A validação recusa |
-| `$NOPE`, `${FOO='x'}` | ficam literais; a validação recusa antes |
-| `~/x`, caminho relativo | não são expandidos; a validação recusa (precisa ser absoluto) |
+| `$HOME`, `$CONFIG_DIR`, `$SHARE_DIR`, `$BIN_DIR` | plain text substitution; the trailing slash is kept (`"$HOME/"` → `/home/u/`) |
+| `${ENDS_WITH='x'}`, `${BEGINS_WITH='x'}` (single or double quotes) | replaces the **whole path** with the first folder of the parent directory whose name ends/begins with `x`. The argument cannot contain spaces (`\S+`). With two or more candidate folders, the first in the file system's listing order wins |
+| `$KONSAVE_DIR` | **mentioned in `conf_other.yaml`, but does not exist** in the code: it stays literal. The editor does not offer it and refuses it |
+| a function with no matching folder | Konsave **does not fail**: it returns the literal text `${FUNC='x'}` as `location` and carries on (the group is silently useless). Validation refuses it |
+| a function whose parent directory does not exist | Konsave fails with `FileNotFoundError` (validation shows "O Konsave não conseguiu interpretar o arquivo", Konsave could not interpret the file) |
+| two functions in the same `location` | only the last one acts; literal text is left over. Validation refuses it |
+| `$NOPE`, `${FOO='x'}` | stay literal; validation refuses them first |
+| `~/x`, a relative path | are not expanded; validation refuses them (must be absolute) |
 
-A lista de placeholders exibida na interface é lida de `parse.tokens` do próprio
-Konsave (`ConfigService.placeholders()`); a **interpretação** nunca é refeita
-aqui: o texto é entregue a `read_konsave_config` e o resultado é o que a
-interface mostra em “O Konsave resolve esta pasta como…”.
+The list of placeholders shown in the interface is read from Konsave's own
+`parse.tokens` (`ConfigService.placeholders()`); the **interpretation** is never
+redone here: the text is handed to `read_konsave_config` and the result is what the
+interface shows under "O Konsave resolve esta pasta como…" (Konsave resolves this
+folder as…).
 
-## 2. Como a edição preserva o arquivo
+## 2. How editing preserves the file
 
-`yaml.safe_dump` descartaria os comentários, e o `ruamel.yaml` (que os preserva)
-não está instalado nem faz parte das dependências. A edição, então, é **textual e
-cirúrgica** (`kongui/core/confedit.py`):
+`yaml.safe_dump` would discard the comments, and `ruamel.yaml` (which preserves
+them) is neither installed nor part of the dependencies. Editing is therefore
+**textual and surgical** (`kongui/core/confedit.py`):
 
-1. o texto é lido pelo próprio PyYAML (o mesmo do Konsave) e as posições exatas de
-   cada grupo, chave e item são obtidas do analisador (`kongui/core/yamlmap.py`);
-2. uma edição do formulário vira poucas substituições, inserções e remoções de
-   linhas: renomear um grupo troca só o nome, mudar `location` troca só esse
-   valor, acrescentar um item insere uma linha, remover apaga a linha;
-3. todo o resto (comentários, linhas em branco, chaves desconhecidas, placeholders
-   que ninguém tocou, o `...` final, a indentação do usuário) fica **byte a byte**
-   como estava; um formulário lido e escrito de volta sem mudanças devolve o texto
-   idêntico (testado com o `conf.yaml` real);
-4. o resultado é relido com `yaml.safe_load` e comparado com o que se pretendia.
-   Se algo diferir, ou se o layout for exótico (por exemplo `save: {a: {...}}` em
-   estilo de fluxo), o texto é regenerado a partir dos dados: **chaves
-   desconhecidas e placeholders continuam, os comentários se perdem**, e a
-   interface avisa e pede confirmação antes de salvar.
+1. the text is read by PyYAML itself (the same one Konsave uses) and the exact
+   positions of each group, key and item are obtained from the parser
+   (`kongui/core/yamlmap.py`);
+2. a form edit becomes a few line replacements, insertions and removals: renaming
+   a group changes only the name, changing `location` changes only that value,
+   adding an item inserts one line, removing deletes the line;
+3. everything else (comments, blank lines, unknown keys, placeholders nobody
+   touched, the final `...`, the user's indentation) stays **byte for byte** as it
+   was; a form read and written back with no changes returns identical text
+   (tested with the real `conf.yaml`);
+4. the result is read again with `yaml.safe_load` and compared with what was
+   intended. If anything differs, or if the layout is exotic (for example
+   `save: {a: {...}}` in flow style), the text is regenerated from the data:
+   **unknown keys and placeholders are kept, comments are lost**, and the
+   interface warns and asks for confirmation before saving.
 
-Seção `save:`/`export:` nula é corrigida para `{}`. Reordenar itens não existe
-na interface, e a ordem dos grupos é a do arquivo (novos vão para o fim).
+A null `save:`/`export:` section is corrected to `{}`. Reordering items does not
+exist in the interface, and the order of groups is the file's (new ones go to the
+end).
 
-## 3. Fluxo da página
+## 3. Page flow
 
-* **Abas**: *Seção save*, *Seção export* (lista de grupos, nome, pasta de origem
-  com botões de placeholder, itens com adicionar/remover/editar) e *Texto (YAML)*.
-  As três mostram o mesmo texto; editar numa atualiza as outras. Se o texto do
-  YAML estiver quebrado, as abas de seção ficam indisponíveis até corrigi-lo.
-* **Validação contínua**: a cada edição o texto é validado em segundo plano pelo
-  `ConfigService.validate_text` (leitor original). O painel de problemas lista
-  erros e avisos com **linha, coluna, caminho** (`save.configs.entries[3]`) e a
-  explicação em pt-BR; **Ir para** abre o campo certo (ou a linha, no texto).
-* **Salvar** só habilita com a verificação do texto atual concluída e **sem
-  erros**. O serviço valida de novo e recusa se houver erro, mesmo que a interface
-  seja contornada: nada é gravado e nenhum backup é feito.
-* **Backup**: antes de substituir, o arquivo anterior é copiado para
-  `conf.yaml.bak-AAAAMMDD-HHMMSS-µs` ao lado dele. A gravação é atômica
-  (arquivo temporário + `os.replace`), mantém as permissões e, se `conf.yaml` for
-  um link simbólico (dotfiles), grava no destino do link e o link continua.
-* **Cancelar**: *Descartar alterações* volta ao que está no disco; sair da página
-  ou fechar a janela com alterações pede confirmação. Nada é gravado antes de
-  *Salvar*.
-* **Restaurar**: *Backups…* lista as versões guardadas (data, tamanho) com
-  pré-visualização. Restaurar valida o backup como qualquer outro texto (um backup
-  inválido é recusado), confirma e **guarda o arquivo atual como novo backup**, de
-  modo que a restauração também pode ser desfeita.
-* **Mudança externa**: ao abrir, a interface guarda a impressão digital (SHA-256)
-  do arquivo. Se outro programa o alterar antes de *Salvar*, nada é gravado e um
-  diálogo oferece recarregar do disco, gravar mesmo assim (o do disco vira
-  backup) ou cancelar.
-* **Arquivo inexistente**: a página abre o modelo padrão e o cria ao salvar.
-* **Modo `--demo`**: edita uma cópia temporária do modelo do KDE, com a validação
-  real; o arquivo do usuário não é lido nem gravado.
+* **Tabs**: *Seção save* (save section), *Seção export* (export section) (list of
+  groups, name, source folder with placeholder buttons, items with
+  add/remove/edit) and *Texto (YAML)* (text). All three show the same text;
+  editing in one updates the others. If the YAML text is broken, the section tabs
+  are unavailable until it is fixed.
+* **Continuous validation**: on every edit the text is validated in the background
+  by `ConfigService.validate_text` (the original reader). The problems panel lists
+  errors and warnings with **line, column, path** (`save.configs.entries[3]`) and
+  the explanation in pt-BR; **Ir para** (Go to) opens the right field (or the line,
+  in the text).
+* **Salvar** (Save) is enabled only when the check of the current text has
+  finished and has **no errors**. The service validates again and refuses if there
+  is an error, even if the interface is bypassed: nothing is written and no backup
+  is made.
+* **Backup**: before replacing, the previous file is copied to
+  `conf.yaml.bak-YYYYMMDD-HHMMSS-µs` next to it. Writing is atomic (temporary file
+  + `os.replace`), keeps the permissions and, if `conf.yaml` is a symbolic link
+  (dotfiles), writes to the link's target and the link stays.
+* **Cancel**: *Descartar alterações* (Discard changes) goes back to what is on
+  disk; leaving the page or closing the window with changes asks for confirmation.
+  Nothing is written before *Salvar*.
+* **Restore**: *Backups…* lists the stored versions (date, size) with a preview.
+  Restoring validates the backup like any other text (an invalid backup is
+  refused), asks for confirmation and **keeps the current file as a new backup**,
+  so the restore can also be undone.
+* **External change**: on opening, the interface stores the file's fingerprint
+  (SHA-256). If another program changes it before *Salvar*, nothing is written and
+  a dialog offers to reload from disk, write anyway (the one on disk becomes a
+  backup) or cancel.
+* **Missing file**: the page opens the default template and creates the file on
+  save.
+* **`--demo` mode**: edits a temporary copy of the KDE template, with real
+  validation; the user's file is neither read nor written.
 
-## 4. Erros que o editor aponta
+## 4. Errors the editor points out
 
-Cada achado tem um código, caminho, linha e coluna (`Problem` em
-`kongui/core/results.py`), traduzido em `kongui/gui/messages.py`
-(`PROBLEM_TEXTS`). Principais: YAML malformado, raiz que não é mapa, falta de
-`save`/`export`, seção nula, chave repetida, nome de grupo inválido, `location`
-vazio ou não texto, placeholder ou função inexistente, `location` não resolvido
-ou relativo, `entries` ausente ou que não é lista, item com `/` ou `.`/`..`,
-chave desconhecida na raiz que quebraria o Konsave. Avisos (não bloqueiam): chave
-desconhecida válida, item repetido, pasta de origem inexistente, várias funções.
+Each finding has a code, path, line and column (`Problem` in
+`kongui/core/results.py`), translated in `kongui/gui/messages.py`
+(`PROBLEM_TEXTS`). Main ones: malformed YAML, a root that is not a map, missing
+`save`/`export`, a null section, a repeated key, an invalid group name, an empty or
+non-text `location`, a nonexistent placeholder or function, an unresolved or
+relative `location`, `entries` missing or not a list, an item with `/` or `.`/`..`,
+an unknown root key that would break Konsave. Warnings (do not block): a valid
+unknown key, a repeated item, a nonexistent source folder, several functions.
 
-## 5. Código e testes
+## 5. Code and tests
 
-| Peça | Onde |
+| Piece | Where |
 |---|---|
-| localizar linha/coluna e fim de conteúdo | `kongui/core/yamlmap.py` |
-| modelo, edição cirúrgica, citação de escalares | `kongui/core/confedit.py` |
-| validação com posições, backups, restauração, digest | `kongui/core/config.py` (`ConfigService`) |
-| `ConfigSnapshot`, `ConfigCheck`, operações do backend | `kongui/gui/backend.py` |
-| editor de seção, lista de problemas | `kongui/gui/widgets/confedit.py` |
-| diálogos de grupo, backups e escolha | `kongui/gui/widgets/dialogs.py` |
-| página | `kongui/gui/pages/config.py` |
+| locate line/column and end of content | `kongui/core/yamlmap.py` |
+| model, surgical editing, scalar quoting | `kongui/core/confedit.py` |
+| validation with positions, backups, restore, digest | `kongui/core/config.py` (`ConfigService`) |
+| `ConfigSnapshot`, `ConfigCheck`, backend operations | `kongui/gui/backend.py` |
+| section editor, problem list | `kongui/gui/widgets/confedit.py` |
+| group, backup and choice dialogs | `kongui/gui/widgets/dialogs.py` |
+| page | `kongui/gui/pages/config.py` |
 
 ```bash
 python3 -m unittest tests.test_config_editor tests.test_gui_config -v
 ```
 
-| Módulo de teste | Cobre |
+| Test module | Covers |
 |---|---|
-| `tests.test_config_editor` | núcleo: leitura/escrita idêntica, edições que preservam comentários e chaves desconhecidas, arquivos incompletos e de layout exótico, caracteres especiais, 600 edições aleatórias, erros com posição, backups, restauração, conflito, symlink, permissões, comportamento do motor original (placeholders) |
-| `tests.test_gui_config` | página: demo (memória) e serviços reais num `$HOME` temporário; validar, salvar, bloquear erros, cancelar, sair, texto quebrado, “Ir para”, backups, conflito, caracteres especiais e o `conf.yaml` real do Plasma 6 |
+| `tests.test_config_editor` | core: identical read/write, edits that preserve comments and unknown keys, incomplete and exotic-layout files, special characters, 600 random edits, errors with position, backups, restore, conflict, symlink, permissions, behavior of the original engine (placeholders) |
+| `tests.test_gui_config` | page: demo (memory) and real services in a temporary `$HOME`; validate, save, block errors, cancel, leave, broken text, "Ir para", backups, conflict, special characters and the real Plasma 6 `conf.yaml` |
 
-## 6. Limitações
+## 6. Limitations
 
-* A ordem dos itens e dos grupos não é editável pela interface.
-* Comentários em linhas próprias (entre grupos ou itens) ficam onde estão; o
-  comentário escrito na mesma linha de um item removido some com ele. Se a edição
-  for exótica demais, o caminho de regeneração perde os comentários (e avisa).
-* Os backups não são removidos automaticamente (são arquivos pequenos).
-* A comparação de resumo e a gravação do `conf.yaml` acontecem sob a trava entre
-  processos ([`CONCURRENCY.md`](CONCURRENCY.md)); outros programas que não usam a
-  trava ainda podem alterar o arquivo, e isso só é detectado no momento de gravar.
-* A pasta de origem de um grupo é validada, mas o conteúdo dos itens não é
-  conferido no disco (o Konsave ignora, em silêncio, o que não existe).
+* The order of items and groups is not editable in the interface.
+* Comments on their own lines (between groups or items) stay where they are; a
+  comment written on the same line as a removed item disappears with it. If the
+  edit is too exotic, the regeneration path loses the comments (and warns).
+* Backups are not removed automatically (they are small files).
+* The digest comparison and the write of `conf.yaml` happen under the cross-process
+  lock ([`CONCURRENCY.md`](CONCURRENCY.md)); other programs that do not use the lock
+  can still change the file, and that is only detected at write time.
+* A group's source folder is validated, but the content of the items is not
+  checked on disk (Konsave silently ignores what does not exist).

@@ -1,124 +1,130 @@
-# Protótipo visual da interface (PySide6 / Qt Widgets)
+# Visual prototype of the interface (PySide6 / Qt Widgets)
 
-Primeira versão da interface gráfica do KonGUI, criada como protótipo visual.
-**Atualização:** a interface agora está ligada aos serviços (`kongui/core/`) por
-padrão; o modo `--demo` mantém o comportamento original do protótipo, com dados
-fictícios. A ligação, os estados de carregamento e as limitações estão em
-[`GUI_SERVICES.md`](GUI_SERVICES.md). O motor original (`konsave/`) não foi alterado.
+First version of KonGUI's graphical interface, created as a visual prototype.
+**Update:** the interface is now wired to the services (`kongui/core/`) by default;
+`--demo` mode keeps the prototype's original behavior, with fictitious data. The
+wiring, the loading states and the limitations are in
+[`GUI_SERVICES.md`](GUI_SERVICES.md). The original engine (`konsave/`) was not
+changed, except for the cross-process lock listed in
+[`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md).
 
-## 1. Como executar
+Note on interface texts: the interface is currently in Brazilian Portuguese (fixed
+in the code; internationalization is a future step). Labels are quoted below as
+they appear on screen, with an English gloss in parentheses where needed.
+
+## 1. How to run
 
 ```bash
-pip install "PySide6>=6.8"      # ou: pip install -e ".[gui]"
-python3 -m kongui.gui           # perfis reais (serviços do KonGUI sobre o Konsave)
-python3 -m kongui.gui --demo    # dados fictícios, nada é gravado nem aplicado
+pip install "PySide6>=6.8"      # or: pip install -e ".[gui]"
+python3 -m kongui.gui           # real profiles (KonGUI services over Konsave)
+python3 -m kongui.gui --demo    # fictitious data, nothing is written or applied
 ```
 
-O programa recusa rodar como root (usa `kongui.core.safety.ensure_not_root`).
-As preferências ficam em `<pasta de configuração do usuário>/kongui/kongui-gui.ini`
-(via `QStandardPaths`); nada além disso é gravado em disco.
+The program refuses to run as root (it uses `kongui.core.safety.ensure_not_root`).
+Preferences live in `<user config folder>/kongui/kongui-gui.ini` (through
+`QStandardPaths`); nothing else is written to disk.
 
-## 2. Páginas
+## 2. Pages
 
-| Página | Chave | Atalho | Ações na barra superior | Conteúdo |
+| Page (UI label) | Key | Shortcut | Top-bar actions | Content |
 |---|---|---|---|---|
-| Dashboard | `dashboard` | `Ctrl+1` | Importar, Salvar perfil atual (`Ctrl+S`) | 4 cartões de resumo, perfil ativo, atividade recente |
-| Perfis | `profiles` | `Ctrl+2` | Limpar todos, Novo perfil (`Ctrl+N`) | busca (`Ctrl+F`), ordenação, grade/lista, cartões de perfil |
-| Importar / Exportar | `transfer` | `Ctrl+3` | — | formulário de exportação (perfil, pasta, nome; se o arquivo já existir, sempre pergunta), área de soltar `.knsv` com verificação, transferências recentes (ver [`GUI_SERVICES.md`](GUI_SERVICES.md) §4) |
-| Configurações | `settings` | `Ctrl+4` | — | tema, exibição, duração dos avisos, dados de demonstração (só no modo `--demo`) |
-| Editar .YAML | `config` | `Ctrl+5` | Validar, Backups…, Descartar, Salvar | editor do `conf.yaml`: seções `save` e `export` separadas, texto YAML, painel de problemas com linha/coluna, backups e restauração (ver [`GUI_CONFIG.md`](GUI_CONFIG.md)) |
-| Sobre | `about` | `Ctrl+6` | — | versão, ambiente, links, aviso de protótipo |
+| Dashboard | `dashboard` | `Ctrl+1` | Import, Save current profile (`Ctrl+S`) | 4 summary cards, active profile, recent activity |
+| Perfis (Profiles) | `profiles` | `Ctrl+2` | Clear all, New profile (`Ctrl+N`) | search (`Ctrl+F`), sorting, grid/list, profile cards |
+| Importar / Exportar (Import / Export) | `transfer` | `Ctrl+3` | — | export form (profile, folder, name; if the file already exists, it always asks), `.knsv` drop area with verification, recent transfers (see [`GUI_SERVICES.md`](GUI_SERVICES.md) §4) |
+| Configurações (Settings) | `settings` | `Ctrl+4` | — | theme, display, notice duration, safety copies, demo data (only in `--demo` mode) |
+| Editar .YAML (Edit .YAML) | `config` | `Ctrl+5` | Validate, Backups…, Discard, Save | `conf.yaml` editor: separate `save` and `export` sections, YAML text, problems panel with line/column, backups and restore (see [`GUI_CONFIG.md`](GUI_CONFIG.md)) |
+| Sobre (About) | `about` | `Ctrl+6` | — | version, environment, links, prototype notice |
 
-A navegação lateral é fixa (232 px) com ícone e rótulo. A janela tem tamanho
-mínimo de 900 × 600.
+The side navigation is fixed (232 px) with icon and label. The window has a minimum
+size of 900 × 600.
 
-## 3. Estrutura do código (`kongui/gui/`)
+## 3. Code structure (`kongui/gui/`)
 
-| Módulo | Responsabilidade |
+| Module | Responsibility |
 |---|---|
-| `app.py`, `__main__.py` | criação do `QApplication`, recusa de root, escolha do backend (`--demo`), caminho das preferências |
-| `main_window.py` | `MainWindow`: barra lateral, barra superior, barra de progresso, pilha de páginas, atalhos |
-| `context.py` | `AppContext`: o que cada página recebe (modelo, backend, controller, tema, avisos, navegação) |
-| `state.py` | `Profile`, `ProfileStore`, `ActivityLog`, `AppSettings` (modelos em memória, com sinais) |
-| `backend.py` | `ProfileBackend`, `ServiceBackend` (serviços reais) e `FakeBackend` (memória); único módulo da GUI que importa o engine e os serviços |
-| `controller.py` | `ProfileController`: executa uma operação por vez, estado de carregamento, atualiza o `ProfileStore` |
-| `tasks.py` | executores: `ThreadExecutor` (thread de trabalho), `InlineExecutor` (testes) |
-| `messages.py` | textos pt-BR de sucesso e de erro |
-| `mock_data.py` | **todos** os dados fictícios (sete perfis, seis eventos, lista de seções) |
-| `actions.py` | diálogos de confirmação e chamadas ao controller; avisos e atividade de cada resultado |
-| `validation.py` | regras de nome (reaproveita `kongui.core.safety.validate_profile_name`) |
-| `theme.py` | tokens de cor, paleta Qt, folha de estilo e `ThemeManager` |
-| `icons.py` | ícones SVG desenhados no código e coloridos pelo tema |
-| `formatting.py` | tamanhos, datas relativas e plurais em pt-BR |
-| `widgets/` | peças reutilizáveis: `common` (botão, rótulo, selo, cartão, controle segmentado), `grid` (grade adaptável), `cards`, `shell` (barra lateral e superior), `states` (estado vazio), `search`, `toast`, `dialogs`, `dropzone`, `rows`, `feedback` (barra de ocupado e faixa de erro), `confedit` (editor de seção e lista de problemas do `conf.yaml`) |
-| `pages/` | uma classe por página, sobre `pages/base.py` |
+| `app.py`, `__main__.py` | creation of the `QApplication`, root refusal, backend choice (`--demo`), preferences path |
+| `main_window.py` | `MainWindow`: side bar, top bar, progress bar, page stack, shortcuts |
+| `context.py` | `AppContext`: what each page receives (model, backend, controller, theme, notices, navigation) |
+| `state.py` | `Profile`, `ProfileStore`, `ActivityLog`, `AppSettings` (in-memory models, with signals) |
+| `backend.py` | `ProfileBackend`, `ServiceBackend` (real services) and `FakeBackend` (memory); the only GUI module that imports the engine and the services |
+| `controller.py` | `ProfileController`: runs one operation at a time, loading state, updates the `ProfileStore` |
+| `tasks.py` | executors: `ThreadExecutor` (worker thread), `InlineExecutor` (tests) |
+| `messages.py` | pt-BR success and error texts |
+| `mock_data.py` | **all** the fictitious data (seven profiles, six events, list of sections) |
+| `actions.py` | confirmation dialogs and calls to the controller; notice and activity for each result |
+| `validation.py` | name rules (reuses `kongui.core.safety.validate_profile_name`) |
+| `theme.py` | color tokens, Qt palette, style sheet and `ThemeManager` |
+| `icons.py` | SVG icons drawn in code and colored by the theme |
+| `formatting.py` | sizes, relative dates and plurals in pt-BR |
+| `widgets/` | reusable pieces: `common` (button, label, badge, card, segmented control), `grid` (adaptive grid), `cards`, `shell` (side and top bars), `states` (empty state), `search`, `toast`, `dialogs`, `dropzone`, `rows`, `feedback` (busy bar, wait banner and error strip), `confedit` (section editor and problems list for `conf.yaml`) |
+| `pages/` | one class per page, on top of `pages/base.py` |
 
-Regras seguidas: cores só vêm de `Tokens`; ícones são refeitos quando
-`ThemeManager.changed` dispara; só `backend.py` importa `kongui.core.engine`,
-`profiles` e `config`; ninguém importa `konsave` nem `subprocess`. Os testes
-conferem essas regras.
+Rules followed: colors only come from `Tokens`; icons are rebuilt when
+`ThemeManager.changed` fires; only `backend.py` imports `kongui.core.engine`,
+`profiles` and `config`; nobody imports `konsave` or `subprocess`. The tests check
+these rules.
 
-## 4. Tema
+## 4. Theme
 
-Três modos, escolhidos em Configurações (ou pelo botão sol/lua da barra lateral):
+Three modes, chosen in Settings (or with the sun/moon button of the side bar):
 
-* **Sistema**: usa a paleta da plataforma. No KDE, isso significa o esquema de
-  cores do Plasma e a cor de destaque escolhida pelo usuário. Se o contraste do
-  texto sobre o destaque for menor que 4,5:1, o texto é trocado por preto ou
-  branco.
-* **Claro** e **Escuro**: paletas fixas (contraste mínimo de 4,5:1 conferido em
-  teste). Também é aplicada uma `QPalette`, para os controles nativos
-  acompanharem.
+* **Sistema** (System): uses the platform palette. On KDE, that means the Plasma
+  color scheme and the accent color chosen by the user. If the contrast of the text
+  over the accent is below 4.5:1, the text is switched to black or white.
+* **Claro** (Light) and **Escuro** (Dark): fixed palettes (minimum contrast of
+  4.5:1 checked in a test). A `QPalette` is also applied, so the native controls
+  follow along.
 
-Combos, caixas de seleção e `QSpinBox` ficam com a aparência nativa do estilo
-do sistema de propósito, para combinar com o KDE.
+Combos, check boxes and `QSpinBox` deliberately keep the native look of the system
+style, to match KDE.
 
-## 5. Como validar
+## 5. How to validate
 
 ```bash
 QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -t . -v
 ```
 
-Os testes da interface não precisam de tela (`offscreen`) e usam `$HOME`
-temporário. Se o PySide6 não estiver instalado, eles são pulados.
+The interface tests do not need a screen (`offscreen`) and use a temporary `$HOME`.
+If PySide6 is not installed, they are skipped.
 
-| Módulo de teste | Cobre |
+| Test module | Covers |
 |---|---|
-| `tests.test_gui_startup` | abertura, estrutura fixa, ícones, preferências, entrada `main`, isolamento do Konsave |
-| `tests.test_gui_navigation` | barra lateral, barra superior, atalhos, troca de tema |
-| `tests.test_gui_widgets` | grade adaptável, avisos, diálogos, área de soltar, tema, formatação |
-| `tests.test_gui_interaction` | cada página: busca, ordenação, aplicar, remover, exportar, importar, configurações |
-| `tests.test_gui_operations` | as seis operações, uma a uma, na interface (backend em memória): carregamento, sucesso, erro, confirmação |
-| `tests.test_gui_real_backend` | as seis operações nos serviços reais, em `$HOME` temporário |
-| `tests.test_gui_transfer` | importar e exportar na interface (backend em memória): formulário, conflitos, confirmações, erros |
-| `tests.test_gui_transfer_roundtrip` | exportar e importar nos serviços reais, em dois homes temporários; compatibilidade com o `python -m konsave` original |
-| `tests.test_gui_config` | editor do `conf.yaml` na interface (memória e serviços reais): validar, salvar, cancelar, backups, conflito, caracteres especiais |
-| `tests.test_gui_backups` | cópias de segurança na interface: diálogo, restaurar/apagar com confirmação, travas, erros, mensagens e ponta a ponta com os serviços reais |
-| `tests.test_gui_dialogs` | os diálogos acionados de verdade (substituir/nome único, recarregar/gravar, palavra digitada, nome de grupo, prévia e restauração de backup) e os auxiliares de `app.py` |
-| `tests.test_gui_audit` | achados da auditoria final: fechar durante operação, aviso de `conf.yaml` diferente, verificação da pasta de exportação fora da thread, versão do Konsave, exportar numa conta nova |
-| `tests.test_gui_support` | mensagens, executores, `FakeBackend`, `ProfileStore`, widgets de feedback |
+| `tests.test_gui_startup` | opening, fixed structure, icons, preferences, `main` entry point, isolation from Konsave |
+| `tests.test_gui_navigation` | side bar, top bar, shortcuts, theme switch |
+| `tests.test_gui_widgets` | adaptive grid, notices, dialogs, drop area, theme, formatting |
+| `tests.test_gui_interaction` | each page: search, sorting, apply, remove, export, import, settings |
+| `tests.test_gui_operations` | the six operations, one by one, in the interface (in-memory backend): loading, success, error, confirmation |
+| `tests.test_gui_real_backend` | the six operations on the real services, in a temporary `$HOME` |
+| `tests.test_gui_transfer` | import and export in the interface (in-memory backend): form, conflicts, confirmations, errors |
+| `tests.test_gui_transfer_roundtrip` | export and import on the real services, in two temporary homes; compatibility with the original `python -m konsave` |
+| `tests.test_gui_config` | `conf.yaml` editor in the interface (memory and real services): validate, save, cancel, backups, conflict, special characters |
+| `tests.test_gui_backups` | safety copies in the interface: dialog, restore/delete with confirmation, locks, errors, messages and end to end with the real services |
+| `tests.test_gui_dialogs` | the dialogs actually triggered (replace/unique name, reload/write, typed word, group name, backup preview and restore) and the helpers of `app.py` |
+| `tests.test_gui_audit` | findings of the final audit: closing during an operation, differing `conf.yaml` warning, export-folder check off the thread, Konsave version, export on a new account |
+| `tests.test_gui_support` | messages, executors, `FakeBackend`, `ProfileStore`, feedback widgets |
+| `tests.test_gui_lock_wait` | waiting for and cancelling the cross-process lock in the interface (see [`CONCURRENCY.md`](CONCURRENCY.md)) |
 
-Verificação visual manual: abra o programa, alterne os três temas, redimensione
-a janela até o mínimo e use **Configurações → Esvaziar perfis** para ver os
-estados vazios. Para o aviso de arquivo existente, exporte o perfil
-“Minimalista” sem marcar “Substituir”.
+Manual visual check: open the program, switch between the three themes, resize the
+window down to the minimum and use **Configurações → Esvaziar perfis** (Settings →
+Empty profiles) to see the empty states. For the existing-file notice, export the
+profile "Minimalista" without checking "Substituir" (Replace).
 
-## 6. O que o modo `--demo` simula
+## 6. What `--demo` mode simulates
 
-* Aplicar, salvar, duplicar, remover, exportar e importar só mudam listas e um
-  sistema de arquivos virtual, em memória. Todo aviso diz “Simulação: nada foi
-  alterado no sistema.”.
-* As regras são as reais: política de conflito, nomes inválidos e confirmações.
-  Importar nunca abre o arquivo (só o nome e, se existir, o tamanho).
-* O arquivo `~/Downloads/Minimalista.knsv` “já existe”, para exibir o conflito.
+* Applying, saving, duplicating, removing, exporting and importing only change
+  lists and a virtual in-memory file system. Every notice says "Simulação: nada foi
+  alterado no sistema." (Simulation: nothing was changed in the system).
+* The rules are the real ones: conflict policy, invalid names and confirmations.
+  Import never opens the file (only its name and, if it exists, its size).
+* The file `~/Downloads/Minimalista.knsv` "already exists", to show the conflict.
 
-## 7. Limitações e próximos passos
+## 7. Limitations and next steps
 
-* A edição de `conf.yaml` ainda não está ligada à GUI.
-* Não testado em Plasma 6 real: cor de destaque, troca de esquema com o app
-  aberto, escala fracionária e Wayland precisam de verificação manual.
-* Acessibilidade: nomes acessíveis, foco por teclado e contraste foram tratados,
-  mas não houve teste com leitor de tela.
-* Textos em pt-BR fixos no código; falta internacionalização (`tr`).
-* A janela depende do estilo de ícones próprio; ícones do tema do sistema
-  (`QIcon.fromTheme`) são uma opção futura.
+* Testing in a real Plasma 6 session is in progress: accent color, switching color
+  scheme with the app open, fractional scaling and Wayland need manual
+  verification.
+* Accessibility: accessible names, keyboard focus and contrast were handled, but
+  there was no test with a screen reader.
+* pt-BR texts are fixed in the code; internationalization (`tr`) is missing.
+* The window depends on its own icon style; system theme icons
+  (`QIcon.fromTheme`) are a future option.

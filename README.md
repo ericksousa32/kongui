@@ -4,7 +4,7 @@
 A graphical interface for managing KDE Plasma configuration profiles, built as an independent fork of <a href="https://github.com/Prayag2/konsave">Konsave</a>.
 </p>
 
-> **Status: early development (`0.1.0.dev0`).** KonGUI is not packaged or released yet, and it has not been validated on a live Plasma session. It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
+> **Status: early development (`0.1.0.dev0`).** KonGUI is not packaged or released yet, and testing on a live Plasma session is in progress. It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
 
 ## Overview
 
@@ -29,7 +29,7 @@ Not available yet. You can preview the interface without touching any real data 
 
 ### Working today
 
-Everything below is covered by the automated test suite (run in temporary home directories with Qt in offscreen mode). None of it has been exercised on a real Plasma session yet.
+Everything below is covered by the automated test suite (run in temporary home directories with Qt in offscreen mode). Testing on a real Plasma session is in progress.
 
 - **Profiles:** list, save, overwrite, apply, remove, and remove all. Destructive actions require confirmation.
 - **Import / export:** `.knsv` archives. When the destination file already exists, the interface asks what to do instead of overwriting silently.
@@ -37,18 +37,22 @@ Everything below is covered by the automated test suite (run in temporary home d
 - **`conf.yaml` editor:** edit the `save` and `export` sections or the YAML text, with validation (problems reported with line and column), automatic backups of the previous file, and restore.
 - **Cross-process lock:** operations use a `flock` lock on `~/.config/konsave/.kongui.lock`. If another Konsave operation is running, KonGUI shows that it is waiting, stays responsive, and lets you cancel the wait. The bundled `konsave` command waits too (see [Command line](#command-line-bundled-konsave)). Programs that do not use the lock, such as Plasma itself or a text editor, are not covered.
 - **Interface:** dashboard, profiles, import/export, settings, YAML editor and about pages; light, dark and system themes; keyboard shortcuts (`Ctrl+1` to `Ctrl+6` switch pages).
+- **Language:** the interface is currently in Brazilian Portuguese only; internationalization is not implemented yet.
 - **Demo mode:** `--demo` runs the interface on fictitious in-memory data.
 - **Safety:** KonGUI refuses to run as root, and profile or archive names are validated before anything reaches the original code.
 
+### In progress
+
+- Testing on a real Fedora KDE / Plasma session (applying profiles, Wayland, SELinux, Flatpak). Results will be recorded in [`docs/FINAL_AUDIT.md`](docs/FINAL_AUDIT.md).
+
 ### Planned
 
-- Validation on a real Fedora KDE / Plasma session (applying profiles, Wayland, SELinux, Flatpak).
 - Limits and checks for archives on import and export (maximum size, "zip bomb" protection, free disk space).
 - Progress reporting and cancelling of long operations that have already started. The original engine cannot be interrupted today.
 - Packaging and distribution. No installable package or AppImage exists yet.
 - Profile descriptions and sections: Konsave does not store them, so they only exist in demo mode.
 
-The detailed status of each requirement is in [`docs/AUDITORIA_FINAL.md`](docs/AUDITORIA_FINAL.md).
+The detailed status of each requirement is in [`docs/FINAL_AUDIT.md`](docs/FINAL_AUDIT.md).
 
 ## Technologies
 
@@ -155,7 +159,7 @@ save:
 
 No dates are promised. In rough order of priority:
 
-1. Validate on a real Fedora KDE (Plasma) session and fix what it reveals.
+1. Finish the real Fedora KDE (Plasma) session testing that is in progress, and fix what it reveals.
 2. Import and export limits (size, "zip bomb", free disk space).
 3. A first tagged release with a defined package name and distribution channel.
 4. AppImage packaging, only after a working, tested build exists.
@@ -167,8 +171,8 @@ KonGUI uses the same profile folder and `.knsv` format as the Konsave code bundl
 
 ## Documentation
 
-Technical documentation is in [`docs/`](docs/) (currently in Portuguese):
-[integration layer](docs/INTEGRATION.md), [services used by the interface](docs/GUI_SERVICES.md), [`conf.yaml` editor](docs/GUI_CONFIG.md), [interface prototype](docs/GUI_PROTOTYPE.md), [concurrency](docs/CONCURRENCY.md), [changes to Konsave](docs/KONSAVE_PATCHES.md) and the [final audit](docs/AUDITORIA_FINAL.md).
+Technical documentation is in [`docs/`](docs/):
+[integration layer](docs/INTEGRATION.md), [services used by the interface](docs/GUI_SERVICES.md), [`conf.yaml` editor](docs/GUI_CONFIG.md), [interface prototype](docs/GUI_PROTOTYPE.md), [concurrency](docs/CONCURRENCY.md), [changes to Konsave](docs/KONSAVE_PATCHES.md) and the [final audit](docs/FINAL_AUDIT.md).
 
 ## Original project and credits
 

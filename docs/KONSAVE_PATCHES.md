@@ -1,48 +1,49 @@
-# Alterações no código do Konsave (`konsave/`)
+# Changes to the Konsave code (`konsave/`)
 
-Este é o **único** documento que lista o que o KonGUI mudou dentro do pacote
-`konsave/` do projeto original. Existe para que uma nova versão do Konsave possa
-ser incorporada sem adivinhação: refaça as alterações abaixo, rode a lista de
-verificação (§5) e pronto.
+This is the **only** document that lists what KonGUI changed inside the `konsave/`
+package of the original project. It exists so that a new Konsave release can be
+incorporated without guesswork: redo the changes below, run the verification list
+(§5) and you are done.
 
-**Base das alterações:** Konsave com `konsave/__main__.py` no estado do commit
-`5179e0f` deste repositório (antes de qualquer alteração de trava).
-Toda linha alterada em arquivo original traz o marcador `KONGUI-PATCH(lock)`;
-para achar tudo: `grep -rn "KONGUI-PATCH" konsave/ setup.py`.
+**Baseline of the changes:** Konsave with `konsave/__main__.py` as in commit
+`5179e0f` of this repository (before any lock change).
+Every changed line in an original file carries the marker `KONGUI-PATCH(lock)`; to
+find them all: `grep -rn "KONGUI-PATCH" konsave/` (the one-line change in
+`setup.py` carries no marker; see §1).
 
-## 1. Resumo
+## 1. Summary
 
-| Arquivo | Tipo | Tamanho | Motivo |
+| File | Type | Size | Reason |
 |---|---|---|---|
-| `konsave/lock.py` | **novo** (só biblioteca padrão) | ~420 linhas | mecanismo da trava entre processos (`fcntl.flock`) |
-| `konsave/__main__.py` | alterado | +56 / −8 linhas | a CLI passa a executar cada comando sob a trava |
-| `setup.py` | alterado | 1 linha | `python_requires` de `>=3.6` para `>=3.9` |
+| `konsave/lock.py` | **new** (standard library only) | ~420 lines | mechanism of the cross-process lock (`fcntl.flock`) |
+| `konsave/__main__.py` | changed | +56 / −8 lines | the CLI now runs every command under the lock |
+| `setup.py` | changed | 1 line | `python_requires` from `>=3.6` to `>=3.9` |
 
-Nenhum outro arquivo de `konsave/` foi tocado (`funcs.py`, `consts.py`,
-`parse.py`, `conf_*.yaml` e `__init__.py` estão idênticos ao original). O
-comportamento dos comandos não muda quando ninguém mais usa o Konsave; as únicas
-diferenças visíveis estão em §4.
+No other file in `konsave/` was touched (`funcs.py`, `consts.py`, `parse.py`,
+`conf_*.yaml` and `__init__.py` are identical to the original). The behavior of the
+commands does not change when nobody else is using Konsave; the only visible
+differences are in §4.
 
-## 2. `konsave/lock.py` (arquivo novo)
+## 2. `konsave/lock.py` (new file)
 
-Arquivo independente: não importa nada do Konsave nem do KonGUI. Em uma nova
-versão do Konsave basta **copiá-lo de novo**. Interface usada pelo restante:
+A standalone file: it imports nothing from Konsave or KonGUI. With a new Konsave
+release you only need to **copy it again**. Interface used by the rest:
 
-* `OperationLock(caminho).hold(modo, operation=, timeout=, cancel=, on_wait=)`
-  (gerenciador de contexto; `modo` é `SHARED` ou `EXCLUSIVE`);
-* `command_lock(konsave_dir, modo, operation)` (versão da linha de comando:
-  espera com mensagem e termina com código de saída);
+* `OperationLock(path).hold(mode, operation=, timeout=, cancel=, on_wait=)`
+  (context manager; `mode` is `SHARED` or `EXCLUSIVE`);
+* `command_lock(konsave_dir, mode, operation)` (command-line version: waits with a
+  message and ends with an exit status);
 * `default_lock_path`, `timeout_from_environment`, `describe_holder`;
-* exceções `LockError` ← `LockBusyError` ← `LockTimeoutError`,
+* exceptions `LockError` ← `LockBusyError` ← `LockTimeoutError`,
   `LockCancelledError`, `LockUnavailableError`, `LockUsageError`.
 
-Comportamento completo: [`CONCURRENCY.md`](CONCURRENCY.md).
+Full behavior: [`CONCURRENCY.md`](CONCURRENCY.md).
 
 ## 3. `konsave/__main__.py`
 
-Quatro mudanças, todas marcadas. O corpo de despacho (`if args.list: … elif …`)
-**não foi reescrito**: apenas movido para `_run`, sem alteração além da leitura
-da lista de perfis.
+Four changes, all marked. The dispatch body (`if args.list: … elif …`) was **not
+rewritten**: it was only moved to `_run`, with no change beyond reading the profile
+list.
 
 ### 3.1 Imports
 
@@ -59,85 +60,85 @@ da lista de perfis.
 +from konsave.lock import EXCLUSIVE, SHARED, command_lock  # KONGUI-PATCH(lock)
 ```
 
-`list_of_profiles` e `length_of_lop` deixam de ser importados porque
-`konsave.consts` os calcula **na importação do módulo**, antes de qualquer espera
-pela trava (ficariam velhos). Veja 3.4.
+`list_of_profiles` and `length_of_lop` are no longer imported because
+`konsave.consts` computes them **when the module is imported**, before any wait for
+the lock (they would be stale). See 3.4.
 
-### 3.2 Função nova `_lock_request(args)`
+### 3.2 New function `_lock_request(args)`
 
-Devolve `(modo, operação)` do comando. Espelha a **mesma ordem** da cadeia
-`if/elif` de `_run` (o primeiro que casa executa):
+Returns the command's `(mode, operation)`. It mirrors the **same order** as the
+`if/elif` chain in `_run` (the first match runs):
 
-| Comando | Trava | Por quê |
+| Command | Lock | Why |
 |---|---|---|
-| `--list` | compartilhada | só lê |
-| `--save`, `--remove`, `--apply`, `--import-profile`, `--wipe` | exclusiva | alteram perfis ou arquivos do usuário |
-| `--export-profile` | compartilhada | lê o perfil; grava fora dos dados do Konsave |
-| `--version`, `--help`, sem argumentos | nenhuma | não tocam dados compartilhados |
+| `--list` | shared | only reads |
+| `--save`, `--remove`, `--apply`, `--import-profile`, `--wipe` | exclusive | change profiles or user files |
+| `--export-profile` | shared | reads the profile; writes outside Konsave's data |
+| `--version`, `--help`, no arguments | none | do not touch shared data |
 
-> **Ao adaptar:** se uma versão nova do Konsave acrescentar um comando, inclua-o
-> em `_lock_request` na posição equivalente da cadeia de `_run` e decida se ele
-> lê (compartilhada) ou altera (exclusiva). Um comando que ficar sem trava
-> funciona, mas deixa de ser protegido.
+> **When adapting:** if a new Konsave release adds a command, include it in
+> `_lock_request` at the equivalent position in `_run`'s chain and decide whether it
+> reads (shared) or changes (exclusive). A command left without a lock works, but is
+> no longer protected.
 
 ### 3.3 `main()`
 
-* A criação de `conf.yaml` padrão agora acontece sob trava exclusiva, com uma
-  segunda verificação `os.path.exists` dentro dela (dois processos na primeira
-  execução não copiam o arquivo ao mesmo tempo). O corpo do `if/else` copiado é
-  o original.
-* Depois do `parse_args()`, o comando roda em
-  `with command_lock(KONSAVE_DIR, modo, operação): _run(parser, args)`.
+* The creation of the default `conf.yaml` now happens under the exclusive lock, with
+  a second `os.path.exists` check inside it (two processes on first run do not copy
+  the file at the same time). The body of the copied `if/else` is the original.
+* After `parse_args()`, the command runs in
+  `with command_lock(KONSAVE_DIR, mode, operation): _run(parser, args)`.
 
-### 3.4 Função `_run(parser, args)`
+### 3.4 Function `_run(parser, args)`
 
-Contém o que antes vinha depois de `args = parser.parse_args()` em `main()`,
-**sem mudanças**, exceto pelas duas primeiras linhas:
+Contains what used to come after `args = parser.parse_args()` in `main()`,
+**unchanged**, except for the first two lines:
 
 ```python
 list_of_profiles = os.listdir(PROFILES_DIR)
 length_of_lop = len(list_of_profiles)
 ```
 
-Sem isso, um `--save nome` que esperou a trava decidiria "já existe / não existe"
-com a lista lida antes da espera. Coberto por
+Without this, a `--save name` that waited for the lock would decide "exists / does
+not exist" with the list read before the wait. Covered by
 `tests.test_locking.CliTests.test_a_waiting_save_does_not_overwrite_what_the_first_one_created`.
 
-> **Ao adaptar:** se o original passar a calcular a lista de outra forma, mantenha
-> a regra: **ler depois de obter a trava**.
+> **When adapting:** if the original starts computing the list some other way, keep
+> the rule: **read it after obtaining the lock**.
 
-## 4. Diferenças de comportamento visíveis na CLI
+## 4. Visible behavior differences in the CLI
 
-| Situação | Original | Com o patch |
+| Situation | Original | With the patch |
 |---|---|---|
-| Nenhuma outra operação em andamento | — | idêntico |
-| Outra operação em andamento | os dois rodam ao mesmo tempo | espera até 30 s com a mensagem `Konsave: another Konsave operation is running…; waiting up to 30 s (Ctrl+C to give up)...` (stderr) |
-| Esperou e não conseguiu | — | `Konsave: … Nothing was changed.`, **código de saída 75** (o original sempre sai com 0, mesmo em erro) |
-| Arquivo de trava inutilizável (pasta sem permissão etc.) | — | `Konsave: cannot open the lock file …`, código 1 |
-| Ctrl+C durante a espera | — | código 130, nada alterado |
-| Variável `KONSAVE_LOCK_TIMEOUT` | — | segundos de espera (`0` = não esperar; negativo ou `inf` = sem limite; padrão 30) |
-| Pasta do Konsave | — | passa a conter `.kongui.lock` (arquivo vazio/pequeno, nunca apagado) |
+| No other operation in progress | — | identical |
+| Another operation in progress | both run at the same time | waits up to 30 s with the message `Konsave: another Konsave operation is running…; waiting up to 30 s (Ctrl+C to give up)...` (stderr) |
+| Waited and did not get it | — | `Konsave: … Nothing was changed.`, **exit status 75** (the original always exits with 0, even on error) |
+| Unusable lock file (folder without permission, etc.) | — | `Konsave: cannot open the lock file …`, status 1 |
+| Ctrl+C while waiting | — | status 130, nothing changed |
+| `KONSAVE_LOCK_TIMEOUT` variable | — | seconds to wait (`0` = do not wait; negative or `inf` = no limit; default 30) |
+| Konsave folder | — | now contains `.kongui.lock` (empty/small file, never deleted) |
 
-## 5. Como adaptar a uma nova versão do Konsave
+## 5. How to adapt to a new Konsave release
 
-1. Traga o `konsave/` novo para o repositório (substituindo o atual).
-2. Copie de volta `konsave/lock.py` (não existe no original).
-3. Reaplique as alterações de §3 em `konsave/__main__.py` (`grep` pelo marcador
-   mostra onde estavam). Se o `__main__.py` mudou muito, faça pelo conceito:
-   *um comando = uma trava; a lista de perfis é lida depois da trava*.
-4. Em `setup.py`, mantenha `python_requires=">=3.9"` (ou o que o Konsave novo exigir).
-5. Confira se `konsave/funcs.py`/`consts.py` continuam com as mesmas funções que
-   `kongui/core/engine.py` usa (`docs/INTEGRATION.md` §2). A trava do KonGUI **não**
-   depende do `__main__`: ela envolve as chamadas em `kongui/core/` (ver
+1. Bring the new `konsave/` into the repository (replacing the current one).
+2. Copy `konsave/lock.py` back (it does not exist in the original).
+3. Reapply the changes of §3 to `konsave/__main__.py` (`grep` for the marker shows
+   where they were). If `__main__.py` changed a lot, do it by concept: *one command
+   = one lock; the profile list is read after the lock*.
+4. In `setup.py`, keep `python_requires=">=3.9"` (or whatever the new Konsave
+   requires).
+5. Check that `konsave/funcs.py`/`consts.py` still have the same functions that
+   `kongui/core/engine.py` uses (`docs/INTEGRATION.md` §2). KonGUI's lock does
+   **not** depend on `__main__`: it wraps the calls in `kongui/core/` (see
    [`CONCURRENCY.md`](CONCURRENCY.md) §3).
-6. Rode a verificação:
+6. Run the verification:
    * `python -m unittest tests.test_locking tests.test_cli_runner tests.test_profile_service_integration`
-     (processos reais; falha se a CLI ou o serviço deixarem de usar a trava);
-   * `python -m unittest discover -s tests -t .` (suíte inteira, **como usuário comum**);
-   * `git diff <versão-antiga> -- konsave/` deve mostrar só o que está neste documento.
+     (real processes; fails if the CLI or the service stop using the lock);
+   * `python -m unittest discover -s tests -t .` (whole suite, **as a regular user**);
+   * `git diff <old-version> -- konsave/` must show only what is in this document.
 
-## 6. Histórico
+## 6. History
 
-| Versão do KonGUI | Alteração |
+| KonGUI version | Change |
 |---|---|
-| esta etapa | trava entre processos (`lock.py`, `__main__.py`, `setup.py`) |
+| this stage | cross-process lock (`lock.py`, `__main__.py`, `setup.py`) |

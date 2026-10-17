@@ -50,9 +50,9 @@ class IntegrationDocTests(unittest.TestCase):
 
     def test_required_sections_exist(self):
         for heading in (
-            "## 2. APIs do Konsave confirmadas",
-            "## 7. Como validar cada serviço",
-            "## 8. Operações não implementadas",
+            "## 2. Confirmed Konsave APIs",
+            "## 7. How to validate each service",
+            "## 8. Unimplemented operations",
         ):
             with self.subTest(heading=heading):
                 self.assertIn(heading, self.text)

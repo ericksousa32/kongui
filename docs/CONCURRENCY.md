@@ -1,142 +1,151 @@
-# Trava entre processos
+# Cross-process lock
 
-Dois programas mexendo nos mesmos arquivos ao mesmo tempo (dois KonGUI, ou o
-KonGUI e o comando `konsave`) podiam corromper perfis, sobrescrever `conf.yaml` ou
-misturar cópias de segurança. Desde esta etapa todas as operações que usam os dados
-do Konsave passam por uma trava do próprio sistema operacional. As alterações no
-código original estão em [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md).
+Two programs working on the same files at the same time (two KonGUI instances, or
+KonGUI and the `konsave` command) could corrupt profiles, overwrite `conf.yaml` or
+mix safety copies. Since this stage, every operation that uses Konsave data goes
+through a lock provided by the operating system itself. The changes to the original
+code are listed in [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md).
 
-## 1. Como funciona
+Note on interface texts: the interface is currently in Brazilian Portuguese. Labels
+and messages are quoted below as they appear on screen, with an English gloss in
+parentheses where needed.
 
-* Mecanismo: `fcntl.flock()` do Linux em um arquivo fixo,
-  **`~/.config/konsave/.kongui.lock`** (dentro da pasta de dados do Konsave, para
-  que todo programa que enxergue os mesmos perfis enxergue a mesma trava; não fica
-  em `XDG_RUNTIME_DIR`, que muda entre sessões, `su` e `ssh`).
-* **Não** usa arquivo de PID, arquivo temporário ou detecção de janela. O sistema
-  libera a trava sozinho quando o processo termina, mesmo morto por `kill -9`.
-* O arquivo de trava **nunca é apagado nem recriado** (apagar permitiria dois donos).
-  Fica com permissão `0600`, é aberto sem seguir links simbólicos e precisa ser um
-  arquivo comum do próprio usuário; caso contrário a operação falha com erro claro.
-* Dois modos: **exclusiva** (altera dados) e **compartilhada** (só lê; vários
-  leitores ao mesmo tempo, mas nunca junto de uma escrita).
-* O descritor fica aberto durante toda a operação protegida e é fechado ao fim,
-  também em exceção. Ele não é herdado por processos filhos.
-* A espera é feita por tentativas sem bloqueio (10 ms crescendo até 100 ms), o que
-  permite **tempo limite** e **cancelamento cooperativo** (`threading.Event`).
-* Dentro do mesmo processo a trava é **reentrante por thread** (uma função de
-  alto nível pode chamar outra). Pedir exclusiva estando com compartilhada é erro
-  (`LockUsageError`), pois travaria a si mesmo. A ordem é sempre: trava de arquivo
-  primeiro, depois `ENGINE_LOCK` (o `RLock` do processo); não há ordem inversa.
-* O arquivo guarda, só para mensagens, `{pid, operação, desde}` de quem tem a trava
-  exclusiva. É **informação**, não prova de posse: se o PID não existe mais ele é
-  ignorado, e quem decide é sempre o sistema (`flock`).
+## 1. How it works
 
-## 2. O que é protegido
+* Mechanism: Linux `fcntl.flock()` on a fixed file,
+  **`~/.config/konsave/.kongui.lock`** (inside Konsave's data folder, so that every
+  program that sees the same profiles sees the same lock; it is not in
+  `XDG_RUNTIME_DIR`, which changes between sessions, `su` and `ssh`).
+* It does **not** use a PID file, a temporary file or window detection. The system
+  releases the lock by itself when the process ends, even if killed by `kill -9`.
+* The lock file is **never deleted or recreated** (deleting it would allow two
+  owners). It has permission `0600`, is opened without following symbolic links and
+  must be a regular file owned by the user; otherwise the operation fails with a
+  clear error.
+* Two modes: **exclusive** (changes data) and **shared** (only reads; several
+  readers at once, but never together with a writer).
+* The descriptor stays open during the whole protected operation and is closed at
+  the end, also on exception. It is not inherited by child processes.
+* Waiting is done by non-blocking attempts (10 ms growing to 100 ms), which allows a
+  **timeout** and **cooperative cancellation** (`threading.Event`).
+* Within the same process the lock is **re-entrant per thread** (a high-level
+  function may call another). Asking for exclusive while holding shared is an error
+  (`LockUsageError`), because it would lock itself. The order is always: file lock
+  first, then `ENGINE_LOCK` (the process's `RLock`); there is no reverse order.
+* The file stores, for messages only, `{pid, operation, since}` of whoever holds the
+  exclusive lock. It is **information**, not proof of ownership: if the PID no
+  longer exists it is ignored, and the system (`flock`) always decides.
 
-| Operação | Trava |
+## 2. What is protected
+
+| Operation | Lock |
 |---|---|
-| salvar, substituir, aplicar, remover, importar, limpar tudo | exclusiva |
-| restaurar e apagar cópia de segurança | exclusiva |
-| gravar `conf.yaml` (comparação de resumo + escrita) e criar o padrão | exclusiva |
-| listar perfis, ler um perfil, exportar, listar cópias | compartilhada |
-| ler `conf.yaml` para exibir | sem trava (a escrita é atômica por `os.replace`) |
-| `konsave --version`, `--help` | sem trava |
+| save, replace, apply, remove, import, wipe all | exclusive |
+| restore and delete a safety copy | exclusive |
+| write `conf.yaml` (digest comparison + write) and create the default | exclusive |
+| list profiles, read a profile, export, list copies | shared |
+| read `conf.yaml` to display it | no lock (the write is atomic through `os.replace`) |
+| `konsave --version`, `--help` | no lock |
 
-A trava **não** é mantida enquanto o usuário decide em um diálogo: ela só existe
-dentro da chamada que executa a operação.
+The lock is **not** held while the user decides in a dialog: it only exists inside
+the call that performs the operation.
 
-## 3. Onde está no código
+## 3. Where it is in the code
 
-| Parte | Local |
+| Part | Location |
 |---|---|
-| Mecanismo (sem dependências) | `konsave/lock.py` |
-| Linha de comando original | `konsave/__main__.py` (`command_lock`) |
-| Camada do KonGUI | `kongui/core/lock.py` (`EngineLock`, `LockPolicy`, `guarded`) |
-| Serviços | `@guarded(...)` em `ProfileService` e `ConfigService`; `KonsaveEngine.call` trava as funções originais que alteram dados (`CALL_LOCK_MODES`) |
-| Mensagens da interface | `kongui/gui/messages.py` (`describe_error`) |
+| Mechanism (no dependencies) | `konsave/lock.py` |
+| Original command line | `konsave/__main__.py` (`command_lock`) |
+| KonGUI layer | `kongui/core/lock.py` (`EngineLock`, `LockPolicy`, `guarded`) |
+| Services | `@guarded(...)` on `ProfileService` and `ConfigService`; `KonsaveEngine.call` locks the original functions that change data (`CALL_LOCK_MODES`) |
+| Interface messages | `kongui/gui/messages.py` (`describe_error`) |
 
-A interface **não usa subprocesso** para falar com o Konsave, então não há dupla
-aquisição; o `CliRunner` só faz diagnósticos e nada que altere dados.
+The interface **does not use a subprocess** to talk to Konsave, so there is no
+double acquisition; `CliRunner` only runs diagnostics and nothing that changes data.
 
-## 4. Como o conflito aparece
+## 4. How a conflict appears
 
-**Linha de comando**
+**Command line**
 
 ```
 Konsave: another Konsave operation is running (apply, pid 1234); waiting up to 30 s (Ctrl+C to give up)...
 ```
 
-Se acabar o tempo: `Konsave: … Nothing was changed.` e código de saída **75**
-(`EX_TEMPFAIL`). Trava inutilizável: código 1. Ctrl+C: 130. Tempo de espera por
-`KONSAVE_LOCK_TIMEOUT` (segundos; `0` = não esperar; negativo ou `inf` = sem limite).
+If the time runs out: `Konsave: … Nothing was changed.` and exit status **75**
+(`EX_TEMPFAIL`). Unusable lock: status 1. Ctrl+C: 130. The wait time is set by
+`KONSAVE_LOCK_TIMEOUT` (seconds; `0` = do not wait; negative or `inf` = no limit).
 
-**Interface gráfica**
+**Graphical interface**
 
-A operação roda em segundo plano (a janela não congela) e, se outro processo
-estiver com a trava, **espera** em vez de falhar:
+The operation runs in the background (the window does not freeze) and, if another
+process holds the lock, it **waits** instead of failing:
 
-* aparece uma faixa abaixo da barra superior: “Aguardando outra operação do
-  Konsave…”, com a explicação e, quando conhecida, a dica (não verificada) de qual
-  operação/processo está com a trava;
-* o botão **Cancelar espera** da faixa interrompe só a espera: nada é alterado, a
-  outra operação não é tocada e aparece o aviso “Espera cancelada”. Depois disso a
-  janela volta ao normal e a mesma ação pode ser repetida;
-* enquanto espera, a operação conta como “em andamento”: todos os botões que
-  alteram dados ficam desabilitados (como em qualquer operação), o cartão do perfil
-  envolvido mostra “Aguardando outra operação…”, e fechar a janela é recusado com
-  o aviso “Cancele a espera ou aguarde…”;
-* se a outra operação terminar, a nossa começa sozinha, a faixa some e o resultado
-  aparece como de costume;
-* se a espera passar do limite (`LockPolicy.timeout`, 30 s), a operação termina
-  com “A outra operação do Konsave … não terminou a tempo. Nada foi alterado”;
-* arquivo de trava inutilizável (pasta sem permissão etc.) não é espera: aparece
-  logo o erro com o nome do arquivo.
+* a strip appears below the top bar: "Aguardando outra operação do Konsave…"
+  (Waiting for another Konsave operation…), with the explanation and, when known,
+  the (unverified) hint of which operation/process holds the lock;
+* the strip's **Cancelar espera** (Cancel wait) button interrupts only the wait:
+  nothing is changed, the other operation is not touched and the notice "Espera
+  cancelada" (Wait cancelled) appears. After that the window returns to normal and
+  the same action can be repeated;
+* while waiting, the operation counts as "in progress": all buttons that change
+  data are disabled (as with any operation), the card of the profile involved shows
+  "Aguardando outra operação…", and closing the window is refused with the notice
+  "Cancele a espera ou aguarde…" (Cancel the wait or wait…);
+* if the other operation finishes, ours starts by itself, the strip disappears and
+  the result appears as usual;
+* if the wait exceeds the limit (`LockPolicy.timeout`, 30 s), the operation ends
+  with "A outra operação do Konsave … não terminou a tempo. Nada foi alterado"
+  (the other Konsave operation … did not finish in time. Nothing was changed);
+* an unusable lock file (folder without permission, etc.) is not a wait: the error
+  appears at once, naming the file.
 
-Como funciona por dentro: o controller (`ProfileController`) entrega ao backend um
-`threading.Event` de cancelamento e um callback `on_wait` (`configure_lock_wait`);
-o callback roda na thread de trabalho e chega à janela por sinal Qt; `cancel_wait()`
-só levanta o evento. Quando a operação falha por causa da trava, a lista de perfis
-**não** é relida (nada rodou, e releria esperaria pela mesma trava).
-A confirmação do usuário (diálogo) acontece **antes** da operação, então a trava
-nunca fica segurada enquanto ele decide. O modo demonstração simula outro processo
-com `FakeBackend.start_other()` / `finish_other()`.
+How it works inside: the controller (`ProfileController`) gives the backend a
+cancellation `threading.Event` and an `on_wait` callback (`configure_lock_wait`);
+the callback runs on the worker thread and reaches the window through a Qt signal;
+`cancel_wait()` only raises the event. When the operation fails because of the lock,
+the profile list is **not** read again (nothing ran, and reading it would wait for
+the same lock). The user's confirmation (dialog) happens **before** the operation,
+so the lock is never held while they decide. Demo mode simulates another process
+with `FakeBackend.start_other()` / `finish_other()`.
 
-Limitações da interface: a janela não monitora a trava sozinha, só descobre o
-conflito quando o usuário dispara uma ação; leituras em segundo plano
-(`inspect_archive`, `probe_export`, que usam o mesmo thread de trabalho) ficam na
-fila atrás de uma operação que espera.
+Interface limitations: the window does not watch the lock by itself and only finds
+out about the conflict when the user triggers an action; background reads
+(`inspect_archive`, `probe_export`, which use the same worker thread) queue up
+behind an operation that is waiting.
 
-## 5. Limitações
+## 5. Limitations
 
-* Só programas que usam a trava são protegidos. **Ferramentas externas** (o próprio
-  Plasma, editores, outro gerenciador de configurações) ignoram a trava.
-* Quem chama `konsave.funcs` diretamente como biblioteca, sem passar pelo
-  `__main__` ou pelo KonGUI, não é protegido.
-* Não há fila justa (FIFO): quando a trava é liberada, quem tentar primeiro leva.
-* Em NFS o `flock` é emulado; não é suportado como configuração de produção.
-* Falha fechada: se o arquivo de trava não puder ser aberto, os comandos que usam
-  trava (inclusive `--list`) recusam em vez de rodar sem proteção.
-* A CLI sai com 75 em conflito, enquanto o Konsave original sai sempre com 0.
-* Leitura de `conf.yaml` sem trava pode ver o arquivo anterior à gravação em curso
-  (nunca um arquivo pela metade).
+* Only programs that use the lock are protected. **External tools** (Plasma itself,
+  editors, another configuration manager) ignore the lock.
+* Whoever calls `konsave.funcs` directly as a library, without going through
+  `__main__` or KonGUI, is not protected.
+* There is no fair queue (FIFO): when the lock is released, whoever tries first
+  gets it.
+* On NFS `flock` is emulated; it is not supported as a production setup.
+* Fail closed: if the lock file cannot be opened, the commands that use the lock
+  (including `--list`) refuse instead of running unprotected.
+* The CLI exits with 75 on conflict, whereas the original Konsave always exits
+  with 0.
+* A read of `conf.yaml` without the lock may see the file as it was before a write
+  in progress (never a half-written file).
 
-## 6. Testes
+## 6. Tests
 
-`tests.test_locking` usa **processos reais** e o `flock` real, em pastas temporárias
-e sem tocar na sessão: dois processos disputando; exclusiva × compartilhada;
-leitores simultâneos e leitura durante escrita; segunda operação esperando a
-primeira; tempo limite e cancelamento; exceção dentro da operação; processo morto
-com `SIGKILL`; registro de dono antigo ignorado; pasta sem permissão, diretório ou
-link no lugar do arquivo; CLI × CLI, serviço × CLI nos dois sentidos, dois
-“KonGUI”; lista de perfis relida depois da espera; primeira execução simultânea;
-códigos de saída 75/1/130; reentrância e proibição de promover a trava;
-comandos sem trava (`--version`, `--help`) nunca esperam; textos da interface.
-`tests.test_gui_lock_wait` cobre a interface: faixa de espera com dica do dono,
-janela responsiva durante a espera (temporizador Qt continua disparando), botões
-travados, cancelamento (nada alterado, próxima operação normal), fim da espera
-quando a outra termina, tempo esgotado, fechar a janela, aviso “Espera cancelada”,
-leitura em segundo plano que não parece espera, e os mesmos fluxos com os serviços
-reais contra um processo auxiliar que segura o `flock` de verdade.
-Os testes antigos (`tests.test_profile_service_integration`, `tests.test_gui_startup`)
-foram ajustados apenas para aceitar o arquivo `.kongui.lock` e o módulo
-`konsave.lock`.
+`tests.test_locking` uses **real processes** and the real `flock`, in temporary
+folders and without touching the session: two processes competing; exclusive ×
+shared; simultaneous readers and a read during a write; a second operation waiting
+for the first; timeout and cancellation; an exception inside the operation; a
+process killed with `SIGKILL`; a stale owner record ignored; a folder without
+permission, or a directory or link in place of the file; CLI × CLI, service × CLI
+in both directions, two "KonGUI" instances; profile list read again after the
+wait; simultaneous first run; exit statuses 75/1/130; re-entrancy and the ban on
+upgrading the lock; lock-free commands (`--version`, `--help`) never wait;
+interface texts.
+`tests.test_gui_lock_wait` covers the interface: the wait strip with the owner
+hint, a window that stays responsive during the wait (the Qt timer keeps firing),
+locked buttons, cancellation (nothing changed, next operation normal), the end of
+the wait when the other operation finishes, timeout, closing the window, the "Espera
+cancelada" notice, a background read that does not look like a wait, and the same
+flows with the real services against a helper process that holds the real `flock`.
+The older tests (`tests.test_profile_service_integration`, `tests.test_gui_startup`)
+were adjusted only to accept the `.kongui.lock` file and the `konsave.lock` module.
