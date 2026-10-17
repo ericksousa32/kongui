@@ -183,6 +183,11 @@ class ProfileBackend(ABC):
         """Name to show as active before the user applies anything."""
         return None
 
+    @property
+    def engine_version(self) -> str:
+        """Version of the Konsave engine in use (``konsave --version``), or ``""``."""
+        return ""
+
     @abstractmethod
     def list_profiles(self) -> List[Profile]:
         """Returns the saved profiles, sorted by name."""
@@ -411,6 +416,11 @@ class ServiceBackend(ProfileBackend):
     def service(self) -> ProfileService:
         """The wrapped service."""
         return self._service
+
+    @property
+    def engine_version(self) -> str:
+        """Version of the original Konsave loaded by the engine."""
+        return self._service.engine.version
 
     def _config_service(self, operation: str) -> ConfigService:
         """The real configuration service."""

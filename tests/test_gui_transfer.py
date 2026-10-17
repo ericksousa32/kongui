@@ -53,7 +53,12 @@ class ExportCase(WindowCase):
             page.filename_edit.setText(name)
         if policy:
             page.conflict_combo.setCurrentIndex(page.conflict_combo.findData(policy))
-        return page.start_export()
+        started = page.start_export()
+        if started and page._probing:
+            # The folder check runs in the background; deliver just that job.
+            self.executor.run_next()
+            return page._probe_outcome
+        return started
 
     def exported(self):
         """``(profile, directory, name, policy)`` of the export calls."""

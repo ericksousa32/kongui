@@ -94,8 +94,10 @@ class AboutPage(Page):
         info_layout.setSpacing(2)
         info_layout.addWidget(self.section_title("Ambiente"))
         info_layout.addWidget(Separator())
+        engine_version = ctx.backend.engine_version
         self.info_values = {
             "Versão do KonGUI": __version__,
+            **({"Versão do Konsave": engine_version} if engine_version else {}),
             "Qt": qVersion(),
             "PySide6": PySide6.__version__,
             "Python": platform.python_version(),

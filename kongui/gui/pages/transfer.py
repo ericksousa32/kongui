@@ -104,6 +104,8 @@ class TransferPage(
         self._archive: Optional[ArchiveInfo] = None
         self._archive_error: Tuple[str, ...] = ()
         self._inspecting = False
+        self._probing = False
+        self._probe_outcome: Optional[bool] = None
         self._inspect_token = 0
 
         panels = ResponsiveGrid(min_item_width=380, max_columns=2)
@@ -311,7 +313,9 @@ class TransferPage(
             f"Arquivo final: {self.export_target()}" if not problem else ""
         )
         self.export_error.hide()
-        self.export_button.setEnabled(problem is None and not self.ctx.controller.busy)
+        self.export_button.setEnabled(
+            problem is None and not self.ctx.controller.busy and not self._probing
+        )
 
     def _export_policy(self, probe) -> Optional[str]:
         """Decides the conflict policy for this export, asking when needed.
@@ -376,15 +380,20 @@ class TransferPage(
     def start_export(self) -> bool:
         """Checks the target, asks when something would be replaced, and exports.
 
+        Looking at the output folder touches the disk (a slow or stalled mount
+        would freeze the window), so the check runs in the background and the
+        rest continues when it is back (:meth:`_on_probed`).
+
         Returns:
-            bool: ``True`` if an export was started. ``False`` if the form is
-            invalid, the folder is unusable, the user cancelled, or another
-            operation is running (an error notification explains it).
+            bool: ``False`` if the form is invalid, another operation (or
+            another check) is running, or, when the check finished at once
+            (tests, scripts), the folder is unusable or the user cancelled.
+            ``True`` if the export started or the check is still running.
         """
         if self._export_problem() is not None:
             return False
         controller = self.ctx.controller
-        if controller.busy:
+        if controller.busy or self._probing:
             self.ctx.toasts.show_message(
                 "info", "Aguarde", "Outra operação ainda está em andamento."
             )
@@ -392,10 +401,49 @@ class TransferPage(
         name = str(self.export_combo.currentData())
         directory = self.destination_edit.text().strip()
         base = self.filename_edit.text()
-        try:
-            probe = self.ctx.backend.probe_export(directory, base)
-        except OSError as error:
-            self._export_failed(" ".join(messages.describe_error(error)))
+        self._probing = True
+        self._probe_outcome = None
+        self._update_export_state()
+        backend = self.ctx.backend
+        controller.background(
+            lambda: backend.probe_export(directory, base),
+            lambda probe, error: self._on_probed(name, directory, base, probe, error),
+        )
+        return True if self._probe_outcome is None else self._probe_outcome
+
+    def _on_probed(
+        self,
+        name: str,
+        directory: str,
+        base: str,
+        probe,
+        error: Optional[BaseException],
+    ) -> None:
+        """Continues an export once the output folder has been looked at."""
+        self._probing = False
+        # Refresh first: it hides the previous error, and the continuation may
+        # show a new one (or start the export, which locks the form itself).
+        self._update_export_state()
+        self._probe_outcome = False
+        self._probe_outcome = self._export_after_probe(
+            name, directory, base, probe, error
+        )
+
+    def _export_after_probe(
+        self,
+        name: str,
+        directory: str,
+        base: str,
+        probe,
+        error: Optional[BaseException],
+    ) -> bool:
+        """Applies the conflict policy to the probe and starts the export."""
+        if error is not None or probe is None:
+            self._export_failed(
+                " ".join(messages.describe_error(error))
+                if error is not None
+                else "Não foi possível verificar a pasta de destino."
+            )
             return False
         if probe.folder_problem:
             self._export_failed(
@@ -405,13 +453,18 @@ class TransferPage(
         policy = self._export_policy(probe)
         if policy is None:
             return False
-        return controller.export_profile(
+        started = self.ctx.controller.export_profile(
             name,
             directory,
             base,
             policy,
             confirmed=policy == "overwrite",
         )
+        if not started:
+            self.ctx.toasts.show_message(
+                "info", "Aguarde", "Outra operação ainda está em andamento."
+            )
+        return started
 
     # ---- import -----------------------------------------------------------------
 

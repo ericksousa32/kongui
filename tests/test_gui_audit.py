@@ -128,5 +128,108 @@ class ExportWarningTextTests(GuiTestCase):
         )
 
 
+@unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
+class EngineVersionTests(GuiTestCase):
+    """``konsave --version`` had no graphical equivalent."""
+
+    def test_about_page_shows_the_version_of_the_real_engine(self):
+        from kongui.core import KonsaveEngine, ProfileService
+        from kongui.gui.backend import ServiceBackend
+
+        engine = KonsaveEngine(self.home)
+        backend = ServiceBackend(ProfileService(engine))
+        self.assertEqual(backend.engine_version, engine.version)
+        window = self.make_window(backend=backend)
+        about = window.pages["about"]
+        self.assertEqual(about.info_values["Versão do Konsave"], engine.version)
+
+    def test_demo_does_not_invent_a_version(self):
+        window = self.make_window()
+        self.assertEqual(window.backend.engine_version, "")
+        self.assertNotIn("Versão do Konsave", window.pages["about"].info_values)
+
+
+@unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
+class ExportFolderCheckTests(GuiTestCase):
+    """``probe_export`` touched the disk (up to thousands of stat calls on a
+    crowded folder, each one slow on a network mount) in the interface thread."""
+
+    def test_the_check_waits_for_the_background_worker(self):
+        executor = ManualExecutor()
+        window = self.make_window(executor=executor)
+        executor.run_next()  # the first list
+        page = window.show_page("transfer")
+        real = window.backend.probe_export
+        with mock.patch.object(window.backend, "probe_export", wraps=real) as probe:
+            self.assertTrue(page.start_export())
+            probe.assert_not_called()  # nothing touched the disk yet
+            self.assertFalse(page.export_button.isEnabled())
+            self.assertFalse(page.start_export())  # no second click while checking
+            self.assertIn("Aguarde", window.toasts.titles())
+            executor.run_next()
+            probe.assert_called_once()
+        self.assertFalse(page._probing)
+        self.assertEqual(window.controller.current[0], "export")
+
+    def test_a_threaded_executor_runs_it_off_the_interface_thread(self):
+        import threading
+
+        from kongui.gui.tasks import ThreadExecutor
+
+        executor = ThreadExecutor()
+        self.addCleanup(executor.shutdown)
+        window = self.make_window(executor=executor)
+        self.assertTrue(self.wait_until(lambda: not window.controller.busy))
+        page = window.show_page("transfer")
+        seen = []
+        real = window.backend.probe_export
+
+        def probe(directory, base):
+            seen.append(threading.current_thread())
+            return real(directory, base)
+
+        with mock.patch.object(window.backend, "probe_export", probe):
+            self.assertTrue(page.start_export())
+            self.assertTrue(self.wait_until(lambda: seen))
+        self.assertNotIn(threading.main_thread(), seen)
+        self.assertTrue(
+            self.wait_until(
+                lambda: window.controller.current is None and not page._probing
+            )
+        )
+
+    def test_an_error_while_checking_is_shown_and_unlocks_the_form(self):
+        executor = ManualExecutor()
+        window = self.make_window(executor=executor)
+        executor.run_next()
+        page = window.show_page("transfer")
+        with mock.patch.object(
+            window.backend,
+            "probe_export",
+            side_effect=PermissionError(13, "negado", "/x"),
+        ):
+            self.assertTrue(page.start_export())
+            executor.run_next()
+        self.assertFalse(page._probing)
+        self.assertFalse(page.export_error.isHidden())
+        self.assertTrue(page.export_button.isEnabled())
+        self.assertEqual(window.controller.current, None)
+
+
+class StaleImportFolderMessageTests(unittest.TestCase):
+    """The message told the user to delete a folder without saying which."""
+
+    def test_the_folder_is_named(self):
+        from kongui.core import ValidationError
+        from kongui.gui import messages
+
+        error = ValidationError(
+            "stale import folder found, remove it first: /home/u/.config/konsave/temp/p"
+        )
+        text = " ".join(messages.describe_error(error))
+        self.assertIn("abandonada", text)
+        self.assertIn("/home/u/.config/konsave/temp/p", text)
+
+
 if __name__ == "__main__":
     unittest.main()

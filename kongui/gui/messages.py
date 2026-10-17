@@ -314,6 +314,9 @@ def _translate_validation(text: str) -> str:
     """Returns the pt-BR text for a validation message."""
     for fragment, translation in _VALIDATION_TEXTS:
         if fragment in text:
+            if fragment == "stale import folder":
+                # The user has to delete it by hand, so say where it is.
+                return f"{translation} Pasta: {text.rsplit(': ', 1)[-1]}"
             return translation
     return f"Entrada inválida: {text}"
 
