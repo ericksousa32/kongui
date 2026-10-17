@@ -143,7 +143,22 @@ class MainWindow(QMainWindow):
         self.busy_bar.set_busy(self.controller.busy)
 
     def closeEvent(self, event) -> None:  # pylint: disable=invalid-name
-        """Asks about unsaved work, then waits for the running operation."""
+        """Refuses while an operation runs; asks about unsaved work; then closes.
+
+        An operation of the original Konsave cannot be interrupted, and closing
+        the window used to freeze it for five seconds, hide it and leave the
+        operation running in a process nobody could see. Now the window stays
+        until the operation is over.
+        """
+        if self.controller.busy:
+            self.toasts.show_message(
+                "warning",
+                "Operação em andamento",
+                "Espere terminar antes de fechar: fechar agora poderia deixar "
+                "arquivos pela metade.",
+            )
+            event.ignore()
+            return
         for page in self.pages.values():
             if not page.confirm_leave(self):
                 event.ignore()

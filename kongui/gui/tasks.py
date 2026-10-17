@@ -80,7 +80,12 @@ class _Job(QRunnable):
             value = self._work()
         except Exception as caught:  # pylint: disable=broad-exception-caught
             error = caught
-        self._signals.finished.emit(self._token, value, error)
+        try:
+            self._signals.finished.emit(self._token, value, error)
+        except RuntimeError:
+            # The interface was destroyed while the work ran: nobody is left
+            # to receive the result (it used to print a traceback at exit).
+            return
 
 
 class ThreadExecutor(Executor):
