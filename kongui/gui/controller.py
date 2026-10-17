@@ -29,7 +29,13 @@ from kongui.gui.tasks import Executor
 LOG = logging.getLogger(__name__)
 
 #: Operations on the ``conf.yaml``; they never touch the profile list.
-_CONFIG_OPERATIONS = ("save_config", "restore_config")
+#: Operations that cannot change the profile list: it is not reloaded after them.
+_CONFIG_OPERATIONS = (
+    "save_config",
+    "restore_config",
+    "restore_backup",
+    "delete_backup",
+)
 
 
 class LoadState(str, Enum):
@@ -427,6 +433,48 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
             reload_profiles=False,
         )
 
+    def restore_backup(self, backup_id: str, *, confirmed: bool = False) -> bool:
+        """Puts the files of a safety copy back (destructive).
+
+        Args:
+            backup_id: Id of the copy.
+            confirmed: Must be ``True``.
+
+        Returns:
+            bool: ``False`` if another operation is running.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not ``True``.
+        """
+        self._need(confirmed, "restore_backup")
+        return self._run(
+            "restore_backup",
+            backup_id,
+            lambda: self._backend.restore_backup(backup_id, confirmed=True),
+            reload_profiles=False,
+        )
+
+    def delete_backup(self, backup_id: str, *, confirmed: bool = False) -> bool:
+        """Deletes a safety copy.
+
+        Args:
+            backup_id: Id of the copy.
+            confirmed: Must be ``True``.
+
+        Returns:
+            bool: ``False`` if another operation is running.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not ``True``.
+        """
+        self._need(confirmed, "delete_backup")
+        return self._run(
+            "delete_backup",
+            backup_id,
+            lambda: self._backend.delete_backup(backup_id, confirmed=True),
+            reload_profiles=False,
+        )
+
     def demo_reset(self) -> bool:
         """Restores the demo data (demo backends only).
 
@@ -590,16 +638,14 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         details: List[str] = []
         if operation == "export" and result is not None and result.path is not None:
             details.append(str(result.path))
-        if operation in _CONFIG_OPERATIONS and result is not None:
+        if operation in ("save_config", "restore_config") and result is not None:
             if result.backup is not None:
                 details.append(f"Cópia do arquivo anterior: {result.backup.name}")
         hint = messages.outcome_hint(operation, True)
         if hint:
             details.append(hint)
         if result is not None:
-            details += [
-                f"Aviso: {messages.describe_warning(line)}" for line in result.warnings
-            ]
+            details += [messages.describe_note(line) for line in result.warnings]
         if list_error is not None:
             details.append(
                 "A lista de perfis não pôde ser atualizada: "

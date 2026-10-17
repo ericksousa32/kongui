@@ -82,6 +82,18 @@ class ConfirmationRequiredError(KonGuiError):
     """Raised when a destructive operation is called without confirmation."""
 
 
+class SnapshotError(KonGuiError):
+    """Raised when a safety copy cannot be made, read or restored.
+
+    When it is raised while *making* the copy, the operation that needed it
+    (apply, import) was not started.
+    """
+
+
+class SnapshotNotFoundError(SnapshotError):
+    """Raised when a safety copy does not exist."""
+
+
 class NotImplementedOperationError(KonGuiError):
     """Raised by operations that are documented but not implemented yet."""
 

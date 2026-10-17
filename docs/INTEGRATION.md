@@ -153,12 +153,15 @@ comentários) está em `kongui/core/confedit.py` e `yamlmap.py`; ver
 | `list_profiles()`, `get_profile(name)` | leitura do disco | Lista fresca; ignora arquivos soltos; `has_config` indica perfil completo |
 | `save(name, *, overwrite=False)` | `save_profile` | `overwrite` **mescla** no perfil existente (ver §8). Para substituir de verdade, use `replace` |
 | `replace(name, *, confirmed)` | `save_profile` (nome temporário) | Substituição real: salva a configuração atual em `.kongui-new-…`, troca por `rename` e apaga o antigo; se algo falhar, o perfil antigo continua (ou volta) ao lugar. Não altera o código do Konsave. Os temporários nunca aparecem em `list_profiles` |
-| `apply(name, *, confirmed, allow_outside_home=False)` | `apply_profile` | Sem backup; pastas são mescladas |
+| `apply(name, *, confirmed, allow_outside_home=False)` | `apply_profile` | Antes de gravar, copia os arquivos que vai sobrescrever (cópia de segurança, §9); se a cópia falhar, **nada é aplicado** (`SnapshotError`). Pastas são mescladas |
 | `remove(name, *, confirmed)` | `remove_profile` | Irreversível |
 | `export(name, *, directory, archive_name=None, on_conflict="error")` | `export` | A pasta de saída precisa existir; a pasta temporária de montagem fica nela. Exige o `conf.yaml` ativo (`ConfigMissingError` se faltar: o original o copia para o arquivo). Devolve um **aviso** (`CONF_DIFFERS_PREFIX`) quando o `conf.yaml` ativo, que vai para o `.knsv`, tem grupos diferentes dos do perfil, de onde `save/` e `export/` são tirados |
-| `import_profile(archive_path, *, confirmed, allow_outside_home=False)` | `import_profile` | Grava a seção `export` do arquivo no sistema imediatamente |
+| `import_profile(archive_path, *, confirmed, allow_outside_home=False)` | `import_profile` | Grava a seção `export` do arquivo no sistema imediatamente, depois de fazer a cópia de segurança dos arquivos que vai sobrescrever (§9) |
 | `inspect_archive(archive_path, *, allow_outside_home=False)` | (somente leitura) | Aplica as mesmas verificações do `import_profile` e devolve `ArchiveInspection` (nome, tamanho, seções `save`/`export`, avisos, `name_taken`) sem extrair nada. Os avisos incluem grupos sem pasta em `save/` (o perfil importado não poderia ser aplicado) e pastas que o `conf.yaml` do arquivo não lista (ignoradas ao aplicar) |
 | `wipe_all(*, confirmed)` | `wipe` | Apaga todos os perfis; mantém `conf.yaml` |
+| `list_backups()` | (leitura) | Cópias de segurança de `apply`/`import`/restauração, da mais nova para a mais antiga (`SnapshotInfo`) |
+| `restore_backup(backup_id, *, confirmed, allow_outside_home=False)` | (cópia de segurança) | Devolve os arquivos ao estado guardado; antes guarda o estado atual como nova cópia (dá para desfazer) |
+| `delete_backup(backup_id, *, confirmed)` | (cópia de segurança) | Apaga uma cópia. Nenhuma cópia é apagada automaticamente |
 
 ### `CliRunner(home, *, python=None, timeout=60, extra_pythonpath=(), allow_mutating=False, ...)`
 
@@ -243,14 +246,10 @@ O que observar em cada serviço:
 
 ## 8. Operações não implementadas e limitações herdadas
 
-### Não implementadas (a API existe e lança `NotImplementedOperationError`)
+### Não implementadas
 
-Listadas em `NOT_IMPLEMENTED_OPERATIONS` (`kongui/core/profiles.py`):
-
-| Operação | Situação |
-|---|---|
-| `create_backup` | Backup dos arquivos vivos antes de `apply`/`import` (requisito RN-01). Hoje `apply` e `import` **sobrescrevem sem backup** [CONFIRMADO] |
-| `restore_backup` | Restauração desse backup (RN-01) |
+`NOT_IMPLEMENTED_OPERATIONS` (`kongui/core/profiles.py`) está **vazio**: o backup
+antes de `apply`/`import` (requisito RN-01) existe desde a §9.
 
 ### Fora desta etapa
 
@@ -288,3 +287,35 @@ Listadas em `NOT_IMPLEMENTED_OPERATIONS` (`kongui/core/profiles.py`):
   trata isso como erro de validação.
 * Sem `~/.cache`, a CLI original quebra ao tentar registrar um erro (saída 1 e
   traceback). Chamadas em processo não sofrem disso porque o engine cria a pasta.
+
+## 9. Cópias de segurança antes de aplicar e importar (RN-01)
+
+`kongui/core/snapshot.py` (`SnapshotService`, usado por `ProfileService`).
+
+* **O que é copiado:** só os arquivos que a operação vai sobrescrever, calculados
+  antes de rodar. Para `apply`: cada arquivo da pasta de cada grupo do perfil, no
+  destino `location/…`. Para `import`: cada arquivo `export/<grupo>/…` do `.knsv`
+  cujo primeiro nível está em `entries`. Os arquivos que **não existem ainda** são
+  anotados (a restauração os remove, e remove as pastas que a operação criou se
+  ficarem vazias). Links simbólicos são recriados como links (e, se o `import`
+  escrever através do link, o conteúdo do alvo também é guardado). O modo dos
+  arquivos é preservado.
+* **Onde:** `~/.config/konsave/kongui-backups/<data>-<hora>-<µs>-<operação>/`
+  (`apply`, `import` ou `restore`), com `manifest.json` e `files/`. Pastas com
+  modo 0700.
+* **Falha fechada:** se a cópia não puder ser feita (sem espaço, sem permissão,
+  pasta ocupada), `SnapshotError` é lançado e a operação **não começa**; a pasta
+  parcial é apagada.
+* **Resultado:** `OperationResult.backup` aponta a pasta e `warnings` traz
+  `KEPT_PREFIX + id`. O manifesto guarda se a operação terminou bem
+  (`SnapshotInfo.succeeded`); uma operação que falhou no meio continua tendo a cópia.
+* **Restaurar** exige `confirmed=True`, valida o manifesto inteiro antes de
+  mexer em qualquer arquivo (id só com o formato esperado, caminhos absolutos
+  dentro da home, nomes guardados só em `files/NNNN`), grava cada arquivo por
+  arquivo temporário + `os.replace`, continua nos demais se um falhar (`ok=False`
+  e `errors`) e antes guarda o estado atual (cópia `restore`, nota `UNDO_PREFIX`).
+  Se essa cópia falhar, nada é restaurado.
+* **Não faz:** não desfaz o perfil criado por um `import` (ele continua na lista);
+  não protege contra alterações feitas por outro programa durante a operação; não
+  limita o tamanho total (ver §8). Nada é apagado sozinho: use `delete_backup`.
+

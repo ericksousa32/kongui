@@ -186,13 +186,16 @@ class ApplyIntegrationTests(IntegrationCase):
         self.assertEqual((self.home / ".config/kdeglobals").read_text(), "kdeglobals-A")
         self.assertIn("copying files", result.stdout)
 
-    def test_apply_has_no_backup(self):
-        """Known limitation: live files are overwritten for good."""
+    def test_apply_keeps_a_safety_copy_of_what_it_overwrites(self):
         self.profiles.save("work").raise_for_status()
         write(self.home / ".config/kdeglobals", "UNSAVED-WORK")
-        self.profiles.apply("work", confirmed=True).raise_for_status()
-        leftovers = [n for n in os.listdir(self.home / ".config") if "bak" in n]
-        self.assertEqual(leftovers, [])
+        result = self.profiles.apply("work", confirmed=True)
+        result.raise_for_status()
+        self.assertIsNotNone(result.backup)
+        (copy,) = self.profiles.list_backups()
+        self.assertEqual(copy.path, result.backup)
+        self.profiles.restore_backup(copy.id, confirmed=True)
+        self.assertEqual((self.home / ".config/kdeglobals").read_text(), "UNSAVED-WORK")
 
     def test_apply_merges_folders(self):
         """Known limitation: files that are not in the profile stay."""

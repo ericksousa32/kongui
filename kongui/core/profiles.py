@@ -7,6 +7,8 @@ fresh profile lists, outcome detection (the original always returns ``None``),
 and clean-up of leftovers it can prove it created itself.
 """
 
+# pylint: disable=too-many-lines  # one service, one cohesive class
+
 from __future__ import annotations
 
 import os
@@ -14,6 +16,7 @@ import shutil
 import tempfile
 import time
 import zipfile
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
@@ -26,7 +29,6 @@ from kongui.core.errors import (
     ConfigMissingError,
     ConfigValidationError,
     ConfirmationRequiredError,
-    NotImplementedOperationError,
     ProfileExistsError,
     ProfileInvalidError,
     ProfileNotFoundError,
@@ -38,6 +40,7 @@ from kongui.core.results import (
     ProfileInfo,
     ValidationReport,
 )
+from kongui.core.snapshot import KEPT_PREFIX, SnapshotInfo, SnapshotService
 from kongui.core.safety import (
     RESERVED_PREFIX,
     validate_archive_name,
@@ -55,11 +58,9 @@ CONF_DIFFERS_PREFIX = "the exported conf.yaml differs from the profile's conf.ya
 #: with it (see :func:`kongui.core.safety.validate_profile_name`).
 TEMP_PREFIX = RESERVED_PREFIX
 
-#: Operations that are planned but deliberately not implemented yet.
-NOT_IMPLEMENTED_OPERATIONS: Mapping[str, str] = {
-    "create_backup": "Backup of live files before apply/import (requirement RN-01).",
-    "restore_backup": "Restore a backup made before apply/import (requirement RN-01).",
-}
+#: Operations that are planned but deliberately not implemented yet. Empty
+#: since the safety copies (RN-01) exist; kept so the API stays stable.
+NOT_IMPLEMENTED_OPERATIONS: Mapping[str, str] = {}
 
 
 def _normalized_groups(data: Any, kind: str) -> Dict[str, Tuple[str, Tuple[Any, ...]]]:
@@ -120,6 +121,7 @@ class ProfileService:
         """
         self._engine = engine
         self._config = config if config is not None else ConfigService(engine)
+        self._snapshots = SnapshotService(engine.konsave_dir, engine.home)
 
     @property
     def engine(self) -> KonsaveEngine:
@@ -180,7 +182,7 @@ class ProfileService:
 
         With ``overwrite`` the original ``force`` flag is used, which *merges*
         into the existing profile: files that no longer exist on the system
-        stay in the profile (see ``NOT_IMPLEMENTED_OPERATIONS``).
+        stay in the profile (use :meth:`replace` to overwrite completely).
 
         Args:
             name: Profile name.
@@ -351,8 +353,10 @@ class ProfileService:
     ) -> OperationResult:
         """Applies a profile to the live system (``apply_profile``).
 
-        Destructive: files are replaced without backup (backup is not
-        implemented yet) and folders are merged, not replaced.
+        Destructive: files are replaced and folders are merged, not replaced.
+        Before anything is written, the files that will be overwritten are
+        copied to a safety copy (see :meth:`list_backups`); if that copy cannot
+        be made, nothing is applied.
 
         Args:
             name: Profile name.
@@ -369,6 +373,7 @@ class ProfileService:
             ProfileNotFoundError: If there is no such profile.
             ProfileInvalidError: If the profile has no ``conf.yaml``.
             ConfigValidationError: If the profile cannot be applied safely.
+            SnapshotError: If the safety copy could not be made.
         """
         self._require_confirmation(confirmed, "apply")
         info = self._require_valid_profile(name)
@@ -382,9 +387,16 @@ class ProfileService:
             raise ConfigValidationError(
                 "the profile cannot be applied safely", report.with_errors(problems)
             )
+        snapshot = self._snapshots.create(
+            "apply",
+            name,
+            self._snapshots.destinations_of_apply(
+                report.resolved.get("save", {}), info.path
+            ),
+        )
         names = self._engine.profile_names()
         call = self._engine.call("apply_profile", name, names, len(names))
-        return self._result(
+        result = self._result(
             "apply",
             not call.failed,
             call,
@@ -393,6 +405,7 @@ class ProfileService:
             info.path,
             report.warnings,
         )
+        return self._with_snapshot(result, snapshot)
 
     def remove(self, name: str, *, confirmed: bool = False) -> OperationResult:
         """Deletes a profile (``remove_profile``). Irreversible.
@@ -518,6 +531,7 @@ class ProfileService:
             ValidationError: If the file is not an acceptable archive.
             ConfigValidationError: If the archive configuration is unsafe.
             ProfileExistsError: If a profile with that name exists.
+            SnapshotError: If the safety copy could not be made.
         """
         self._require_confirmation(confirmed, "import")
         path = Path(archive_path)
@@ -530,6 +544,13 @@ class ProfileService:
                 f"stale import folder found, remove it first: {staging}"
             )
         target = self._engine.profiles_dir / name
+        snapshot = self._snapshots.create(
+            "import",
+            name,
+            self._snapshots.destinations_of_import(
+                self._archive_members(path), (report.resolved or {}).get("export", {})
+            ),
+        )
         call = self._engine.call("import_profile", str(path))
         ok = (
             not call.failed
@@ -541,7 +562,7 @@ class ProfileService:
             for leftover in (target, staging):
                 if os.path.lexists(leftover):
                     notes.append(self._remove_created(leftover))
-        return self._result(
+        result = self._result(
             "import",
             ok,
             call,
@@ -551,6 +572,7 @@ class ProfileService:
             report.warnings,
             notes,
         )
+        return self._with_snapshot(result, snapshot)
 
     def inspect_archive(
         self, archive_path: Path, *, allow_outside_home: bool = False
@@ -647,25 +669,93 @@ class ProfileService:
         ok = not call.failed and not self._engine.profile_names()
         return self._result("wipe_all", ok, call, "all profiles removed", "wipe failed")
 
-    # ------------------------------------------------ documented, not implemented
+    # ------------------------------------------------------------ safety copies
 
-    def create_backup(self, *_args: Any, **_kwargs: Any) -> None:
-        """Not implemented: backup of live files before apply/import.
+    def list_backups(self) -> List[SnapshotInfo]:
+        """Lists the safety copies made before apply/import (RN-01).
 
-        Raises:
-            NotImplementedOperationError: Always.
-        """
-        raise NotImplementedOperationError(NOT_IMPLEMENTED_OPERATIONS["create_backup"])
-
-    def restore_backup(self, *_args: Any, **_kwargs: Any) -> None:
-        """Not implemented: restore of a backup.
+        Returns:
+            List[SnapshotInfo]: Newest first.
 
         Raises:
-            NotImplementedOperationError: Always.
+            SnapshotError: If the folder cannot be read.
         """
-        raise NotImplementedOperationError(NOT_IMPLEMENTED_OPERATIONS["restore_backup"])
+        return self._snapshots.list()
+
+    def restore_backup(
+        self,
+        backup_id: str,
+        *,
+        confirmed: bool = False,
+        allow_outside_home: bool = False,
+    ) -> OperationResult:
+        """Restores the live files kept in a safety copy.
+
+        Destructive: files changed since are overwritten. The state before the
+        restore is itself kept as a new safety copy.
+
+        Args:
+            backup_id: Id from :meth:`list_backups`.
+            confirmed: Must be ``True``; the caller asks the user first.
+            allow_outside_home: Allow paths outside the home folder.
+
+        Returns:
+            OperationResult: ``ok`` is false if any path could not be restored.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not true.
+            ValidationError: If the id or a path is not acceptable.
+            SnapshotNotFoundError: If there is no such copy.
+            SnapshotError: If the copy is damaged.
+        """
+        return self._snapshots.restore(
+            backup_id, confirmed=confirmed, allow_outside_home=allow_outside_home
+        )
+
+    def delete_backup(
+        self, backup_id: str, *, confirmed: bool = False
+    ) -> OperationResult:
+        """Deletes a safety copy. Safety copies are never deleted automatically.
+
+        Args:
+            backup_id: Id from :meth:`list_backups`.
+            confirmed: Must be ``True``; the caller asks the user first.
+
+        Returns:
+            OperationResult: Outcome.
+
+        Raises:
+            ConfirmationRequiredError: If ``confirmed`` is not true.
+            ValidationError: If the id is not acceptable.
+            SnapshotNotFoundError: If there is no such copy.
+            SnapshotError: If it cannot be removed.
+        """
+        return self._snapshots.delete(backup_id, confirmed=confirmed)
 
     # ------------------------------------------------------------------ helpers
+
+    def _with_snapshot(
+        self, result: OperationResult, snapshot: Optional[SnapshotInfo]
+    ) -> OperationResult:
+        """Attaches the safety copy to a result and records the outcome."""
+        if snapshot is None:
+            return result
+        extra = [f"{KEPT_PREFIX}{snapshot.id}"]
+        problem = self._snapshots.finish(snapshot, result.ok)
+        if problem:
+            extra.append(problem)
+        return replace(
+            result, backup=snapshot.path, warnings=result.warnings + tuple(extra)
+        )
+
+    @staticmethod
+    def _archive_members(archive: Path) -> List[str]:
+        """Names inside a ``.knsv`` (already validated by the caller)."""
+        try:
+            with zipfile.ZipFile(archive) as handle:
+                return handle.namelist()
+        except (zipfile.BadZipFile, OSError) as error:
+            raise ValidationError(f"not a readable archive: {error}") from error
 
     @staticmethod
     def _require_confirmation(confirmed: bool, operation: str) -> None:

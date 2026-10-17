@@ -7,6 +7,8 @@ from typing import Optional, Tuple
 
 from kongui.core import (
     CONF_DIFFERS_PREFIX,
+    KEPT_PREFIX,
+    UNDO_PREFIX,
     ArchiveExistsError,
     BackupNotFoundError,
     ConfigConflictError,
@@ -21,6 +23,8 @@ from kongui.core import (
     ProfileInvalidError,
     ProfileNotFoundError,
     RunningAsRootError,
+    SnapshotError,
+    SnapshotNotFoundError,
     ValidationError,
 )
 
@@ -38,6 +42,8 @@ VERBS = {
     "reset": "restaurar os dados",
     "save_config": "salvar o conf.yaml",
     "restore_config": "restaurar o backup do conf.yaml",
+    "restore_backup": "restaurar a cópia de segurança",
+    "delete_backup": "apagar a cópia de segurança",
 }
 
 #: Text of the success notification, ``{name}`` is the profile name.
@@ -53,11 +59,14 @@ SUCCESS = {
     "reset": "Perfis fictícios restaurados",
     "save_config": "conf.yaml salvo",
     "restore_config": "Backup do conf.yaml restaurado",
+    "restore_backup": "Cópia de segurança restaurada",
+    "delete_backup": "Cópia de segurança apagada",
 }
 
 #: Extra advice appended to the success of some operations.
 SUCCESS_HINT = {
     "apply": "Saia e entre na sessão para ver todas as mudanças.",
+    "restore_backup": "Saia e entre na sessão para ver todas as mudanças.",
     "import": (
         "Os arquivos do perfil foram gravados no sistema. "
         "Saia e entre na sessão para ver tudo."
@@ -103,6 +112,8 @@ def failure_title(operation: str, name: str) -> str:
         "reset",
         "save_config",
         "restore_config",
+        "restore_backup",
+        "delete_backup",
     ):
         return f"Não foi possível {verb} “{name}”"
     return f"Não foi possível {verb}"
@@ -112,6 +123,28 @@ _NO_DATA_FOLDER = re.compile(r"^the archive has no data folder in save/ for: (.+
 _UNLISTED_FOLDER = re.compile(
     r"^save/ has folders that its conf.yaml does not list: (.+?) \("
 )
+
+
+_KEPT = re.compile(r"^" + re.escape(KEPT_PREFIX) + r"(\S+)$")
+_UNDO = re.compile(r"^" + re.escape(UNDO_PREFIX) + r"(\S+)$")
+_OPERATION_WORD = {"apply": "aplicar", "import": "importar", "restore": "restaurar"}
+
+
+def describe_note(line: str) -> str:
+    """Formats one line of ``OperationResult.warnings`` for a notification.
+
+    Real warnings get the "Aviso:" prefix; the notes naming a safety copy are
+    information, not a problem.
+
+    Args:
+        line: English text from the services.
+
+    Returns:
+        str: pt-BR text.
+    """
+    if _KEPT.match(line) or _UNDO.match(line):
+        return describe_warning(line)
+    return f"Aviso: {describe_warning(line)}"
 
 
 def describe_warning(line: str) -> str:
@@ -131,6 +164,15 @@ def describe_warning(line: str) -> str:
             "~ alterado). Em outro computador, um grupo novo impede aplicar o perfil "
             "e um grupo que sumiu é ignorado sem aviso."
         )
+    match = _KEPT.match(line)
+    if match:
+        return (
+            f"Cópia de segurança guardada ({match.group(1)}). Para desfazer, use "
+            "Configurações → Cópias de segurança."
+        )
+    match = _UNDO.match(line)
+    if match:
+        return f"O estado anterior à restauração foi guardado em {match.group(1)}."
     match = _NO_DATA_FOLDER.match(line)
     if match:
         return (
@@ -157,7 +199,7 @@ def describe_result(result: OperationResult) -> Tuple[str, ...]:
     """
     lines = [result.message] if result.message else []
     lines += [line for line in result.errors if line not in lines]
-    lines += [f"Aviso: {describe_warning(line)}" for line in result.warnings]
+    lines += [describe_note(line) for line in result.warnings]
     return _limit(lines)
 
 
@@ -382,6 +424,14 @@ def describe_error(  # pylint: disable=too-many-return-statements
         return (
             "O conf.yaml foi alterado por outro programa depois de aberto aqui. "
             "Nada foi gravado.",
+        )
+    if isinstance(error, SnapshotNotFoundError):
+        return ("Essa cópia de segurança não existe mais. A lista foi atualizada.",)
+    if isinstance(error, SnapshotError):
+        return (
+            "A cópia de segurança não pôde ser feita ou lida, então a operação "
+            "não foi feita (ou não foi concluída).",
+            f"Detalhe: {error}",
         )
     if isinstance(error, BackupNotFoundError):
         return ("Esse backup não existe mais. A lista foi atualizada.",)

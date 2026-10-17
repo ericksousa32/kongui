@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from PySide6.QtWidgets import QLineEdit, QSpinBox, QVBoxLayout
 
+from kongui.gui import messages
 from kongui.gui.context import AppContext
+from kongui.gui.controller import Outcome
 from kongui.gui.pages.base import Page
 from kongui.gui.theme import ThemeMode
 from kongui.gui.widgets.common import Button, Card, SegmentedControl, Separator
 from kongui.gui.actions import ProfileActions
+from kongui.gui.widgets.dialogs import SafetyCopiesDialog
 from kongui.gui.widgets.rows import SettingRow
 
 #: Where the original Konsave keeps profiles (documented in docs/INTEGRATION.md).
@@ -74,6 +77,19 @@ class SettingsPage(Page):  # pylint: disable=too-many-instance-attributes
                 "Pasta de perfis", "Somente leitura nesta versão.", self.folder_edit
             )
         )
+
+        safety = self._group("Cópias de segurança")
+        self.copies_button = Button("Gerenciar…", icon_name="clock")
+        self.copies_button.clicked.connect(self.open_safety_copies)
+        safety.addWidget(
+            SettingRow(
+                "Antes de aplicar ou importar",
+                "Os arquivos que seriam sobrescritos são copiados antes. Restaure "
+                "ou apague as cópias aqui; elas nunca são apagadas sozinhas.",
+                self.copies_button,
+            )
+        )
+        self._copies_dialog: Optional[SafetyCopiesDialog] = None
 
         notifications = self._group("Notificações")
         self.seconds_spin = QSpinBox()
@@ -151,6 +167,62 @@ class SettingsPage(Page):  # pylint: disable=too-many-instance-attributes
                 self.reset_button,
             )
         )
+
+    def build_safety_copies_dialog(self) -> SafetyCopiesDialog:
+        """Creates the dialog of safety copies, wired and loading its list.
+
+        Returns:
+            SafetyCopiesDialog: Not shown yet (:meth:`open_safety_copies` does).
+        """
+        actions = ProfileActions(self.ctx)
+        dialog = SafetyCopiesDialog(
+            self.window(),
+            lambda copy: actions.restore_backup(dialog, copy),
+            lambda copy: actions.delete_backup(dialog, copy),
+        )
+        self._copies_dialog = dialog
+        controller = self.ctx.controller
+
+        def sync_busy() -> None:
+            dialog.set_busy(controller.busy)
+
+        def finished(outcome: Outcome) -> None:
+            if outcome.operation in ("restore_backup", "delete_backup"):
+                self.reload_safety_copies()
+
+        controller.state_changed.connect(sync_busy)
+        controller.operation_finished.connect(finished)
+
+        def forget() -> None:
+            controller.state_changed.disconnect(sync_busy)
+            controller.operation_finished.disconnect(finished)
+            if self._copies_dialog is dialog:
+                self._copies_dialog = None
+
+        dialog.finished.connect(lambda _code: forget())
+        sync_busy()
+        self.reload_safety_copies()
+        return dialog
+
+    def reload_safety_copies(self) -> None:
+        """Reads the list of copies in the background and shows it."""
+        dialog = self._copies_dialog
+        if dialog is None:
+            return
+
+        def shown(copies, error: Optional[BaseException]) -> None:
+            if self._copies_dialog is not dialog:
+                return
+            if error is not None:
+                dialog.set_error(messages.describe_error(error))
+            else:
+                dialog.set_copies(copies)
+
+        self.ctx.controller.background(self.ctx.backend.list_backups, shown)
+
+    def open_safety_copies(self) -> None:
+        """Shows the safety copies (blocks until the dialog is closed)."""
+        self.build_safety_copies_dialog().exec()
 
     def _clear_profiles(self) -> None:
         """Empties the fictitious list after explicit confirmation."""

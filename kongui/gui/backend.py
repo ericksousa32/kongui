@@ -38,8 +38,11 @@ from kongui.core import (
     ProfileExistsError,
     ProfileNotFoundError,
     ProfileService,
+    SnapshotInfo,
+    SnapshotNotFoundError,
     ValidationError,
 )
+from kongui.core import KEPT_PREFIX
 from kongui.core.safety import validate_archive_name, validate_profile_name
 from kongui.gui.mock_data import SECTIONS, demo_profiles
 from kongui.gui.state import Profile
@@ -173,7 +176,7 @@ def _require(confirmed: bool, operation: str) -> None:
         raise ConfirmationRequiredError(f"'{operation}' needs confirmed=True")
 
 
-class ProfileBackend(ABC):
+class ProfileBackend(ABC):  # pylint: disable=too-many-public-methods
     """Blocking profile operations. Every method may raise ``KonGuiError``."""
 
     capabilities: Capabilities
@@ -209,6 +212,36 @@ class ProfileBackend(ABC):
     @abstractmethod
     def remove(self, name: str, *, confirmed: bool = False) -> OperationResult:
         """Deletes one profile."""
+
+    def list_backups(self) -> Tuple[SnapshotInfo, ...]:
+        """Lists the safety copies made before apply/import, newest first.
+
+        Raises:
+            NotImplementedOperationError: If the backend keeps none.
+        """
+        raise NotImplementedOperationError("list_backups is not available")
+
+    def restore_backup(
+        self, backup_id: str, *, confirmed: bool = False
+    ) -> OperationResult:
+        """Puts the files of a safety copy back (destructive).
+
+        Raises:
+            NotImplementedOperationError: If the backend keeps none.
+        """
+        del backup_id, confirmed
+        raise NotImplementedOperationError("restore_backup is not available")
+
+    def delete_backup(
+        self, backup_id: str, *, confirmed: bool = False
+    ) -> OperationResult:
+        """Deletes a safety copy (destructive).
+
+        Raises:
+            NotImplementedOperationError: If the backend keeps none.
+        """
+        del backup_id, confirmed
+        raise NotImplementedOperationError("delete_backup is not available")
 
     @abstractmethod
     def wipe_all(self, *, confirmed: bool = False) -> OperationResult:
@@ -470,6 +503,22 @@ class ServiceBackend(ProfileBackend):
         """Deletes every profile."""
         return self._service.wipe_all(confirmed=confirmed)
 
+    def list_backups(self) -> Tuple[SnapshotInfo, ...]:
+        """Lists the safety copies of ``~/.config/konsave/kongui-backups``."""
+        return tuple(self._service.list_backups())
+
+    def restore_backup(
+        self, backup_id: str, *, confirmed: bool = False
+    ) -> OperationResult:
+        """Restores the files of a safety copy."""
+        return self._service.restore_backup(backup_id, confirmed=confirmed)
+
+    def delete_backup(
+        self, backup_id: str, *, confirmed: bool = False
+    ) -> OperationResult:
+        """Deletes a safety copy."""
+        return self._service.delete_backup(backup_id, confirmed=confirmed)
+
     def _expand(self, path: str) -> Path:
         """Expands a leading ``~`` against the engine's home directory."""
         text = str(path).strip()
@@ -620,6 +669,7 @@ class FakeBackend(ProfileBackend):
         self._failures: Dict[str, BaseException] = {}
         self.calls: List[Tuple[str, str]] = []
         self.blocked: set = set()
+        self._copies: List[SnapshotInfo] = []
         self.archives = set(
             ["~/Downloads/Minimalista.knsv"] if archives is None else archives
         )
@@ -719,7 +769,12 @@ class FakeBackend(ProfileBackend):
         with self._lock:
             if name not in self._items:
                 raise ProfileNotFoundError(f"profile not found: {name}")
-        return self._ok("apply", f"profile '{name}' applied")
+        copy = self._keep_copy("apply", name)
+        return replace(
+            self._ok("apply", f"profile '{name}' applied"),
+            backup=copy.path,
+            warnings=(f"{KEPT_PREFIX}{copy.id}",),
+        )
 
     def remove(self, name: str, *, confirmed: bool = False) -> OperationResult:
         """Removes one profile."""
@@ -848,13 +903,74 @@ class FakeBackend(ProfileBackend):
                 max(info.size_mb, 0.1),
                 datetime.now(),
             )
+        copy = self._keep_copy("import", target)
         return OperationResult(
-            "import", True, f"profile '{target}' imported", path=Path(target)
+            "import",
+            True,
+            f"profile '{target}' imported",
+            path=Path(target),
+            backup=copy.path,
+            warnings=(f"{KEPT_PREFIX}{copy.id}",),
         )
+
+    def _keep_copy(self, operation: str, profile: str) -> SnapshotInfo:
+        """Records a fictitious safety copy."""
+        with self._lock:
+            moment = datetime.now()
+            number = len(self._copies) + 1
+            copy_id = f"{moment:%Y%m%d-%H%M%S}-{number:06d}-{operation}"
+            copy = SnapshotInfo(
+                copy_id,
+                Path("/demo/kongui-backups") / copy_id,
+                operation,
+                profile,
+                moment,
+                3,
+                1,
+                2048,
+                True,
+            )
+            self._copies.insert(0, copy)
+            return copy
+
+    def list_backups(self) -> Tuple[SnapshotInfo, ...]:
+        """Lists the fictitious safety copies."""
+        self._enter("list_backups")
+        with self._lock:
+            return tuple(self._copies)
+
+    def _find_copy(self, backup_id: str) -> SnapshotInfo:
+        """Returns a fictitious copy or raises like the real service."""
+        with self._lock:
+            for copy in self._copies:
+                if copy.id == backup_id:
+                    return copy
+        raise SnapshotNotFoundError(f"no such safety copy: {backup_id}")
+
+    def restore_backup(
+        self, backup_id: str, *, confirmed: bool = False
+    ) -> OperationResult:
+        """Pretends to restore a safety copy."""
+        _require(confirmed, "restore_backup")
+        self._enter("restore_backup", backup_id)
+        copy = self._find_copy(backup_id)
+        return self._ok("restore_backup", f"restored from {copy.id}")
+
+    def delete_backup(
+        self, backup_id: str, *, confirmed: bool = False
+    ) -> OperationResult:
+        """Pretends to delete a safety copy."""
+        _require(confirmed, "delete_backup")
+        self._enter("delete_backup", backup_id)
+        copy = self._find_copy(backup_id)
+        with self._lock:
+            self._copies.remove(copy)
+        return self._ok("delete_backup", f"safety copy {copy.id} deleted")
 
     def reset(self) -> OperationResult:
         """Restores the initial profiles."""
         self._enter("reset")
         with self._lock:
             self._items = {item.name: item for item in self._initial}
+            self._copies = []
         return self._ok("reset", "demo data restored")

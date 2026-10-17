@@ -81,8 +81,9 @@ class AboutPage(Page):
                 "Em desenvolvimento",
                 "Listar, salvar, sobrescrever, aplicar, remover, limpar, importar e "
                 "exportar perfis usam o Konsave de verdade, e o conf.yaml pode ser "
-                "editado (com validação e backup). Aplicar e importar substituem "
-                "arquivos de configuração sem backup.",
+                "editado (com validação e backup). Antes de aplicar ou "
+                "importar, os arquivos que serão sobrescritos são copiados e podem "
+                "ser restaurados em Configurações.",
             )
         notice_layout.addWidget(Badge(badge, "warning"), 0, Qt.AlignmentFlag.AlignLeft)
         notice_layout.addWidget(Label(text, wrap=True))

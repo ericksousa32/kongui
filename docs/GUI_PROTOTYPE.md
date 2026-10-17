@@ -93,6 +93,7 @@ temporário. Se o PySide6 não estiver instalado, eles são pulados.
 | `tests.test_gui_transfer` | importar e exportar na interface (backend em memória): formulário, conflitos, confirmações, erros |
 | `tests.test_gui_transfer_roundtrip` | exportar e importar nos serviços reais, em dois homes temporários; compatibilidade com o `python -m konsave` original |
 | `tests.test_gui_config` | editor do `conf.yaml` na interface (memória e serviços reais): validar, salvar, cancelar, backups, conflito, caracteres especiais |
+| `tests.test_gui_backups` | cópias de segurança na interface: diálogo, restaurar/apagar com confirmação, travas, erros, mensagens e ponta a ponta com os serviços reais |
 | `tests.test_gui_dialogs` | os diálogos acionados de verdade (substituir/nome único, recarregar/gravar, palavra digitada, nome de grupo, prévia e restauração de backup) e os auxiliares de `app.py` |
 | `tests.test_gui_audit` | achados da auditoria final: fechar durante operação, aviso de `conf.yaml` diferente, verificação da pasta de exportação fora da thread, versão do Konsave, exportar numa conta nova |
 | `tests.test_gui_support` | mensagens, executores, `FakeBackend`, `ProfileStore`, widgets de feedback |
@@ -114,7 +115,6 @@ estados vazios. Para o aviso de arquivo existente, exporte o perfil
 ## 7. Limitações e próximos passos
 
 * A edição de `conf.yaml` ainda não está ligada à GUI.
-* Sem backup antes de aplicar ou importar.
 * Não testado em Plasma 6 real: cor de destaque, troca de esquema com o app
   aberto, escala fracionária e Wayland precisam de verificação manual.
 * Acessibilidade: nomes acessíveis, foco por teclado e contraste foram tratados,

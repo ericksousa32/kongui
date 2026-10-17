@@ -429,6 +429,124 @@ class GroupNameDialog(BaseDialog):
         return dialog.name_edit.text()
 
 
+class SafetyCopiesDialog(BaseDialog):
+    """Lists the safety copies made before apply/import and acts on one.
+
+    The dialog never talks to the backend: it asks for the action through the
+    ``on_restore`` / ``on_delete`` callbacks and is refilled with
+    :meth:`set_copies` (after each operation).
+    """
+
+    def __init__(
+        self,
+        parent: Optional[QWidget],
+        on_restore: Callable[[Any], None],
+        on_delete: Callable[[Any], None],
+    ) -> None:
+        """Creates the dialog (empty, in the loading state).
+
+        Args:
+            parent: Parent window.
+            on_restore: Called with the selected ``SnapshotInfo``.
+            on_delete: Called with the selected ``SnapshotInfo``.
+        """
+        super().__init__(parent, "Cópias de segurança", "Restaurar", "primary")
+        self.cancel_button.setText("Fechar")
+        self.setMinimumWidth(640)
+        self._copies: List[Any] = []
+        self._on_restore = on_restore
+        self._on_delete = on_delete
+        self.body.addWidget(
+            Label(
+                "Antes de aplicar um perfil ou importar um arquivo, o KonGUI copia "
+                "os arquivos que seriam sobrescritos. Elas nunca são apagadas "
+                "sozinhas: apague as que não precisa mais.",
+                "muted",
+                wrap=True,
+            )
+        )
+        self.list_widget = QListWidget()
+        self.list_widget.setAccessibleName("Cópias de segurança disponíveis")
+        self.list_widget.setMinimumHeight(180)
+        self.body.addWidget(self.list_widget)
+        self.status_label = Label("Carregando…", "muted", wrap=True)
+        self.body.addWidget(self.status_label)
+        self.delete_button = Button("Apagar", variant="danger", icon_name="trash")
+        self.delete_button.setAccessibleName("Apagar a cópia selecionada")
+        self.button_row.insertWidget(1, self.delete_button)
+        self.confirm_button.clicked.disconnect()
+        self.confirm_button.clicked.connect(self._restore)
+        self.delete_button.clicked.connect(self._delete)
+        self.list_widget.currentRowChanged.connect(lambda _row: self._sync())
+        self._busy = False
+        self._sync()
+
+    def selected(self) -> Optional[Any]:
+        """The highlighted copy, if any."""
+        row = self.list_widget.currentRow()
+        return self._copies[row] if 0 <= row < len(self._copies) else None
+
+    def set_busy(self, busy: bool) -> None:
+        """Locks the buttons while an operation runs."""
+        self._busy = busy
+        self._sync()
+
+    def set_error(self, lines: Sequence[str]) -> None:
+        """Shows why the list could not be read."""
+        self._copies = []
+        self.list_widget.clear()
+        self.status_label.setText(" ".join(lines))
+        self._sync()
+
+    def set_copies(self, copies: Sequence[Any]) -> None:
+        """Shows the copies (newest first), keeping the selection if possible."""
+        previous = self.selected()
+        self._copies = list(copies)
+        self.list_widget.clear()
+        words = {"apply": "Antes de aplicar", "import": "Antes de importar"}
+        for copy in self._copies:
+            size = f"{copy.size_bytes / 1024:.1f} KB".replace(".", ",")
+            if copy.problem:
+                text = f"{copy.created:%d/%m/%Y %H:%M:%S}  ·  ilegível: {copy.problem}"
+            else:
+                what = words.get(copy.operation, "Antes de restaurar")
+                text = (
+                    f"{copy.created:%d/%m/%Y %H:%M:%S}  ·  {what}"
+                    + (f" “{copy.profile}”" if copy.operation != "restore" else "")
+                    + f"  ·  {copy.replaced} substituído(s), "
+                    f"{copy.created_files} criado(s)  ·  {size}"
+                )
+            self.list_widget.addItem(QListWidgetItem(text))
+        self.status_label.setText("" if self._copies else "Ainda não há cópias.")
+        if self._copies:
+            row = 0
+            if previous is not None:
+                row = next(
+                    (i for i, c in enumerate(self._copies) if c.id == previous.id), 0
+                )
+            self.list_widget.setCurrentRow(row)
+        self._sync()
+
+    def _sync(self) -> None:
+        """Enables the buttons that make sense now."""
+        copy = self.selected()
+        usable = copy is not None and not self._busy
+        self.confirm_button.setEnabled(usable and not copy.problem)
+        self.delete_button.setEnabled(usable)
+
+    def _restore(self) -> None:
+        """Asks the owner to restore the selected copy."""
+        copy = self.selected()
+        if copy is not None and not self._busy:
+            self._on_restore(copy)
+
+    def _delete(self) -> None:
+        """Asks the owner to delete the selected copy."""
+        copy = self.selected()
+        if copy is not None and not self._busy:
+            self._on_delete(copy)
+
+
 class BackupsDialog(BaseDialog):
     """Lists the saved previous versions of ``conf.yaml`` and previews them.
 

@@ -31,6 +31,8 @@ _ACTIVITY_KIND = {
     "wipe_all": "remove",
     "import": "import",
     "export": "export",
+    "restore_backup": "apply",
+    "delete_backup": "remove",
 }
 
 
@@ -111,9 +113,9 @@ class ProfileActions:
         if not ConfirmDialog.ask(
             parent,
             f"Aplicar “{name}”?",
-            "Os arquivos de configuração atuais serão substituídos pelos deste perfil, "
-            "sem backup (ainda não existe). Salve o estado atual antes se quiser "
-            "poder voltar."
+            "Os arquivos de configuração atuais serão substituídos pelos deste perfil. "
+            "Antes disso, os arquivos que serão sobrescritos são copiados; dá para "
+            "voltar em Configurações → Cópias de segurança."
             + (" (Protótipo: nada será alterado.)" if self._demo else ""),
             "Aplicar",
             destructive=True,
@@ -164,6 +166,60 @@ class ProfileActions:
         ):
             return False
         return self._dispatched(self.ctx.controller.wipe_all(confirmed=True))
+
+    def restore_backup(self, parent: QWidget, copy) -> bool:
+        """Restores a safety copy, after confirmation.
+
+        Args:
+            parent: Window used as dialog parent.
+            copy: The ``SnapshotInfo`` to restore.
+
+        Returns:
+            bool: Whether an operation was started.
+        """
+        if not ConfirmDialog.ask(
+            parent,
+            "Restaurar esta cópia de segurança?",
+            f"Os {copy.replaced} arquivo(s) guardados voltam ao que eram em "
+            f"{copy.created:%d/%m/%Y %H:%M:%S}"
+            + (
+                f" e os {copy.created_files} arquivo(s) criados depois são removidos"
+                if copy.created_files
+                else ""
+            )
+            + ". Mudanças feitas nesses arquivos depois disso serão perdidas; o "
+            "estado atual é guardado como uma nova cópia, então dá para desfazer."
+            + (" (Protótipo: nada será alterado.)" if self._demo else ""),
+            "Restaurar",
+            destructive=True,
+        ):
+            return False
+        return self._dispatched(
+            self.ctx.controller.restore_backup(copy.id, confirmed=True)
+        )
+
+    def delete_backup(self, parent: QWidget, copy) -> bool:
+        """Deletes a safety copy, after confirmation.
+
+        Args:
+            parent: Window used as dialog parent.
+            copy: The ``SnapshotInfo`` to delete.
+
+        Returns:
+            bool: Whether an operation was started.
+        """
+        if not ConfirmDialog.ask(
+            parent,
+            "Apagar esta cópia de segurança?",
+            "A cópia será apagada e não poderá ser recuperada."
+            + (" (Protótipo: apenas a lista fictícia muda.)" if self._demo else ""),
+            "Apagar",
+            destructive=True,
+        ):
+            return False
+        return self._dispatched(
+            self.ctx.controller.delete_backup(copy.id, confirmed=True)
+        )
 
     def duplicate(self, name: str) -> bool:
         """Duplicates a profile (demo backend only).

@@ -27,12 +27,20 @@ from kongui.core.errors import (
     ProfileInvalidError,
     ProfileNotFoundError,
     RunningAsRootError,
+    SnapshotError,
+    SnapshotNotFoundError,
     ValidationError,
 )
 from kongui.core.profiles import (
     CONF_DIFFERS_PREFIX,
     NOT_IMPLEMENTED_OPERATIONS,
     ProfileService,
+)
+from kongui.core.snapshot import (
+    KEPT_PREFIX,
+    UNDO_PREFIX,
+    SnapshotInfo,
+    SnapshotService,
 )
 from kongui.core.results import (
     ArchiveInspection,
@@ -45,6 +53,12 @@ from kongui.core.results import (
 )
 
 __all__ = [
+    "KEPT_PREFIX",
+    "UNDO_PREFIX",
+    "SnapshotError",
+    "SnapshotInfo",
+    "SnapshotNotFoundError",
+    "SnapshotService",
     "ArchiveExistsError",
     "ArchiveInspection",
     "BackupInfo",

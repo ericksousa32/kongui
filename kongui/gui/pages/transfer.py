@@ -682,7 +682,8 @@ class TransferPage(
         if not ConfirmDialog.ask(
             self.window(),
             f"Importar “{name}”?",
-            f"{writes}gravados no sistema, substituindo os atuais, sem backup. "
+            f"{writes}gravados no sistema, substituindo os atuais. Antes disso, os arquivos "
+            "que seriam sobrescritos são copiados (Configurações → Cópias de segurança). "
             "O perfil também será salvo na sua lista."
             + (" O perfil será aplicado em seguida." if apply_after else "")
             + (" (Protótipo: nada será alterado.)" if demo else ""),

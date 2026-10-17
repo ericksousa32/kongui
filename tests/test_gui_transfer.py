@@ -491,7 +491,8 @@ class ImportRunTests(ImportCase):
         self.assertIn(
             self.backend.inspect_archive("/x/a.knsv").export_sections[0], text
         )
-        self.assertIn("sem backup", text)
+        self.assertIn("Cópias de segurança", text)
+        self.assertNotIn("sem backup", text)
         self.assertIn("aplicado", text)
 
     def test_confirming_shows_progress_then_adds_the_profile(self):

@@ -112,7 +112,8 @@ nome único do original é `nome_fDD-MM-AAAA:HH-MM-SS`; o do core é `nome-2`.
 ### Importar
 
 * **Sempre confirma**: o original grava a seção `export` do arquivo direto no
-  sistema (por exemplo, `~/.local/share/icons`), sobrescrevendo, sem backup. O
+  sistema (por exemplo, `~/.local/share/icons`), sobrescrevendo (antes, os arquivos
+  que seriam sobrescritos são copiados: ver §7). O
   diálogo lista as seções que serão gravadas.
 * Nunca substitui um perfil: se o nome já existe, o formulário recusa (o
   original também recusa).
@@ -149,11 +150,11 @@ Konsave real, compara o perfil byte a byte e repete com o CLI original.
 
 ## 6. Limitações conhecidas
 
-* Aplicar e importar **não fazem backup**; aplicar não é atômico: se falhar no
+* Aplicar não é atômico: se falhar no
   meio, parte dos arquivos já foi trocada (o aviso mostra os erros do Konsave).
 * Importar grava a seção `export` do arquivo **antes** de qualquer outra coisa;
   se o Konsave falhar depois, o perfil é desfeito, mas esses arquivos já escritos
-  não são restaurados.
+  não voltam sozinhos: restaure a cópia de segurança (§7).
 * “Ativo” é apenas o último perfil aplicado por esta interface
   (`last_applied`); o Konsave não registra isso.
 * O Konsave não guarda descrição nem seções: no modo real, o diálogo de salvar
@@ -178,3 +179,25 @@ Konsave real, compara o perfil byte a byte e repete com o CLI original.
 * O motor redireciona `stdout` de forma global durante cada chamada.
 * A edição do `conf.yaml` está descrita em [`GUI_CONFIG.md`](GUI_CONFIG.md).
 * Não testado em uma sessão Plasma real.
+
+## 7. Cópias de segurança (RN-01)
+
+Antes de **aplicar** ou **importar**, o serviço copia os arquivos que seriam
+sobrescritos (detalhes em [`INTEGRATION.md`](INTEGRATION.md) §9). Na interface:
+
+* os avisos de aplicar/importar dizem o identificador da cópia (“Cópia de
+  segurança guardada…”), e os textos de confirmação deixaram de dizer “sem backup”;
+* **Configurações → Cópias de segurança → Gerenciar…** abre a lista (data,
+  operação, perfil, arquivos substituídos/criados, tamanho, mais nova primeiro);
+* **Restaurar** pede confirmação (destrutivo), guarda o estado atual como nova
+  cópia e devolve os arquivos; **Apagar** pede confirmação. Os botões ficam
+  travados enquanto outra operação roda, a lista é lida em segundo plano e é
+  relida após cada restauração ou exclusão;
+* se a cópia não puder ser feita, aparece o erro e **nada é aplicado ou importado**;
+* nenhuma cópia é apagada automaticamente; a cópia de um `import` não desfaz o
+  perfil importado;
+* modo demonstração: cópias fictícias, nada é gravado.
+
+Testes: `tests.test_snapshot` (núcleo, Konsave real num `$HOME` temporário) e
+`tests.test_gui_backups` (diálogo, controller, mensagens e ponta a ponta).
+

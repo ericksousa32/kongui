@@ -1,7 +1,8 @@
 # Auditoria final do KonGUI
 
 **Veredito: o projeto NÃO está completo.** Há requisitos obrigatórios
-pendentes (ver §4: P-1 a P-3). Tudo o que foi comprovadamente quebrado e
+pendentes (ver §4: P-2 e P-3). O P-1 (RN-01, cópia de segurança antes de
+aplicar/importar) foi implementado e testado depois do primeiro relatório. Tudo o que foi comprovadamente quebrado e
 estava ao alcance foi corrigido; o que depende de alterar o Konsave
 (`konsave/` não pode ser modificado) ou de uma sessão Plasma real está marcado
 como bloqueado.
@@ -22,7 +23,8 @@ como bloqueado.
 * Os testes rodam como usuário sem privilégios, com `$HOME` temporário. Nenhum
   aplica perfil na sessão real (`tests.test_zz_real_home_guard` confere isso).
 * Testes desta auditoria: `tests.test_gui_audit`, `tests.test_core_audit`
-  (além de `tests.test_safety`, `tests.test_gui_dialogs`, ampliados).
+  (além de `tests.test_safety`, `tests.test_gui_dialogs`, ampliados). O P-1 tem
+  os seus: `tests.test_snapshot` e `tests.test_gui_backups`.
 
 ## 2. Achados corrigidos
 
@@ -38,6 +40,7 @@ como bloqueado.
 | A-8 | Exportar numa conta sem `conf.yaml` falhava com `FileNotFoundError` cru | cria o padrão antes (como o original faz ao iniciar); core exige config ativa | 4d2730f |
 | A-9 | Editor do `conf.yaml` podia misturar `\n` e `\r\n` | quebras de linha do original preservadas | 0f268a0 |
 | A-10 | `requirements_dev.txt` listava dependências sem uso | só `black` e `pylint` | 0f268a0 |
+| A-12 | **P-1 / RN-01:** aplicar e importar sobrescreviam arquivos sem nenhuma volta (os textos de confirmação diziam “sem backup”) | `kongui/core/snapshot.py`: cópia dos arquivos que seriam sobrescritos antes de rodar (falha fechada), restaurar/listar/apagar, diálogo em Configurações → Cópias de segurança (`docs/INTEGRATION.md` §9, `docs/GUI_SERVICES.md` §7) | commit desta etapa |
 | A-11 | Diálogos reais (confirmar, escolher, digitar `APAGAR`) sem teste | `tests.test_gui_dialogs`; caminhos de falha do editor em `tests.test_gui_audit` | 0f268a0 + este |
 
 ## 3. Matriz final de requisitos
@@ -54,7 +57,7 @@ não existe e é requisito; **Bloqueado** = depende de algo fora do alcance
 | `-l/--list` | Lista de perfis (página e painel) | Testado | `tests.test_gui_real_backend` (RealListTests), `tests.test_profile_service_integration` |
 | `-s/--save` | Diálogo “Salvar perfil” | Testado | SaveIntegrationTests, RealSaveTests; nomes: `tests.test_safety` |
 | `-s -f` (sobrescrever) | “Sobrescrever” (`ProfileService.replace`, semântica de **substituição**, não de mescla) | Testado | ReplaceIntegrationTests, RealOverwriteTests; confirmação destrutiva |
-| `-a/--apply` | “Aplicar” | Testado | ApplyIntegrationTests, RealApplyTests; confirmação destrutiva. Não atômico e sem backup (P-1) |
+| `-a/--apply` | “Aplicar” | Testado | ApplyIntegrationTests, RealApplyTests; confirmação destrutiva; cópia de segurança antes (RN-01). Continua não atômico (o aviso mostra os erros do Konsave; a cópia permite voltar) |
 | `-r/--remove` | “Remover” | Testado | RemoveAndWipeIntegrationTests, RealRemoveTests; confirmação |
 | `-w/--wipe` | “Limpar todos” | Testado | confirmação **e** digitar `APAGAR` (`tests.test_gui_dialogs`) |
 | `-e/--export-profile` | Página Exportar | Testado | `tests.test_gui_transfer_roundtrip` (ExportTests, CliCompatibilityTests) |
@@ -90,6 +93,9 @@ não existe e é requisito; **Bloqueado** = depende de algo fora do alcance
 | Arquivos hostis (`..`, absolutos, links, destino fora da home) | Testado | HostileArchiveIntegrationTests |
 | Permissões e pastas ausentes viram mensagem clara | Testado | `tests.test_gui_transfer`, `tests.test_gui_audit` |
 | Recusa de execução como root | Testado | `tests.test_engine`, `tests.test_cli_runner` |
+| **RN-01 / P-1:** cópia dos arquivos que `apply`/`import` sobrescrevem, antes de gravar; falha da cópia impede a operação | Testado | `tests.test_snapshot` (ApplySnapshotTests, ImportSnapshotTests), `tests.test_gui_backups` (RealSafetyCopyTests) |
+| RN-01: restaurar (arquivos, modo, links, arquivos criados), com confirmação, validação do manifesto, caminhos só dentro da home, desfazer da restauração | Testado | RestoreRulesTests, EdgeCaseTests |
+| RN-01: listar/apagar cópias na interface; botões travados durante operação; nada é apagado sozinho | Testado | `tests.test_gui_backups` (DemoSafetyCopyTests) |
 | Importar → exportar preserva o perfil (Plasma 6 real) | Testado | idêntico, exceto `conf.yaml` (A-4/§5) |
 | `.knsv` trocado com o `konsave` original nos dois sentidos | Testado | CliCompatibilityTests |
 | Dependências sem uso | Testado | A-10; `setuptools` em runtime ainda declarado (ver §5) |
@@ -98,7 +104,6 @@ não existe e é requisito; **Bloqueado** = depende de algo fora do alcance
 
 | Id | Requisito | Status | Motivo |
 |---|---|---|---|
-| P-1 | **RN-01**: backup dos arquivos vivos antes de aplicar/importar, com restauração | **Pendente (obrigatório)** | `create_backup`/`restore_backup` nunca foram implementados; aplicar e importar sobrescrevem sem volta |
 | P-2 | Trava entre processos (dois KonGUI ou KonGUI + `konsave`) | **Pendente** | só há exclusão dentro do processo |
 | P-3 | Limites de zip-bomb, tamanho total e espaço em disco ao importar/exportar | **Pendente** | não há checagem de tamanho/espaço |
 | B-1 | Progresso e cancelamento de operações | Bloqueado | o motor não é interrompível e `konsave/` não pode ser alterado; hoje só “ocupado” |
@@ -107,16 +112,21 @@ não existe e é requisito; **Bloqueado** = depende de algo fora do alcance
 
 ## 4. Por que não está completo
 
-P-1 é requisito obrigatório e continua pendente; P-2 e P-3 são riscos de perda
-de dados/disponibilidade que a GUI não mitiga. Os bloqueios B-1 a B-3 não
-impedem o uso, mas limitam o que pode ser afirmado.
+P-2 (trava entre processos) e P-3 (limites de tamanho, zip-bomb e espaço em
+disco) são riscos de perda de dados/disponibilidade que a GUI não mitiga e
+seguem pendentes; enquanto existirem, o projeto não é declarado completo. Os
+bloqueios B-1 a B-3 não impedem o uso, mas limitam o que pode ser afirmado.
+
+Limites do P-1, já documentados: a cópia de um `import` não desfaz o perfil
+importado; a restauração não protege contra programas que alterem os mesmos
+arquivos ao mesmo tempo (P-2); a cópia não tem limite de tamanho (P-3).
 
 ## 5. Decisões e pontos em aberto para o dono do projeto
 
 1. **`conf.yaml` dentro do `.knsv`**: o Konsave grava o `conf.yaml` global, mas
    monta `save/`/`export/` com o do perfil. A GUI **avisa** (A-4), mas não
    reescreve o do arquivo. Decidir se deve reescrever.
-2. **RN-01** (P-1): definir escopo do backup (quais arquivos, onde, retenção).
+2. **RN-01** (P-1): foi implementado com o escopo “só os arquivos que a operação sobrescreve”, em `~/.config/konsave/kongui-backups/`, sem retenção automática (uma poda apagaria justamente a cópia mais antiga, a que guarda o estado original). Confirmar se é o desejado ou se deve haver limite de quantidade.
 3. `setuptools` é declarado como dependência de execução sem necessidade
    comprovada; deixado como está por estar fora da prova desta auditoria.
 4. O comando `kongui` sem PySide6 instalado mostra um `ImportError` cru.
@@ -126,6 +136,6 @@ impedem o uso, mas limitam o que pode ser afirmado.
 
 ## 6. Resultado dos testes
 
-* 668 testes, todos passando, executados como usuário sem privilégios.
-* Cobertura de linhas e ramos de `kongui/`: 96%.
+* 716 testes, todos passando, executados como usuário sem privilégios.
+* Cobertura de linhas e ramos de `kongui/`: 96% (`snapshot.py`: 97%).
 * `pylint kongui`: 10,00/10; `black --check`: limpo.
