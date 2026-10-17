@@ -29,7 +29,11 @@ from kongui.core.errors import (
     RunningAsRootError,
     ValidationError,
 )
-from kongui.core.profiles import NOT_IMPLEMENTED_OPERATIONS, ProfileService
+from kongui.core.profiles import (
+    CONF_DIFFERS_PREFIX,
+    NOT_IMPLEMENTED_OPERATIONS,
+    ProfileService,
+)
 from kongui.core.results import (
     ArchiveInspection,
     BackupInfo,
@@ -53,6 +57,7 @@ __all__ = [
     "Problem",
     "apply_model",
     "parse_model",
+    "CONF_DIFFERS_PREFIX",
     "CliExecutionError",
     "CliResult",
     "CliRunner",

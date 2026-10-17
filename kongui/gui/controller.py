@@ -597,7 +597,9 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         if hint:
             details.append(hint)
         if result is not None:
-            details += [f"Aviso: {line}" for line in result.warnings]
+            details += [
+                f"Aviso: {messages.describe_warning(line)}" for line in result.warnings
+            ]
         if list_error is not None:
             details.append(
                 "A lista de perfis não pôde ser atualizada: "

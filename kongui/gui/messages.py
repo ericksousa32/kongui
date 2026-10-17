@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from typing import Optional, Tuple
 
 from kongui.core import (
+    CONF_DIFFERS_PREFIX,
     ArchiveExistsError,
     BackupNotFoundError,
     ConfigConflictError,
@@ -106,6 +108,44 @@ def failure_title(operation: str, name: str) -> str:
     return f"Não foi possível {verb}"
 
 
+_NO_DATA_FOLDER = re.compile(r"^the archive has no data folder in save/ for: (.+?) \(")
+_UNLISTED_FOLDER = re.compile(
+    r"^save/ has folders that its conf.yaml does not list: (.+?) \("
+)
+
+
+def describe_warning(line: str) -> str:
+    """Translates a non-blocking warning of the services.
+
+    Args:
+        line: English warning text.
+
+    Returns:
+        str: pt-BR text; warnings it does not know are returned unchanged.
+    """
+    if line.startswith(CONF_DIFFERS_PREFIX):
+        found = line.rsplit("): ", 1)[-1]
+        return (
+            "O .knsv leva o conf.yaml atual do Konsave, que é diferente do conf.yaml "
+            f"guardado neste perfil. Grupos: {found} (+ só no atual, − só no perfil, "
+            "~ alterado). Em outro computador, um grupo novo impede aplicar o perfil "
+            "e um grupo que sumiu é ignorado sem aviso."
+        )
+    match = _NO_DATA_FOLDER.match(line)
+    if match:
+        return (
+            f"O arquivo não traz dados para os grupos: {match.group(1)}. O perfil "
+            "importado não poderá ser aplicado."
+        )
+    match = _UNLISTED_FOLDER.match(line)
+    if match:
+        return (
+            f"O arquivo tem pastas que o conf.yaml dele não lista: {match.group(1)}. "
+            "Elas serão ignoradas ao aplicar o perfil."
+        )
+    return line
+
+
 def describe_result(result: OperationResult) -> Tuple[str, ...]:
     """Explains a failed :class:`OperationResult`.
 
@@ -117,7 +157,7 @@ def describe_result(result: OperationResult) -> Tuple[str, ...]:
     """
     lines = [result.message] if result.message else []
     lines += [line for line in result.errors if line not in lines]
-    lines += [f"Aviso: {line}" for line in result.warnings]
+    lines += [f"Aviso: {describe_warning(line)}" for line in result.warnings]
     return _limit(lines)
 
 

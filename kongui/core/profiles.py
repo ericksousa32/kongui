@@ -17,6 +17,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
+import yaml
+
 from kongui.core.config import ConfigService
 from kongui.core.engine import EngineCall, KonsaveEngine
 from kongui.core.errors import (
@@ -44,6 +46,10 @@ from kongui.core.safety import (
 
 ON_CONFLICT_CHOICES = ("error", "unique", "overwrite")
 
+#: Start of the warning ``export`` adds when the ``conf.yaml`` that goes into
+#: the ``.knsv`` is not the one the profile was saved with.
+CONF_DIFFERS_PREFIX = "the exported conf.yaml differs from the profile's conf.yaml"
+
 #: Prefix of the temporary folders ``replace`` creates inside the profiles
 #: folder. They are never listed as profiles, so profile names may not start
 #: with it (see :func:`kongui.core.safety.validate_profile_name`).
@@ -54,6 +60,48 @@ NOT_IMPLEMENTED_OPERATIONS: Mapping[str, str] = {
     "create_backup": "Backup of live files before apply/import (requirement RN-01).",
     "restore_backup": "Restore a backup made before apply/import (requirement RN-01).",
 }
+
+
+def _normalized_groups(data: Any, kind: str) -> Dict[str, Tuple[str, Tuple[Any, ...]]]:
+    """Reads ``data[kind]`` as ``{group: (location, entries)}``, leniently."""
+    section = data.get(kind) if isinstance(data, dict) else None
+    groups: Dict[str, Tuple[str, Tuple[Any, ...]]] = {}
+    if isinstance(section, dict):
+        for name, body in section.items():
+            body = body if isinstance(body, dict) else {}
+            entries = body.get("entries")
+            groups[str(name)] = (
+                str(body.get("location")),
+                tuple(entries) if isinstance(entries, list) else (),
+            )
+    return groups
+
+
+def describe_conf_differences(profile_data: Any, active_data: Any) -> str:
+    """Compares the groups of two ``conf.yaml`` documents.
+
+    Args:
+        profile_data: The profile's configuration, as loaded from YAML.
+        active_data: The active configuration, as loaded from YAML.
+
+    Returns:
+        str: ``""`` if the ``save``/``export`` groups are the same, otherwise
+        a compact text such as ``save(+more -old ~changed); export(+icons)``:
+        ``+`` is only in the active file, ``-`` only in the profile's, ``~``
+        is in both with another location or other entries.
+    """
+    parts = []
+    for kind in ("save", "export"):
+        mine = _normalized_groups(profile_data, kind)
+        active = _normalized_groups(active_data, kind)
+        marks = [f"+{name}" for name in active if name not in mine]
+        marks += [f"-{name}" for name in mine if name not in active]
+        marks += [
+            f"~{name}" for name in mine if name in active and mine[name] != active[name]
+        ]
+        if marks:
+            parts.append(f"{kind}({' '.join(marks)})")
+    return "; ".join(parts)
 
 
 class ProfileService:
@@ -416,6 +464,7 @@ class ProfileService:
             raise ConfigValidationError("the profile configuration is invalid", report)
         base, force = self._resolve_export_target(folder, base, on_conflict)
         names = self._engine.profile_names()
+        differences = self._conf_differences(info.path / "conf.yaml")
         call = self._engine.call(
             "export", name, names, len(names), str(folder), base, force
         )
@@ -434,7 +483,7 @@ class ProfileService:
             f"profile '{name}' exported to {archive}",
             "export failed",
             archive,
-            report.warnings,
+            tuple(report.warnings) + differences,
             notes,
         )
 
@@ -523,7 +572,9 @@ class ProfileService:
         name, report = self._check_archive(path, allow_outside_home)
         resolved = report.resolved or {}
         with zipfile.ZipFile(path) as handle:
-            members = len(handle.namelist())
+            names = handle.namelist()
+        members = len(names)
+        folders = self._archive_folder_warnings(resolved, names)
         return ArchiveInspection(
             path=path,
             name=name,
@@ -531,7 +582,7 @@ class ProfileService:
             member_count=members,
             save_sections=tuple(resolved.get("save", {})),
             export_sections=tuple(resolved.get("export", {})),
-            warnings=report.warnings,
+            warnings=tuple(report.warnings) + folders,
             name_taken=name in self._engine.profile_names(),
         )
 
@@ -678,6 +729,73 @@ class ProfileService:
                         f"{kind}.{section}: '{location}' is outside the home folder"
                     )
         return problems
+
+    def _conf_differences(self, profile_conf: Path) -> Tuple[str, ...]:
+        """Warns when the ``.knsv`` would carry another ``conf.yaml``.
+
+        The original ``export`` copies the *active* ``conf.yaml`` into the
+        archive, but takes ``save/`` and ``export/`` from the groups of the
+        *profile's* ``conf.yaml``. If the active file was edited after the
+        profile was saved, the archive disagrees with itself: a group added
+        since then makes the imported profile impossible to apply, and a
+        group removed since then is silently ignored when it is applied.
+
+        Args:
+            profile_conf: ``conf.yaml`` stored in the profile.
+
+        Returns:
+            Tuple[str, ...]: One warning, or none.
+        """
+        try:
+            mine = yaml.safe_load(profile_conf.read_text(encoding="utf-8"))
+            active = yaml.safe_load(
+                self._config.config_path.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            return ()
+        found = describe_conf_differences(mine, active)
+        if not found:
+            return ()
+        return (
+            f"{CONF_DIFFERS_PREFIX} (+ only in the active file, - only in the profile, ~ changed): {found}",
+        )
+
+    @staticmethod
+    def _archive_folder_warnings(
+        resolved: Dict[str, Any], names: List[str]
+    ) -> Tuple[str, ...]:
+        """Compares the groups of an archive's ``conf.yaml`` with its ``save/``.
+
+        Args:
+            resolved: Resolved configuration read from the archive.
+            names: Member names of the archive.
+
+        Returns:
+            Tuple[str, ...]: Warnings about groups without data (the profile
+            could not be applied) and data without a group (ignored).
+        """
+        present = {
+            parts[1]
+            for parts in (PurePosixPath(name).parts for name in names)
+            if len(parts) > 1 and parts[0] == "save"
+        }
+        groups = set(resolved.get("save", {}))
+        warnings = []
+        missing = sorted(groups - present)
+        if missing:
+            warnings.append(
+                "the archive has no data folder in save/ for: "
+                + ", ".join(missing)
+                + " (the imported profile could not be applied)"
+            )
+        extra = sorted(present - groups)
+        if extra:
+            warnings.append(
+                "save/ has folders that its conf.yaml does not list: "
+                + ", ".join(extra)
+                + " (they are ignored when the profile is applied)"
+            )
+        return tuple(warnings)
 
     @staticmethod
     def _apply_problems(resolved: Dict[str, Any], profile_dir: Path) -> List[str]:

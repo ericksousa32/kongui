@@ -569,6 +569,15 @@ class TransferPage(
             )
         else:
             self.import_info.setText("Este arquivo não grava nada fora dos perfis.")
+        if info.warnings:
+            self.import_info.setText(
+                self.import_info.text()
+                + "\n"
+                + "\n".join(
+                    f"Aviso: {messages.describe_warning(line)}"
+                    for line in info.warnings
+                )
+            )
 
     def _update_import_state(self) -> None:
         """Refreshes visibility and enabled state of the import form."""
