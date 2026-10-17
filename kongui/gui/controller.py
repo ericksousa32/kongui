@@ -28,6 +28,9 @@ from kongui.gui.tasks import Executor
 
 LOG = logging.getLogger(__name__)
 
+#: Operations on the ``conf.yaml``; they never touch the profile list.
+_CONFIG_OPERATIONS = ("save_config", "restore_config")
+
 
 class LoadState(str, Enum):
     """State of the profile list."""
@@ -367,6 +370,63 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         """
         self._executor.submit(lambda: self._backend.inspect_archive(path), on_done)
 
+    def background(
+        self,
+        work: Callable[[], Any],
+        on_done: Callable[[Any, Optional[BaseException]], None],
+    ) -> None:
+        """Runs a read-only backend call off the interface thread.
+
+        Like :meth:`inspect_archive`, it is not an operation: the list is not
+        reloaded and other operations are not blocked.
+
+        Args:
+            work: Blocking callable (for example a backend method).
+            on_done: Called in the interface thread with ``(value, None)`` or
+                ``(None, error)``.
+        """
+        self._executor.submit(work, on_done)
+
+    def save_config(
+        self, text: str, expected_digest: Optional[str], *, force: bool = False
+    ) -> bool:
+        """Writes the ``conf.yaml`` (validated first, previous file kept).
+
+        Args:
+            text: The new contents.
+            expected_digest: Digest the text was loaded with.
+            force: Write even if the file changed on disk meanwhile.
+
+        Returns:
+            bool: ``False`` if another operation is running.
+        """
+        return self._run(
+            "save_config",
+            "",
+            lambda: self._backend.save_config(text, expected_digest, force=force),
+            reload_profiles=False,
+        )
+
+    def restore_config(
+        self, name: str, expected_digest: Optional[str], *, force: bool = False
+    ) -> bool:
+        """Puts a ``conf.yaml`` backup back.
+
+        Args:
+            name: Backup file name.
+            expected_digest: Digest of the file the user last saw.
+            force: Write even if the file changed on disk meanwhile.
+
+        Returns:
+            bool: ``False`` if another operation is running.
+        """
+        return self._run(
+            "restore_config",
+            name,
+            lambda: self._backend.restore_config(name, expected_digest, force=force),
+            reload_profiles=False,
+        )
+
     def demo_reset(self) -> bool:
         """Restores the demo data (demo backends only).
 
@@ -386,13 +446,24 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
     _pending_active: str = ""
 
     def _run(
-        self, operation: str, name: str, work: Optional[Callable[[], OperationResult]]
+        self,
+        operation: str,
+        name: str,
+        work: Optional[Callable[[], OperationResult]],
+        *,
+        reload_profiles: bool = True,
     ) -> bool:
-        """Starts an operation unless another one is running."""
+        """Starts an operation unless another one is running.
+
+        ``reload_profiles=False`` is for operations that cannot change the
+        profile list (the ``conf.yaml`` ones).
+        """
         if self.busy:
             return False
         self._current = (operation, name)
-        if operation == "list" or self._state is LoadState.IDLE:
+        if operation == "list" or (
+            self._state is LoadState.IDLE and operation not in _CONFIG_OPERATIONS
+        ):
             self._state = LoadState.LOADING
         self.operation_started.emit(operation, name)
         self.state_changed.emit()
@@ -407,6 +478,8 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
                     result = work()
                 except Exception as caught:  # pylint: disable=broad-exception-caught
                     work_error = caught
+            if not reload_profiles:
+                return _JobValue(result, None, None, work_error)
             try:
                 profiles: Optional[List[Profile]] = self._backend.list_profiles()
                 list_error = None
@@ -444,11 +517,16 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         elif operation == "list" and error is not None:
             self._state = LoadState.ERROR
             self._error = messages.describe_error(error)
-        elif self._state is LoadState.LOADING:
+        elif self._state is LoadState.LOADING and operation not in _CONFIG_OPERATIONS:
             self._state = LoadState.READY if self._store.profiles() else LoadState.ERROR
             if self._state is LoadState.ERROR:
                 self._error = messages.describe_error(error) if error else ()
-        if not name and result is not None and result.path is not None:
+        if (
+            not name
+            and result is not None
+            and result.path is not None
+            and operation not in _CONFIG_OPERATIONS
+        ):
             name = result.path.name
         outcome = self._outcome(operation, name, result, error, list_error)
         self._pending_active = ""
@@ -512,6 +590,9 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         details: List[str] = []
         if operation == "export" and result is not None and result.path is not None:
             details.append(str(result.path))
+        if operation in _CONFIG_OPERATIONS and result is not None:
+            if result.backup is not None:
+                details.append(f"Cópia do arquivo anterior: {result.backup.name}")
         hint = messages.outcome_hint(operation, True)
         if hint:
             details.append(hint)

@@ -45,11 +45,13 @@ Funções do original que **não** são usadas: `list_profiles` (só imprime),
 ```
 kongui/core/
 ├── engine.py    KonsaveEngine   carrega o motor para um HOME, captura stdout/stderr e o log
-├── config.py    ConfigService   conf.yaml: criar padrão, validar, resolver, gravar
+├── config.py    ConfigService   conf.yaml: criar padrão, validar (com posições), resolver, gravar, backups
+├── confedit.py  parse_model/apply_model  edição do conf.yaml preservando comentários (ver GUI_CONFIG.md)
+├── yamlmap.py   linha/coluna e fim de conteúdo a partir dos nós do PyYAML
 ├── profiles.py  ProfileService  perfis: salvar, aplicar, remover, exportar, importar, apagar todos
 ├── cli.py       CliRunner       CLI real (diagnóstico, somente leitura por padrão)
 ├── safety.py    validação de nomes e guarda contra root
-├── results.py   OperationResult, ValidationReport, CliResult, ProfileInfo
+├── results.py   OperationResult, ValidationReport, Problem, BackupInfo, CliResult, ProfileInfo
 └── errors.py    hierarquia de exceções
 ```
 
@@ -134,7 +136,15 @@ Sem o pacote instalado, `version` vale `0+unknown`.
 | `validate(path=None)`, `validate_text(text)` | `ValidationReport(errors, warnings, resolved)`; não gravam nada |
 | `read_resolved(path=None)` | Configuração com placeholders resolvidos, ou `ConfigValidationError` |
 | `read_text(path=None)` | Texto bruto |
-| `write_text(text)` | Valida, guarda a versão anterior como `conf.yaml.bak-<data>` e troca de forma atômica |
+| `default_text(kind=None, *, desktop=None)` | Texto do modelo padrão, sem criar arquivo |
+| `digest()` | SHA-256 do arquivo ativo (`None` se não existe), para detectar mudança externa |
+| `write_text(text, *, expected_digest=...)` | Valida, guarda a versão anterior como `conf.yaml.bak-<data>` e troca de forma atômica (segue symlink, mantém permissões). Com `expected_digest`, recusa com `ConfigConflictError` se o arquivo mudou. `ValidationReport.problems` traz cada achado com caminho, linha e coluna |
+| `list_backups()`, `backup_path(name)`, `read_backup(name)` | Backups `conf.yaml.bak-*` (mais novo primeiro); nomes com pastas nunca são aceitos (`BackupNotFoundError`) |
+| `restore_backup(name, *, expected_digest=...)` | Valida o backup, guarda o arquivo atual como novo backup e o restaura |
+
+O editor do `conf.yaml` (modelo de formulário e edição textual que preserva
+comentários) está em `kongui/core/confedit.py` e `yamlmap.py`; ver
+[`GUI_CONFIG.md`](GUI_CONFIG.md).
 
 ### `ProfileService(engine, config=None)`
 
@@ -181,6 +191,7 @@ python3 -m unittest discover -s tests -t . -v
 python3 -m unittest tests.test_safety -v                        # guardas e nomes
 python3 -m unittest tests.test_engine -v                        # KonsaveEngine
 python3 -m unittest tests.test_config_service -v                # ConfigService
+python3 -m unittest tests.test_config_editor -v                 # edição do conf.yaml, backups, placeholders do original
 python3 -m unittest tests.test_profile_service_mocked -v        # ProfileService, motor simulado
 python3 -m unittest tests.test_profile_service_integration -v   # ProfileService, motor original real
 python3 -m unittest tests.test_cli_runner -v                    # CliRunner (simulado e subprocesso real)

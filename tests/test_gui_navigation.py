@@ -13,6 +13,7 @@ TITLES = {
     "dashboard": "Dashboard",
     "profiles": "Perfis",
     "transfer": "Importar / Exportar",
+    "config": "Configuração do Konsave",
     "settings": "Configurações",
     "about": "Sobre",
 }
@@ -103,7 +104,7 @@ class ShortcutTests(GuiTestCase):
 
     def test_ctrl_digits_switch_pages(self):
         window = self.make_window()
-        for digit, key in zip("12345", TITLES):
+        for digit, key in zip("123456", TITLES):
             with self.subTest(digit=digit):
                 self.press(window, getattr(Qt.Key, f"Key_{digit}"))
                 self.assertEqual(window.current_key, key)

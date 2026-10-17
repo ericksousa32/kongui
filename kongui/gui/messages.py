@@ -6,12 +6,15 @@ from typing import Optional, Tuple
 
 from kongui.core import (
     ArchiveExistsError,
+    BackupNotFoundError,
+    ConfigConflictError,
     ConfigMissingError,
     ConfigValidationError,
     ConfirmationRequiredError,
     KonGuiError,
     OperationFailedError,
     OperationResult,
+    Problem,
     ProfileExistsError,
     ProfileInvalidError,
     ProfileNotFoundError,
@@ -31,6 +34,8 @@ VERBS = {
     "import": "importar o perfil",
     "export": "exportar o perfil",
     "reset": "restaurar os dados",
+    "save_config": "salvar o conf.yaml",
+    "restore_config": "restaurar o backup do conf.yaml",
 }
 
 #: Text of the success notification, ``{name}`` is the profile name.
@@ -44,6 +49,8 @@ SUCCESS = {
     "import": "Perfil “{name}” importado",
     "export": "Perfil “{name}” exportado",
     "reset": "Perfis fictícios restaurados",
+    "save_config": "conf.yaml salvo",
+    "restore_config": "Backup do conf.yaml restaurado",
 }
 
 #: Extra advice appended to the success of some operations.
@@ -88,7 +95,13 @@ def failure_title(operation: str, name: str) -> str:
         str: For example ``Não foi possível aplicar o perfil “Gaming”``.
     """
     verb = VERBS.get(operation, "concluir a operação")
-    if name and operation not in ("wipe_all", "list", "reset"):
+    if name and operation not in (
+        "wipe_all",
+        "list",
+        "reset",
+        "save_config",
+        "restore_config",
+    ):
         return f"Não foi possível {verb} “{name}”"
     return f"Não foi possível {verb}"
 
@@ -137,6 +150,124 @@ _VALIDATION_TEXTS = (
         "Há uma pasta de importação antiga e abandonada; remova-a antes.",
     ),
 )
+
+
+#: pt-BR explanation of each kind of ``conf.yaml`` finding (``Problem.code``).
+#: ``{…}`` fields are taken from ``Problem.args``.
+PROBLEM_TEXTS = {
+    "file-missing": "O arquivo conf.yaml não existe.",
+    "file-too-large": "O arquivo é grande demais para ser uma configuração do Konsave.",
+    "file-unreadable": "Não foi possível ler o arquivo: {detail}",
+    "yaml-syntax": (
+        "O YAML está malformado: {problem}. Corrija a sintaxe (indentação, "
+        "aspas, dois-pontos ou colchetes) neste ponto."
+    ),
+    "root-not-mapping": (
+        "O arquivo precisa ser um mapa com as seções “save” e “export” na raiz."
+    ),
+    "missing-top-key": (
+        "Falta a seção “{key}”. O Konsave exige as duas seções, “save” e “export”; "
+        "use “{key}: {{}}” se ela deve ficar vazia."
+    ),
+    "section-not-mapping": (
+        "“{key}” precisa ser um mapa de grupos. Deixá-la vazia (“{key}:”) faz o "
+        "Konsave falhar; escreva “{key}: {{}}”."
+    ),
+    "unknown-top-mapping": (
+        "A chave “{key}” é desconhecida e é ignorada ao salvar e exportar. Ela foi "
+        "mantida no arquivo."
+    ),
+    "unknown-top-scalar": (
+        "A chave desconhecida “{key}” precisa ser um mapa de grupos; o Konsave "
+        "percorre todas as chaves da raiz e falharia aqui."
+    ),
+    "duplicate-key": (
+        "A chave “{key}” aparece mais de uma vez. O YAML guarda só a última e a "
+        "outra seria perdida em silêncio."
+    ),
+    "group-name-invalid": (
+        "O nome do grupo “{name}” precisa ser um nome simples de pasta: sem “/”, "
+        "sem ser vazio, “.” ou “..”."
+    ),
+    "group-not-mapping": "O grupo precisa ter “location” e “entries”.",
+    "group-unknown-keys": (
+        "Chaves desconhecidas neste grupo são ignoradas pelo Konsave: "
+        "{keys_text}. Elas foram mantidas no arquivo."
+    ),
+    "location-invalid": "“location” precisa ser um texto não vazio (a pasta de origem).",
+    "placeholder-unsupported": (
+        "O placeholder ${name} não existe no Konsave. Os reconhecidos são: "
+        "{supported}."
+    ),
+    "function-unsupported": (
+        "A função ${{{name}=...}} não existe no Konsave. Reconhecidas: {supported}."
+    ),
+    "function-multiple": (
+        "Só a última função de placeholder tem efeito no Konsave original."
+    ),
+    "entries-missing": (
+        "Falta “entries”. Use uma lista vazia (“entries: []”) se o grupo não tem "
+        "itens."
+    ),
+    "entries-not-list": "“entries” precisa ser uma lista de nomes.",
+    "entry-invalid": (
+        "O item {value_text} precisa ser um único nome de arquivo ou pasta, sem "
+        "“/”. Caminhos aninhados fazem o Konsave abortar todo o salvamento."
+    ),
+    "entry-duplicate": "O item {value_text} está repetido.",
+    "location-unresolved": (
+        "O placeholder não foi resolvido ({resolved}). Sem uma pasta correspondente, "
+        "o Konsave usaria esse texto como caminho relativo."
+    ),
+    "location-relative": "A pasta resolvida não é um caminho absoluto: {resolved}.",
+    "location-missing-dir": (
+        "A pasta {resolved} não existe neste computador; os itens deste grupo "
+        "serão ignorados em silêncio."
+    ),
+    "comments-lost": (
+        "Os comentários do arquivo não puderam ser mantidos nesta edição; ao "
+        "salvar, eles serão perdidos (o arquivo anterior fica como backup)."
+    ),
+    "konsave-failed": "O Konsave não conseguiu interpretar o arquivo: {detail}",
+}
+
+
+def describe_problem(problem: Problem) -> str:
+    """Explains one ``conf.yaml`` finding in pt-BR, with its position.
+
+    Args:
+        problem: A finding from the validation report.
+
+    Returns:
+        str: For example
+        ``linha 12, coluna 9 · save.configs.entries[3]: O item … precisa …``.
+    """
+    return f"{problem_place(problem)}: {problem_text(problem)}"
+
+
+def problem_text(problem: Problem) -> str:
+    """Explains one ``conf.yaml`` finding in pt-BR, without its position."""
+    args = dict(problem.args)
+    args["keys_text"] = ", ".join(str(key) for key in args.get("keys", ()))
+    args["value_text"] = repr(args.get("value", ""))
+    template = PROBLEM_TEXTS.get(problem.code)
+    try:
+        return template.format(**args) if template else problem.message
+    except (KeyError, IndexError):
+        return problem.message
+
+
+def problem_place(problem: Problem) -> str:
+    """Writes where a finding is, as ``linha 3, coluna 5 · save.a.location``."""
+    parts = []
+    if problem.line is not None:
+        place = f"linha {problem.line}"
+        if problem.column is not None:
+            place += f", coluna {problem.column}"
+        parts.append(place)
+    if problem.dotted_path:
+        parts.append(problem.dotted_path)
+    return " · ".join(parts) or "arquivo"
 
 
 def _translate_validation(text: str) -> str:
@@ -194,10 +325,23 @@ def describe_error(  # pylint: disable=too-many-return-statements
         return ("A operação exige confirmação explícita e não foi confirmada.",)
     if isinstance(error, ConfigValidationError):
         report = error.report
+        if report is not None and report.problems:
+            return _limit(
+                describe_problem(problem)
+                for problem in report.problems
+                if problem.is_error
+            )
         lines = [str(error)]
         if report is not None:
             lines += list(report.errors)
         return _limit(lines)
+    if isinstance(error, ConfigConflictError):
+        return (
+            "O conf.yaml foi alterado por outro programa depois de aberto aqui. "
+            "Nada foi gravado.",
+        )
+    if isinstance(error, BackupNotFoundError):
+        return ("Esse backup não existe mais. A lista foi atualizada.",)
     if isinstance(error, OperationFailedError):
         return describe_result(error.result)
     if isinstance(error, ValidationError):

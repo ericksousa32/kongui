@@ -1,6 +1,7 @@
 """Tests of the conf.yaml editor in kongui.core (model, text edits, backups)."""
 
 import os
+import json
 import random
 import re
 import stat
@@ -659,6 +660,129 @@ class WriteAndBackupTests(ConfigTestCase):
         (self.path.parent / "other.bak-1").write_text("x", encoding="utf-8")
         self.assertEqual(self.backups(), [])
         self.assertTrue(re.match(r"^$", ""))
+
+
+class ReorderTests(unittest.TestCase):
+    """Entries that change order are still written exactly as asked."""
+
+    def test_reordering_and_replacing_entries(self):
+        text = "save:\n  a:\n    location: /x\n    entries:\n      - one  # keep\n      - two\n      - three\nexport: {}\n"
+        for wanted in (
+            ("three", "one", "two"),
+            ("two", "one"),
+            ("three", "two", "one"),
+            ("one", "one", "two"),
+            ("new", "three"),
+        ):
+            with self.subTest(wanted=wanted):
+                result = edit(text, lambda m: set_entries(m, "save", "a", wanted))
+                self.assertTrue(result.preserved)
+                self.assertEqual(
+                    yaml.safe_load(result.text)["save"]["a"]["entries"], list(wanted)
+                )
+
+
+class OriginalBehaviourTests(ConfigTestCase):
+    """What the original ``read_konsave_config`` does, and what we say about it.
+
+    These are the findings of the audit (docs/GUI_CONFIG.md): each case asks the
+    original code to resolve a location and then checks that the validation
+    verdict agrees with what came back.
+    """
+
+    def setUp(self):
+        super().setUp()
+        home = self.engine.home
+        for name in (
+            ".config",
+            ".local/share/plasma-x",
+            ".mozilla/firefox/abc.default-release",
+        ):
+            (Path(home) / name).mkdir(parents=True, exist_ok=True)
+        self.engine.ensure_runtime_dirs()
+
+    def resolve(self, location, entries="[a]"):
+        text = (
+            f"save:\n  g:\n    location: {json.dumps(location)}\n"
+            f"    entries: {entries}\nexport: {{}}\n"
+        )
+        report = self.config.validate_text(text)
+        probe = Path(self.engine.home) / "probe.yaml"
+        probe.write_text(text, encoding="utf-8")
+        call = self.engine.call("read_konsave_config", str(probe))
+        original = call.returned["save"]["g"] if call.returned else None
+        return report, original
+
+    def test_keywords_are_plain_substitutions_and_keep_a_trailing_slash(self):
+        home = str(self.engine.home)
+        cases = {
+            "$HOME": home,
+            "$HOME/": home + "/",
+            "$CONFIG_DIR": home + "/.config",
+            "$SHARE_DIR": home + "/.local/share",
+            "$BIN_DIR": home + "/.local/bin",
+            "$HOME/with space/ç": home + "/with space/ç",
+        }
+        for location, resolved in cases.items():
+            with self.subTest(location=location):
+                report, original = self.resolve(location)
+                self.assertEqual(original["location"], resolved)
+                self.assertTrue(report.ok, report.errors)
+                self.assertEqual(report.resolved["save"]["g"]["location"], resolved)
+
+    def test_functions_pick_a_matching_folder_with_either_quote(self):
+        home = str(self.engine.home)
+        for location, resolved in {
+            "$HOME/.mozilla/firefox/${ENDS_WITH='.default-release'}": ".mozilla/firefox/abc.default-release",
+            '$HOME/.mozilla/firefox/${ENDS_WITH=".default-release"}': ".mozilla/firefox/abc.default-release",
+            "$HOME/.local/share/${BEGINS_WITH='plasma'}": ".local/share/plasma-x",
+        }.items():
+            with self.subTest(location=location):
+                report, original = self.resolve(location)
+                self.assertEqual(original["location"], f"{home}/{resolved}")
+                self.assertTrue(report.ok, report.errors)
+
+    def test_what_the_original_leaves_unresolved_is_an_error_here(self):
+        for location, code in {
+            "$HOME/.local/share/${BEGINS_WITH='nomatch'}": "location-unresolved",
+            "$HOME/.local/share/${ENDS_WITH='nomatch'}": "location-unresolved",
+            "$HOME/.local/share/${BEGINS_WITH='plasma y'}": "location-unresolved",
+            "$HOME/.local/share/${BEGINS_WITH='plasma'}/${ENDS_WITH='x'}": "location-unresolved",
+            "$HOME/.local/share/${FOO='x'}": "function-unsupported",
+            "$HOME/$NOPE/x": "placeholder-unsupported",
+            "$KONSAVE_DIR/x": "placeholder-unsupported",
+            "~/x": "location-relative",
+            "relative/path": "location-relative",
+        }.items():
+            with self.subTest(location=location):
+                report, original = self.resolve(location)
+                self.assertFalse(report.ok)
+                self.assertIn(code, {p.code for p in report.problems}, report.errors)
+
+    def test_the_original_crashes_when_a_function_has_no_parent_folder(self):
+        report, original = self.resolve("$HOME/nodir/${ENDS_WITH='x'}")
+        self.assertIsNone(original)
+        self.assertIn("konsave-failed", {p.code for p in report.problems})
+        self.assertFalse(report.ok)
+
+    def test_empty_entries_become_an_empty_list(self):
+        for entries in ("", "[]", "null"):
+            with self.subTest(entries=entries):
+                report, original = self.resolve("$HOME", entries)
+                self.assertEqual(original["entries"], [])
+                self.assertTrue(report.ok, report.errors)
+
+    def test_the_placeholders_offered_are_the_ones_the_original_defines(self):
+        listed = self.config.placeholders()
+        self.assertEqual(
+            sorted(listed["keywords"]),
+            sorted("$" + name for name in self.engine.parse.tokens["keywords"]["dict"]),
+        )
+        self.assertEqual(
+            sorted(listed["functions"]),
+            sorted(self.engine.parse.tokens["functions"]["dict"]),
+        )
+        self.assertNotIn("$KONSAVE_DIR", listed["keywords"])
 
 
 class RandomEditTests(unittest.TestCase):

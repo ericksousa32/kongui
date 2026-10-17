@@ -25,8 +25,9 @@ As preferências ficam em `<pasta de configuração do usuário>/kongui/kongui-g
 | Dashboard | `dashboard` | `Ctrl+1` | Importar, Salvar perfil atual (`Ctrl+S`) | 4 cartões de resumo, perfil ativo, atividade recente |
 | Perfis | `profiles` | `Ctrl+2` | Limpar todos, Novo perfil (`Ctrl+N`) | busca (`Ctrl+F`), ordenação, grade/lista, cartões de perfil |
 | Importar / Exportar | `transfer` | `Ctrl+3` | — | formulário de exportação (perfil, pasta, nome, conflito), área de soltar `.knsv` com verificação, transferências recentes (ver [`GUI_SERVICES.md`](GUI_SERVICES.md) §4) |
-| Configurações | `settings` | `Ctrl+4` | — | tema, exibição, duração dos avisos, dados de demonstração (só no modo `--demo`) |
-| Sobre | `about` | `Ctrl+5` | — | versão, ambiente, links, aviso de protótipo |
+| Configuração do Konsave | `config` | `Ctrl+4` | Validar, Backups…, Descartar, Salvar | editor do `conf.yaml`: seções `save` e `export` separadas, texto YAML, painel de problemas com linha/coluna, backups e restauração (ver [`GUI_CONFIG.md`](GUI_CONFIG.md)) |
+| Configurações | `settings` | `Ctrl+5` | — | tema, exibição, duração dos avisos, dados de demonstração (só no modo `--demo`) |
+| Sobre | `about` | `Ctrl+6` | — | versão, ambiente, links, aviso de protótipo |
 
 A navegação lateral é fixa (232 px) com ícone e rótulo. A janela tem tamanho
 mínimo de 900 × 600.
@@ -49,7 +50,7 @@ mínimo de 900 × 600.
 | `theme.py` | tokens de cor, paleta Qt, folha de estilo e `ThemeManager` |
 | `icons.py` | ícones SVG desenhados no código e coloridos pelo tema |
 | `formatting.py` | tamanhos, datas relativas e plurais em pt-BR |
-| `widgets/` | peças reutilizáveis: `common` (botão, rótulo, selo, cartão, controle segmentado), `grid` (grade adaptável), `cards`, `shell` (barra lateral e superior), `states` (estado vazio), `search`, `toast`, `dialogs`, `dropzone`, `rows`, `feedback` (barra de ocupado e faixa de erro) |
+| `widgets/` | peças reutilizáveis: `common` (botão, rótulo, selo, cartão, controle segmentado), `grid` (grade adaptável), `cards`, `shell` (barra lateral e superior), `states` (estado vazio), `search`, `toast`, `dialogs`, `dropzone`, `rows`, `feedback` (barra de ocupado e faixa de erro), `confedit` (editor de seção e lista de problemas do `conf.yaml`) |
 | `pages/` | uma classe por página, sobre `pages/base.py` |
 
 Regras seguidas: cores só vêm de `Tokens`; ícones são refeitos quando
@@ -91,6 +92,7 @@ temporário. Se o PySide6 não estiver instalado, eles são pulados.
 | `tests.test_gui_real_backend` | as seis operações nos serviços reais, em `$HOME` temporário |
 | `tests.test_gui_transfer` | importar e exportar na interface (backend em memória): formulário, conflitos, confirmações, erros |
 | `tests.test_gui_transfer_roundtrip` | exportar e importar nos serviços reais, em dois homes temporários; compatibilidade com o `python -m konsave` original |
+| `tests.test_gui_config` | editor do `conf.yaml` na interface (memória e serviços reais): validar, salvar, cancelar, backups, conflito, caracteres especiais |
 | `tests.test_gui_support` | mensagens, executores, `FakeBackend`, `ProfileStore`, widgets de feedback |
 
 Verificação visual manual: abra o programa, alterne os três temas, redimensione

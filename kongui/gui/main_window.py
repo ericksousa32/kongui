@@ -20,6 +20,7 @@ from kongui.gui.context import AppContext
 from kongui.gui.controller import ProfileController
 from kongui.gui.mock_data import demo_activity
 from kongui.gui.pages.about import AboutPage
+from kongui.gui.pages.config import ConfigPage
 from kongui.gui.pages.base import Page
 from kongui.gui.pages.dashboard import DashboardPage
 from kongui.gui.pages.profiles import ProfilesPage
@@ -36,6 +37,7 @@ PAGE_CLASSES: List[Type[Page]] = [
     DashboardPage,
     ProfilesPage,
     TransferPage,
+    ConfigPage,
     SettingsPage,
     AboutPage,
 ]
@@ -44,7 +46,7 @@ PAGE_CLASSES: List[Type[Page]] = [
 class MainWindow(QMainWindow):
     """The application window.
 
-    Shortcuts: ``Ctrl+1`` … ``Ctrl+5`` switch pages, ``Ctrl+F`` focuses the
+    Shortcuts: ``Ctrl+1`` … ``Ctrl+6`` switch pages, ``Ctrl+F`` focuses the
     profile search, ``Ctrl+N`` / ``Ctrl+S`` open the "save profile" dialog
     while the matching page is visible.
     """
@@ -141,7 +143,11 @@ class MainWindow(QMainWindow):
         self.busy_bar.set_busy(self.controller.busy)
 
     def closeEvent(self, event) -> None:  # pylint: disable=invalid-name
-        """Waits for the running operation before closing."""
+        """Asks about unsaved work, then waits for the running operation."""
+        for page in self.pages.values():
+            if not page.confirm_leave(self):
+                event.ignore()
+                return
         self.executor.shutdown()
         super().closeEvent(event)
 
@@ -159,7 +165,7 @@ class MainWindow(QMainWindow):
 
         Args:
             key: Page key (``dashboard``, ``profiles``, ``transfer``,
-                ``settings`` or ``about``).
+                ``config``, ``settings`` or ``about``).
 
         Returns:
             Page: The page now visible.
@@ -168,6 +174,11 @@ class MainWindow(QMainWindow):
             KeyError: If the key is unknown.
         """
         page = self.pages[key]
+        current = self.stack.currentWidget()
+        if current is not None and current is not page:
+            if not current.confirm_leave(self):  # type: ignore[attr-defined]
+                self.sidebar.set_current(current.key)  # type: ignore[attr-defined]
+                return current  # type: ignore[return-value]
         self.stack.setCurrentWidget(page)
         self.sidebar.set_current(key)
         self.top_bar.set_page(page.title, page.subtitle, page.header_actions())
@@ -178,7 +189,8 @@ class MainWindow(QMainWindow):
     def focus_search(self) -> None:
         """Opens the profiles page and focuses its search box."""
         page = self.show_page("profiles")
-        page.focus_search()  # type: ignore[attr-defined]
+        if page.key == "profiles":
+            page.focus_search()  # type: ignore[attr-defined]
 
     def open_export(self, name: str) -> None:
         """Opens the export form with a profile selected.
@@ -187,7 +199,8 @@ class MainWindow(QMainWindow):
             name: Profile name.
         """
         page = self.show_page("transfer")
-        page.select_profile(name)  # type: ignore[attr-defined]
+        if page.key == "transfer":
+            page.select_profile(name)  # type: ignore[attr-defined]
 
     def toggle_theme(self) -> None:
         """Switches between the light and dark themes."""

@@ -60,6 +60,18 @@ class Page(QWidget):
     def on_shown(self) -> None:
         """Called each time the page becomes the current one."""
 
+    def confirm_leave(self, parent: QWidget) -> bool:
+        """Asks whether the user may leave the page (unsaved work).
+
+        Args:
+            parent: Window used as dialog parent.
+
+        Returns:
+            bool: ``True`` if leaving (or closing the window) is fine.
+        """
+        del parent
+        return True
+
     def section_title(self, text: str) -> Label:
         """Creates a section heading.
 

@@ -41,6 +41,27 @@ def ensure_not_root(euid_provider: EuidProvider = current_euid) -> None:
         )
 
 
+def is_plain_name(value: object) -> bool:
+    """Tells whether a value is a single, relative path component.
+
+    This is the rule for group names and entries of a ``conf.yaml``: they are
+    joined to a folder, so they must not climb out of it or nest.
+
+    Args:
+        value: Candidate name.
+
+    Returns:
+        bool: ``True`` if safe to join to a folder.
+    """
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and value not in {".", ".."}
+        and "/" not in value
+        and "\0" not in value
+    )
+
+
 def _validate_component(value: object, label: str) -> str:
     """Validates a single file-name component.
 

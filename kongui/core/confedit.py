@@ -603,28 +603,23 @@ class _Editor:  # pylint: disable=too-few-public-methods
         self, node: yaml.SequenceNode, wanted: Tuple[str, ...]
     ) -> None:
         """Keeps matching items in place, removes the rest, inserts new ones."""
-        pool: List[Optional[yaml.Node]] = list(node.value)
-        first = node.value[0]
-        pad = self.text[
+        items = list(node.value)
+        first = items[0]
+        lead = self.text[
             self.line_start(first.start_mark.index) : first.start_mark.index
         ]
-        dash = pad[: len(pad) - len(pad.lstrip(" -"))] if pad.strip(" -") == "" else pad
-        indent = " " * (len(pad) - len(pad.lstrip()))
-        del dash
+        indent = " " * (len(lead) - len(lead.lstrip()))
         anchor: Optional[int] = None
         used = set()
+        position = 0  # items before this index can no longer be matched
         for value in wanted:
             match = next(
-                (
-                    i
-                    for i, item in enumerate(pool)
-                    if item is not None and item.value == value
-                ),
+                (i for i in range(position, len(items)) if items[i].value == value),
                 None,
             )
             if match is not None:
-                item = pool[match]
-                pool[match] = None
+                item = items[match]
+                position = match + 1
                 used.add(id(item))
                 anchor = content_end(item)
                 continue

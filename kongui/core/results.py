@@ -158,6 +158,7 @@ class OperationResult:  # pylint: disable=too-many-instance-attributes
         errors: Error summaries taken from the engine log.
         warnings: Non-blocking observations.
         path: Main file or folder produced by the operation, if any.
+        backup: Copy kept of a file the operation replaced, if any.
     """
 
     operation: str
@@ -168,6 +169,7 @@ class OperationResult:  # pylint: disable=too-many-instance-attributes
     errors: Tuple[str, ...] = ()
     warnings: Tuple[str, ...] = ()
     path: Optional[Path] = None
+    backup: Optional[Path] = None
 
     def raise_for_status(self) -> "OperationResult":
         """Raises if the operation failed.

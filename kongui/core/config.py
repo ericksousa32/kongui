@@ -30,6 +30,7 @@ from kongui.core.results import (
     Problem,
     ValidationReport,
 )
+from kongui.core.safety import is_plain_name
 from kongui.core.yamlmap import compose, locate, mapping_pairs
 
 _TOP_LEVEL_KEYS = ("save", "export")
@@ -41,24 +42,6 @@ _ANY: Any = object()
 BACKUP_MARK = ".bak-"
 BACKUP_STAMP = "%Y%m%d-%H%M%S-%f"
 _DEFAULT_CONFIGS = {"kde": "conf_kde.yaml", "other": "conf_other.yaml"}
-
-
-def _is_safe_component(value: object) -> bool:
-    """Tells whether a value is a single, relative path component.
-
-    Args:
-        value: Candidate entry or section name.
-
-    Returns:
-        bool: ``True`` if safe to join to a folder.
-    """
-    return (
-        isinstance(value, str)
-        and bool(value)
-        and value not in {".", ".."}
-        and "/" not in value
-        and "\0" not in value
-    )
 
 
 def _backup_time(stamp: str, path: Path) -> datetime:
@@ -245,16 +228,39 @@ class ConfigService:
         """
         if self.exists():
             return self.config_path
+        source = self._template_path(kind, desktop)
+        self._engine.ensure_runtime_dirs()
+        shutil.copy(source, self.config_path)
+        return self.config_path
+
+    @staticmethod
+    def _template_path(kind: Optional[str], desktop: Optional[str]) -> str:
+        """Picks the packaged template the original bootstrap would copy."""
         if kind is None:
             if desktop is None:
                 desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
             kind = "kde" if desktop == "KDE" else "other"
         if kind not in _DEFAULT_CONFIGS:
             raise ValidationError(f"unknown configuration template: {kind!r}")
-        source = str(files("konsave") / _DEFAULT_CONFIGS[kind])
-        self._engine.ensure_runtime_dirs()
-        shutil.copy(source, self.config_path)
-        return self.config_path
+        return str(files("konsave") / _DEFAULT_CONFIGS[kind])
+
+    def default_text(
+        self, kind: Optional[str] = None, *, desktop: Optional[str] = None
+    ) -> str:
+        """Returns the text of the default template without creating a file.
+
+        Args:
+            kind: ``"kde"`` or ``"other"`` to force a template.
+            desktop: Value to use instead of ``$XDG_CURRENT_DESKTOP``.
+
+        Returns:
+            str: The template contents.
+
+        Raises:
+            ValidationError: If ``kind`` is unknown.
+        """
+        with open(self._template_path(kind, desktop), encoding="utf-8") as template:
+            return template.read()
 
     def read_text(self, path: Optional[Path] = None) -> str:
         """Reads a configuration file as text.
@@ -459,6 +465,7 @@ class ConfigService:
             message=message,
             warnings=report.warnings,
             path=target,
+            backup=backup,
         )
 
     def _new_backup_path(self) -> Path:
@@ -644,7 +651,7 @@ class ConfigService:
         """
         label = f"{kind}.{name}"
         where = (kind, str(name))
-        if not _is_safe_component(name):
+        if not is_plain_name(name):
             return [
                 _error(
                     "group-name-invalid",
@@ -700,7 +707,7 @@ class ConfigService:
         seen = set()
         for index, entry in enumerate(entries):
             at = where + ("entries", index)
-            if not _is_safe_component(entry):
+            if not is_plain_name(entry):
                 found.append(
                     _error(
                         "entry-invalid",

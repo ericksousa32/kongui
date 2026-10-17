@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Collection, Optional
 
 from kongui.core.errors import ValidationError
-from kongui.core.safety import validate_archive_name, validate_profile_name
+from kongui.core.safety import (
+    is_plain_name,
+    validate_archive_name,
+    validate_profile_name,
+)
 
 
 def profile_name_problem(name: str, existing: Collection[str] = ()) -> Optional[str]:
@@ -59,4 +63,23 @@ def archive_name_problem(name: str) -> Optional[str]:
             "nas pontas, caracteres de controle, nem as extensões .knsv ou .zip "
             "(máximo de 200 caracteres)."
         )
+    return None
+
+
+def group_name_problem(name: str, existing: Collection[str] = ()) -> Optional[str]:
+    """Explains why a ``save``/``export`` group name cannot be used.
+
+    Args:
+        name: Name typed by the user.
+        existing: Other group names of the same section.
+
+    Returns:
+        Optional[str]: A pt-BR message, or ``None`` if the name is fine.
+    """
+    if not name.strip():
+        return "Informe um nome para o grupo."
+    if not is_plain_name(name):
+        return "Nome inválido. Use um nome simples de pasta: sem “/”, “.” ou “..”."
+    if name in existing:
+        return "Já existe um grupo com esse nome nesta seção."
     return None

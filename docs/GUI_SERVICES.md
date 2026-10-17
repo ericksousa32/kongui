@@ -62,6 +62,14 @@ acrescentado `ProfileService.replace`, sem mexer no Konsave: salva num nome
 temporário (`.kongui-…`), confere o resultado e troca por `rename` com
 reversão se algo falhar. Entradas com esse prefixo nunca são listadas.
 
+### Operações sobre o `conf.yaml`
+
+`ProfileBackend` também expõe `load_config`, `check_config`, `save_config`,
+`list_config_backups`, `read_config_backup` e `restore_config` (ver
+[`GUI_CONFIG.md`](GUI_CONFIG.md)). As leituras rodam em segundo plano sem contar
+como operação; `save_config` e `restore_config` usam o mesmo ciclo das outras
+(barra ocupada, aviso de sucesso ou erro) e não recarregam a lista de perfis.
+
 ## 4. Importar e exportar
 
 Formato: o `.knsv` **original** do Konsave (um zip com `conf.yaml`, `save/` e
@@ -128,7 +136,7 @@ Nenhum teste aplica perfil na sessão real: usam `FakeBackend` ou `$HOME`
 temporário, e os testes com arquivos recusam rodar como root.
 
 ```bash
-QT_QPA_PLATFORM=offscreen python3 -m unittest tests.test_gui_operations tests.test_gui_real_backend tests.test_gui_support tests.test_gui_transfer tests.test_gui_transfer_roundtrip -v
+QT_QPA_PLATFORM=offscreen python3 -m unittest tests.test_gui_operations tests.test_gui_real_backend tests.test_gui_support tests.test_gui_transfer tests.test_gui_transfer_roundtrip tests.test_gui_config tests.test_config_editor -v
 ```
 
 `tests.test_gui_transfer_roundtrip` exporta num home e importa em outro com o
@@ -159,5 +167,5 @@ Konsave real, compara o perfil byte a byte e repete com o CLI original.
 * Não há trava entre processos: dois KonGUI (ou o `konsave` na linha de comando)
   ao mesmo tempo podem se atropelar.
 * O motor redireciona `stdout` de forma global durante cada chamada.
-* Editar `conf.yaml` segue fora de escopo.
+* A edição do `conf.yaml` está descrita em [`GUI_CONFIG.md`](GUI_CONFIG.md).
 * Não testado em uma sessão Plasma real.

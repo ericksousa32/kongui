@@ -19,18 +19,22 @@ import shutil
 import tempfile
 import threading
 import time
+import weakref
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from kongui.core import (
     ArchiveExistsError,
+    BackupInfo,
+    ConfigService,
     ConfirmationRequiredError,
     KonsaveEngine,
     NotImplementedOperationError,
     OperationResult,
+    Problem,
     ProfileExistsError,
     ProfileNotFoundError,
     ProfileService,
@@ -108,6 +112,51 @@ class ExportProbe:
     folder_problem: str = ""
     conflict: str = ""
     unique_path: str = ""
+
+
+@dataclass(frozen=True)
+class ConfigSnapshot:  # pylint: disable=too-many-instance-attributes
+    """The ``conf.yaml`` as read for editing.
+
+    Attributes:
+        path: Where the file is (or would be created).
+        exists: Whether the file exists. If not, ``text`` is the default
+            template and saving creates the file.
+        text: The contents.
+        digest: Fingerprint to pass back when saving, to detect outside edits.
+        backups: Saved previous versions, newest first.
+        keywords: Placeholders of the form ``$NAME`` known to Konsave.
+        functions: Function placeholders (``ENDS_WITH``…) known to Konsave.
+        sandbox: The file is a temporary copy (demo mode), not the real one.
+    """
+
+    path: str
+    exists: bool
+    text: str
+    digest: Optional[str]
+    backups: Tuple[BackupInfo, ...] = ()
+    keywords: Tuple[str, ...] = ()
+    functions: Tuple[str, ...] = ()
+    sandbox: bool = False
+
+
+@dataclass(frozen=True)
+class ConfigCheck:
+    """Result of validating a candidate ``conf.yaml`` text.
+
+    Attributes:
+        problems: Errors and warnings, each with its position.
+        resolved: ``(kind, group)`` → location after Konsave's own placeholder
+            resolution (only when the text could be resolved).
+    """
+
+    problems: Tuple[Problem, ...] = ()
+    resolved: Dict[Tuple[str, str], str] = field(default_factory=dict)
+
+    @property
+    def ok(self) -> bool:
+        """Whether nothing blocks saving."""
+        return not any(problem.is_error for problem in self.problems)
 
 
 def _require(confirmed: bool, operation: str) -> None:
@@ -219,6 +268,91 @@ class ProfileBackend(ABC):
         """
         raise NotImplementedOperationError("reset is demo only")
 
+    # ------------------------------------------------------------- conf.yaml
+
+    def _config_service(self, operation: str) -> ConfigService:
+        """Returns the configuration service to use for ``operation``.
+
+        Raises:
+            NotImplementedOperationError: If the backend has none.
+        """
+        raise NotImplementedOperationError(f"{operation} is not available")
+
+    def load_config(self) -> ConfigSnapshot:
+        """Reads the ``conf.yaml`` (or the default template if there is none)."""
+        config = self._config_service("load_config")
+        exists = config.exists()
+        if exists:
+            try:
+                text = config.read_text()
+            except UnicodeDecodeError as error:
+                raise ValidationError("conf.yaml is not valid UTF-8 text") from error
+        else:
+            text = config.default_text()
+        placeholders = config.placeholders()
+        return ConfigSnapshot(
+            str(config.config_path),
+            exists,
+            text,
+            config.digest(),
+            config.list_backups(),
+            placeholders["keywords"],
+            placeholders["functions"],
+            self.capabilities.demo,
+        )
+
+    def check_config(self, text: str) -> ConfigCheck:
+        """Validates a candidate text with Konsave's own reader; writes nothing."""
+        report = self._config_service("check_config").validate_text(text)
+        resolved: Dict[Tuple[str, str], str] = {}
+        for kind, groups in (report.resolved or {}).items():
+            if isinstance(groups, dict):
+                for name, body in groups.items():
+                    if isinstance(body, dict) and "location" in body:
+                        resolved[(str(kind), str(name))] = str(body["location"])
+        return ConfigCheck(report.problems, resolved)
+
+    def save_config(
+        self, text: str, expected_digest: Optional[str], *, force: bool = False
+    ) -> OperationResult:
+        """Validates and writes the ``conf.yaml``, keeping the previous file.
+
+        ``expected_digest`` is the digest the text was loaded with; the write is
+        refused if the file changed since, unless ``force`` is set.
+
+        Raises:
+            ConfigValidationError: If the text is invalid (nothing is written).
+            ConfigConflictError: If the file changed since it was loaded.
+        """
+        config = self._config_service("save_config")
+        if force:
+            return config.write_text(text)
+        return config.write_text(text, expected_digest=expected_digest)
+
+    def list_config_backups(self) -> Tuple[BackupInfo, ...]:
+        """Lists the saved previous versions of the ``conf.yaml``."""
+        return self._config_service("list_config_backups").list_backups()
+
+    def read_config_backup(self, name: str) -> str:
+        """Reads one backup."""
+        return self._config_service("read_config_backup").read_backup(name)
+
+    def restore_config(
+        self, name: str, expected_digest: Optional[str], *, force: bool = False
+    ) -> OperationResult:
+        """Puts a backup back (after validating it); the current file is kept
+        as a new backup.
+
+        Raises:
+            BackupNotFoundError: If there is no such backup.
+            ConfigValidationError: If the backup is not a valid configuration.
+            ConfigConflictError: If the file changed since it was loaded.
+        """
+        config = self._config_service("restore_config")
+        if force:
+            return config.restore_backup(name)
+        return config.restore_backup(name, expected_digest=expected_digest)
+
 
 def folder_size_mb(path: Path) -> float:
     """Sums the size of the regular files below a folder.
@@ -277,6 +411,11 @@ class ServiceBackend(ProfileBackend):
     def service(self) -> ProfileService:
         """The wrapped service."""
         return self._service
+
+    def _config_service(self, operation: str) -> ConfigService:
+        """The real configuration service."""
+        del operation
+        return self._service.config
 
     def list_profiles(self) -> List[Profile]:
         """Lists profiles. Konsave stores no description or section list."""
@@ -467,18 +606,39 @@ class FakeBackend(ProfileBackend):
         self.archives = set(
             ["~/Downloads/Minimalista.knsv"] if archives is None else archives
         )
+        self._sandbox: Optional[ConfigService] = None
 
     @property
     def initial_active(self) -> Optional[str]:
         """The profile shown as active at start."""
         return self._active
 
+    def _config_service(self, operation: str) -> ConfigService:
+        """A real configuration service on a private temporary home.
+
+        Demo mode edits a throw-away copy of the default KDE ``conf.yaml``
+        with the genuine validation, so the editor behaves as it would for
+        real, and the user's own file is never read or written.
+        """
+        self._enter(operation)
+        with self._lock:
+            if self._sandbox is None:
+                folder = tempfile.mkdtemp(prefix="kongui-demo-")
+                weakref.finalize(self, shutil.rmtree, folder, True)
+                config = ConfigService(KonsaveEngine(Path(folder)))
+                config.ensure_default_config(kind="kde")
+                self._sandbox = config
+            return self._sandbox
+
     def fail_next(self, operation: str, error: BaseException) -> None:
         """Makes the next call of ``operation`` raise ``error`` (tests).
 
         Args:
             operation: ``list``, ``save``, ``overwrite``, ``apply``, ``remove``,
-                ``wipe_all``, ``duplicate`` or ``add_profile``.
+                ``wipe_all``, ``duplicate``, ``add_profile`` or one of the
+                ``conf.yaml`` operations (``load_config``, ``check_config``,
+                ``save_config``, ``list_config_backups``,
+                ``read_config_backup``, ``restore_config``).
             error: Exception to raise once.
         """
         self._failures[operation] = error

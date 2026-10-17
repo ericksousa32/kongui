@@ -18,15 +18,15 @@ GUI_SOURCES = sorted((ROOT / "kongui" / "gui").rglob("*.py"))
 class StartupTests(GuiTestCase):
     """The main window and its fixed structure."""
 
-    def test_window_opens_with_five_pages_in_order(self):
+    def test_window_opens_with_six_pages_in_order(self):
         window = self.make_window()
         self.assertTrue(window.isVisible())
         self.assertEqual(
             list(window.pages),
-            ["dashboard", "profiles", "transfer", "settings", "about"],
+            ["dashboard", "profiles", "transfer", "config", "settings", "about"],
         )
         self.assertEqual(window.sidebar.keys(), list(window.pages))
-        self.assertEqual(window.stack.count(), 5)
+        self.assertEqual(window.stack.count(), 6)
 
     def test_starts_on_the_dashboard(self):
         window = self.make_window()
@@ -39,7 +39,14 @@ class StartupTests(GuiTestCase):
         labels = [window.sidebar.button(key).text() for key in window.sidebar.keys()]
         self.assertEqual(
             labels,
-            ["Dashboard", "Perfis", "Importar / Exportar", "Configurações", "Sobre"],
+            [
+                "Dashboard",
+                "Perfis",
+                "Importar / Exportar",
+                "Configuração do Konsave",
+                "Configurações",
+                "Sobre",
+            ],
         )
         self.assertEqual(window.sidebar.minimumWidth(), window.sidebar.maximumWidth())
         for key in window.sidebar.keys():
@@ -107,6 +114,7 @@ class DocumentationTests(unittest.TestCase):
             "`dashboard`",
             "`profiles`",
             "`transfer`",
+            "`config`",
             "`settings`",
             "`about`",
             "Ctrl+1",
@@ -114,6 +122,7 @@ class DocumentationTests(unittest.TestCase):
             "Ctrl+3",
             "Ctrl+4",
             "Ctrl+5",
+            "Ctrl+6",
             "Ctrl+F",
             "Ctrl+N",
             "Ctrl+S",
@@ -303,7 +312,15 @@ class IsolationTests(unittest.TestCase):
         for source in GUI_SOURCES:
             for module in pattern.findall(source.read_text(encoding="utf-8")):
                 used.setdefault(module, set()).add(source.name)
-        allowed = {"safety", "errors", "engine", "profiles", "config", "results"}
+        allowed = {
+            "safety",
+            "errors",
+            "engine",
+            "profiles",
+            "config",
+            "results",
+            "confedit",
+        }
         self.assertLessEqual(set(used), allowed)
         for module in ("engine", "profiles", "config"):
             self.assertLessEqual(used.get(module, set()), {"backend.py"}, module)
