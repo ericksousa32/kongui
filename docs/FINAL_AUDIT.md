@@ -27,7 +27,8 @@ Portuguese interface, with an English gloss in parentheses where needed.
   profile to the real session (`tests.test_zz_real_home_guard` checks this).
 * Tests of this audit: `tests.test_gui_audit`, `tests.test_core_audit` (plus
   `tests.test_safety` and `tests.test_gui_dialogs`, extended). P-1 has its own:
-  `tests.test_snapshot` and `tests.test_gui_backups`.
+  `tests.test_snapshot` and `tests.test_gui_backups`. The interface language has
+  `tests.test_i18n`.
 
 ## 2. Fixed findings
 
@@ -103,7 +104,27 @@ not exist and is a requirement; **Blocked** = depends on something out of reach;
 | `.knsv` exchanged with the original `konsave` in both directions | Tested | CliCompatibilityTests |
 | Unused dependencies | Tested | A-10; `setuptools` still declared at runtime (see §5) |
 
-### 3.4 Pending, in progress and blocked
+### 3.4 Interface language
+
+| Requirement | Status | Evidence / note |
+|---|---|---|
+| English and Brazilian Portuguese, English as source and fallback | Tested | `tests.test_i18n` (FallbackTests, TranslationFilesTests) |
+| First run follows the system locale: exactly `pt_BR` gives Portuguese, any other locale (including `pt_PT` and `pt`) gives English | Tested | DetectionTests, FirstRunTests |
+| An explicit choice is saved in KonGUI's own settings, survives a restart and is never overwritten by detection; "no preference" is different from a choice | Tested | PreferenceTests, RestartTests |
+| Switching at runtime without a restart, keeping the page and typed data | Tested | LiveSwitchTests |
+| Dialogs, notices, errors and cards created after a switch use the new language | Tested | LaterComponentsTests |
+| Missing translation, missing or unreadable catalog, unknown language: English, no failure | Tested | FallbackTests |
+| Plurals, sizes and dates in the language in use | Tested | FormatTests |
+| Nothing left in the other language on any page; catalogs complete, finished, with the same fields as the source, up to date with the code and compiled | Tested | WholeInterfaceTests, TranslationFilesTests; no Portuguese literal in the code (NoHardcodedPortugueseTests) |
+| Translation files are packaged | Tested | `package_data` in `setup.py`, checked by `tests.test_i18n`; a wheel built with `python -m build --wheel` in a clean virtual environment (2026-10-17) contains the four files in `kongui/gui/translations/`, no `tests/`, and still contains `mock_data.py` (demo mode) |
+
+Limits (see `GUI_PROTOTYPE.md`, section 8): notices and activity entries already
+shown keep the language they were written in; the fictitious demo data keeps the
+language it was created in until restored; messages from the bundled Konsave are
+translated by matching their English text; terminal messages printed before the
+window exists are English only.
+
+### 3.5 Pending, in progress and blocked
 
 | Id | Requirement | Status | Reason |
 |---|---|---|---|
@@ -144,7 +165,26 @@ lock (external tools, see `CONCURRENCY.md` §5); the copy has no size limit (P-3
 
 ## 6. Test results
 
-* 763 tests, all passing, run as an unprivileged user.
-* Line and branch coverage of `kongui/`: 96% at the last measurement before the
-  lock work (`snapshot.py`: 97%); it was not re-measured as a whole afterwards.
+Measured on 2026-10-17 at commit `6a13ea2` (branch `dev`), Python 3.13, Qt offscreen,
+as an unprivileged user with a temporary `$HOME`:
+
+* 825 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes).
+* Coverage of `kongui/` with `coverage run --branch --source=kongui`: **96%**
+  (6559 statements, 208 not run; 1558 branches, 122 partly covered). `konsave/` was
+  not measured. The lowest modules: `gui/__main__.py` 0% (three lines, only the
+  `python -m kongui.gui` entry), `core/yamlmap.py` 87%, `gui/messages.py` 87%,
+  `gui/widgets/dropzone.py` 88%, `gui/widgets/confedit.py` 90%, `gui/backend.py` 90%.
 * `pylint kongui`: 10.00/10; `black --check`: clean.
+* Packaging: `python -m build --wheel` works in a clean virtual environment. With the
+  distribution's own `setuptools` (Debian 68.1.2), `pip wheel .` fails with
+  `AttributeError: install_layout`; this comes from that setuptools and the legacy
+  `setup.py` path, not from the project's code.
+* All tests use temporary home directories, and most GUI tests use the in-memory
+  backend. None of this replaces testing in a real Plasma session (B-3).
+
+## 7. Real Plasma session report
+
+**Pending.** The project owner is testing in a real Fedora KDE / Plasma session
+(applying profiles, Wayland and drag-and-drop, SELinux, Flatpak, fractional scaling,
+switching color scheme with the app open). The report will be added here, and B-3
+changes status only then.
