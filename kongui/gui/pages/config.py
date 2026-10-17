@@ -73,7 +73,7 @@ class ConfigPage(
     """Edits ``~/.config/konsave/conf.yaml`` with validation and backups."""
 
     key = "config"
-    title = "Gerenciar .YAML"
+    title = "Editar .YAML"
     subtitle = "Edite o conf.yaml com validação, backup e restauração"
     icon_name = "file"
 
