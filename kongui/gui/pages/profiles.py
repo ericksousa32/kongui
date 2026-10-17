@@ -188,6 +188,8 @@ class ProfilesPage(Page):
             text = ""
             if running and running[1] == profile.name:
                 text = busy_texts.get(running[0], "Processando…")
+                if controller.waiting:
+                    text = "Aguardando outra operação…"
             card = ProfileCard(
                 profile,
                 list_mode=list_mode,

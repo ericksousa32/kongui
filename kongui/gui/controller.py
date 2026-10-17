@@ -14,13 +14,19 @@ failed halfway. Destructive operations refuse to start without
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Slot
 
-from kongui.core import ConfirmationRequiredError, OperationResult
+from kongui.core import (
+    ConfirmationRequiredError,
+    KonGuiError,
+    LockError,
+    OperationResult,
+)
 from kongui.gui import messages
 from kongui.gui.backend import ArchiveInfo, ProfileBackend
 from kongui.gui.state import AppSettings, Profile, ProfileStore
@@ -93,6 +99,8 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
     state_changed = Signal()
     operation_started = Signal(str, str)
     operation_finished = Signal(object)
+    #: Emitted by the worker thread when the lock is busy (queued to the GUI).
+    _wait_reported = Signal(object)
 
     def __init__(
         self,
@@ -119,6 +127,11 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         self._state = LoadState.IDLE
         self._error: Tuple[str, ...] = ()
         self._current: Optional[Tuple[str, str]] = None
+        self._waiting: Optional[Dict[str, Any]] = None
+        self._cancelling = False
+        self._cancel = threading.Event()
+        self._wait_reported.connect(self._on_wait_reported)
+        backend.configure_lock_wait(self._wait_reported.emit, self._cancel)
         stored = str(settings.get("last_applied"))
         self._active = stored or backend.initial_active or ""
 
@@ -155,11 +168,42 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         return self._current
 
     @property
+    def waiting(self) -> bool:
+        """Whether the running operation is waiting for another process's lock."""
+        return self._waiting is not None
+
+    @property
+    def waiting_holder(self) -> Dict[str, Any]:
+        """Unverified information about who holds the lock (may be empty)."""
+        return dict(self._waiting or {})
+
+    @property
+    def cancelling(self) -> bool:
+        """Whether the user asked to stop waiting and the wait is ending."""
+        return self._cancelling
+
+    @property
     def active_name(self) -> str:
         """Profile applied most recently from this interface, or ``""``."""
         return self._active
 
     # ---------------------------------------------------------------- operations
+
+    def cancel_wait(self) -> bool:
+        """Stops waiting for another process's lock (nothing is changed).
+
+        Only the wait is cancelled: an operation that already started is never
+        interrupted. The operation then ends with a "wait cancelled" outcome.
+
+        Returns:
+            bool: ``False`` if nothing is waiting.
+        """
+        if self._waiting is None or self._cancelling:
+            return False
+        self._cancelling = True
+        self._cancel.set()
+        self.state_changed.emit()
+        return True
 
     def refresh(self) -> bool:
         """Reads the profile list again.
@@ -485,6 +529,14 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
 
     # ------------------------------------------------------------------ internals
 
+    @Slot(object)
+    def _on_wait_reported(self, holder: Optional[Dict[str, Any]]) -> None:
+        """The running operation found the lock busy and is waiting (GUI thread)."""
+        if self._current is None:
+            return  # a background read, not an operation of ours
+        self._waiting = dict(holder or {})
+        self.state_changed.emit()
+
     @staticmethod
     def _need(confirmed: bool, operation: str) -> None:
         """Refuses a destructive call without explicit confirmation."""
@@ -509,6 +561,9 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         if self.busy:
             return False
         self._current = (operation, name)
+        self._waiting = None
+        self._cancelling = False
+        self._cancel.clear()
         if operation == "list" or (
             self._state is LoadState.IDLE and operation not in _CONFIG_OPERATIONS
         ):
@@ -526,6 +581,10 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
                     result = work()
                 except Exception as caught:  # pylint: disable=broad-exception-caught
                     work_error = caught
+            if isinstance(work_error, LockError):
+                # Nothing ran, so the list cannot have changed; reading it again
+                # would only wait for the same lock.
+                return _JobValue(result, None, None, work_error)
             if not reload_profiles:
                 return _JobValue(result, None, None, work_error)
             try:
@@ -551,6 +610,8 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
     ) -> None:
         """Handles a finished job in the GUI thread."""
         self._current = None
+        self._waiting = None
+        self._cancelling = False
         profiles = value.profiles if value is not None else None
         result = value.result if value is not None else None
         list_error = value.list_error if value is not None else None
@@ -668,11 +729,6 @@ def _profile_name_of(result: OperationResult) -> str:
 
 def _is_expected(error: BaseException) -> bool:
     """Tells whether an exception is a normal ``KonGuiError`` outcome."""
-    from kongui.core import (  # pylint: disable=import-outside-toplevel
-        KonGuiError,
-        LockError,
-    )
-
     return isinstance(error, (KonGuiError, LockError, OSError))
 
 

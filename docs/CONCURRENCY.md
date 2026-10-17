@@ -70,15 +70,41 @@ Se acabar o tempo: `Konsave: … Nothing was changed.` e código de saída **75*
 (`EX_TEMPFAIL`). Trava inutilizável: código 1. Ctrl+C: 130. Tempo de espera por
 `KONSAVE_LOCK_TIMEOUT` (segundos; `0` = não esperar; negativo ou `inf` = sem limite).
 
-**Interface gráfica (estado atual)**
+**Interface gráfica**
 
-A operação roda em segundo plano (a janela não congela) e espera até
-`LockPolicy.timeout` (30 s). Se não conseguir, aparece a mensagem “Outra operação do
-Konsave está em andamento… Nada foi alterado…” (com processo/operação quando
-conhecidos); se a pasta não permitir criar a trava, a mensagem explica o arquivo
-envolvido. `LockPolicy.cancel` e `LockPolicy.on_wait` já existem no serviço; os
-controles visuais (aviso “aguardando”, botão cancelar, desabilitar ações) são a
-**próxima etapa**.
+A operação roda em segundo plano (a janela não congela) e, se outro processo
+estiver com a trava, **espera** em vez de falhar:
+
+* aparece uma faixa abaixo da barra superior: “Aguardando outra operação do
+  Konsave…”, com a explicação e, quando conhecida, a dica (não verificada) de qual
+  operação/processo está com a trava;
+* o botão **Cancelar espera** da faixa interrompe só a espera: nada é alterado, a
+  outra operação não é tocada e aparece o aviso “Espera cancelada”. Depois disso a
+  janela volta ao normal e a mesma ação pode ser repetida;
+* enquanto espera, a operação conta como “em andamento”: todos os botões que
+  alteram dados ficam desabilitados (como em qualquer operação), o cartão do perfil
+  envolvido mostra “Aguardando outra operação…”, e fechar a janela é recusado com
+  o aviso “Cancele a espera ou aguarde…”;
+* se a outra operação terminar, a nossa começa sozinha, a faixa some e o resultado
+  aparece como de costume;
+* se a espera passar do limite (`LockPolicy.timeout`, 30 s), a operação termina
+  com “A outra operação do Konsave … não terminou a tempo. Nada foi alterado”;
+* arquivo de trava inutilizável (pasta sem permissão etc.) não é espera: aparece
+  logo o erro com o nome do arquivo.
+
+Como funciona por dentro: o controller (`ProfileController`) entrega ao backend um
+`threading.Event` de cancelamento e um callback `on_wait` (`configure_lock_wait`);
+o callback roda na thread de trabalho e chega à janela por sinal Qt; `cancel_wait()`
+só levanta o evento. Quando a operação falha por causa da trava, a lista de perfis
+**não** é relida (nada rodou, e releria esperaria pela mesma trava).
+A confirmação do usuário (diálogo) acontece **antes** da operação, então a trava
+nunca fica segurada enquanto ele decide. O modo demonstração simula outro processo
+com `FakeBackend.start_other()` / `finish_other()`.
+
+Limitações da interface: a janela não monitora a trava sozinha, só descobre o
+conflito quando o usuário dispara uma ação; leituras em segundo plano
+(`inspect_archive`, `probe_export`, que usam o mesmo thread de trabalho) ficam na
+fila atrás de uma operação que espera.
 
 ## 5. Limitações
 
@@ -105,6 +131,12 @@ link no lugar do arquivo; CLI × CLI, serviço × CLI nos dois sentidos, dois
 “KonGUI”; lista de perfis relida depois da espera; primeira execução simultânea;
 códigos de saída 75/1/130; reentrância e proibição de promover a trava;
 comandos sem trava (`--version`, `--help`) nunca esperam; textos da interface.
+`tests.test_gui_lock_wait` cobre a interface: faixa de espera com dica do dono,
+janela responsiva durante a espera (temporizador Qt continua disparando), botões
+travados, cancelamento (nada alterado, próxima operação normal), fim da espera
+quando a outra termina, tempo esgotado, fechar a janela, aviso “Espera cancelada”,
+leitura em segundo plano que não parece espera, e os mesmos fluxos com os serviços
+reais contra um processo auxiliar que segura o `flock` de verdade.
 Os testes antigos (`tests.test_profile_service_integration`, `tests.test_gui_startup`)
 foram ajustados apenas para aceitar o arquivo `.kongui.lock` e o módulo
 `konsave.lock`.

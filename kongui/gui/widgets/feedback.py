@@ -31,6 +31,63 @@ class BusyBar(QProgressBar):
         self.setVisible(busy)
 
 
+class WaitBanner(Card):
+    """Strip shown while an operation waits for another process's lock.
+
+    Signals:
+        cancel_requested: The "cancel wait" button was clicked.
+    """
+
+    cancel_requested = Signal()
+
+    def __init__(self) -> None:
+        """Creates the banner, hidden."""
+        super().__init__()
+        row = QHBoxLayout(self)
+        row.setContentsMargins(20, 10, 20, 10)
+        row.setSpacing(14)
+        row.addWidget(IconTile("clock", 32), 0, Qt.AlignmentFlag.AlignVCenter)
+        self._column = QVBoxLayout()
+        self._column.setSpacing(2)
+        self.title_label = Label("", "h2")
+        self._column.addWidget(self.title_label)
+        self._lines = QVBoxLayout()
+        self._lines.setSpacing(2)
+        self._column.addLayout(self._lines)
+        row.addLayout(self._column, 1)
+        self.cancel_button = Button("Cancelar espera", variant="danger")
+        self.cancel_button.clicked.connect(self.cancel_requested)
+        row.addWidget(self.cancel_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.hide()
+
+    def set_waiting(
+        self,
+        waiting: bool,
+        title: str = "",
+        lines: Iterable[str] = (),
+        *,
+        cancelling=False,
+    ) -> None:
+        """Shows or hides the banner.
+
+        Args:
+            waiting: Whether an operation is waiting.
+            title: Headline.
+            lines: Explanation lines.
+            cancelling: The user already asked to stop; the button is disabled.
+        """
+        self.setVisible(waiting)
+        if not waiting:
+            return
+        self.title_label.setText(title)
+        clear_layout(self._lines)
+        for line in lines:
+            self._lines.addWidget(Label(line, "muted", wrap=True))
+        self.cancel_button.setEnabled(not cancelling)
+        self.cancel_button.setText("Cancelando…" if cancelling else "Cancelar espera")
+        self.setAccessibleName(title)
+
+
 class ErrorBanner(Card):
     """A card that explains a failure and offers to try again.
 

@@ -5,7 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- (KonGUI patch) Cross-process lock, `konsave/lock.py` + `konsave/__main__.py`: commands wait for other Konsave operations (`KONSAVE_LOCK_TIMEOUT`, exit code 75 on timeout). See `docs/KONSAVE_PATCHES.md`
+
 ### Changed
+- (KonGUI patch) `python_requires` is now `>=3.9`
 - Reorganized CLI arguments into logical groups (Profile Management, Import & Export, Options, Miscellaneous) for better readability
 - Improved all help messages with clearer and more descriptive text
 

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from kongui.gui import messages
 from kongui.gui.actions import OutcomeNotifier
 from kongui.gui.backend import FakeBackend, ProfileBackend
 from kongui.gui.context import AppContext
@@ -29,7 +30,7 @@ from kongui.gui.pages.transfer import TransferPage
 from kongui.gui.state import ActivityLog, AppSettings, ProfileStore
 from kongui.gui.tasks import Executor, ThreadExecutor
 from kongui.gui.theme import ThemeMode, get_theme
-from kongui.gui.widgets.feedback import BusyBar
+from kongui.gui.widgets.feedback import BusyBar, WaitBanner
 from kongui.gui.widgets.shell import Sidebar, TopBar
 from kongui.gui.widgets.toast import ToastHost
 
@@ -92,6 +93,8 @@ class MainWindow(QMainWindow):
         column.addWidget(self.top_bar)
         self.busy_bar = BusyBar()
         column.addWidget(self.busy_bar)
+        self.wait_banner = WaitBanner()
+        column.addWidget(self.wait_banner)
         column.addWidget(self.stack, 1)
         layout.addWidget(self.sidebar)
         layout.addLayout(column, 1)
@@ -135,12 +138,21 @@ class MainWindow(QMainWindow):
         self.settings.changed.connect(self._on_setting_changed)
         self.notifier = OutcomeNotifier(self.context)
         self.controller.state_changed.connect(self._sync_busy)
+        self.wait_banner.cancel_requested.connect(self.controller.cancel_wait)
         self.show_page("dashboard")
         QTimer.singleShot(0, self.controller.refresh)
 
     def _sync_busy(self) -> None:
         """Shows the busy bar while an operation is running."""
         self.busy_bar.set_busy(self.controller.busy)
+        controller = self.controller
+        if controller.waiting:
+            title, lines = messages.describe_wait(controller.waiting_holder)
+        else:
+            title, lines = "", ()
+        self.wait_banner.set_waiting(
+            controller.waiting, title, lines, cancelling=controller.cancelling
+        )
 
     def closeEvent(self, event) -> None:  # pylint: disable=invalid-name
         """Refuses while an operation runs; asks about unsaved work; then closes.
@@ -151,12 +163,14 @@ class MainWindow(QMainWindow):
         until the operation is over.
         """
         if self.controller.busy:
-            self.toasts.show_message(
-                "warning",
-                "Operação em andamento",
-                "Espere terminar antes de fechar: fechar agora poderia deixar "
-                "arquivos pela metade.",
+            text = (
+                "Cancele a espera ou aguarde a outra operação terminar antes de "
+                "fechar."
+                if self.controller.waiting
+                else "Espere terminar antes de fechar: fechar agora poderia deixar "
+                "arquivos pela metade."
             )
+            self.toasts.show_message("warning", "Operação em andamento", text)
             event.ignore()
             return
         for page in self.pages.values():

@@ -11,7 +11,7 @@ Backend methods are **blocking** and are meant to run in a worker thread (see
 ``kongui.gui.tasks``). They must not touch any Qt object.
 """
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-lines
 from __future__ import annotations
 
 import os
@@ -24,7 +24,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from kongui.core import (
     ArchiveExistsError,
@@ -32,6 +32,8 @@ from kongui.core import (
     ConfigService,
     ConfirmationRequiredError,
     KonsaveEngine,
+    LockCancelledError,
+    LockTimeoutError,
     NotImplementedOperationError,
     OperationResult,
     Problem,
@@ -191,6 +193,25 @@ class ProfileBackend(ABC):  # pylint: disable=too-many-public-methods
     def engine_version(self) -> str:
         """Version of the Konsave engine in use (``konsave --version``), or ``""``."""
         return ""
+
+    def configure_lock_wait(
+        self,
+        on_wait: Optional[Callable[[Optional[Dict[str, Any]]], None]],
+        cancel: Optional[threading.Event],
+    ) -> None:
+        """Tells the backend how to behave while another process holds the lock.
+
+        Backends that wait for the cross-process lock call ``on_wait(holder)``
+        (from the worker thread, once per wait; ``holder`` is unverified
+        information or ``None``) and stop waiting with
+        :class:`~kongui.core.LockCancelledError` when ``cancel`` is set. The
+        default does nothing.
+
+        Args:
+            on_wait: Called when a call starts waiting.
+            cancel: Event that ends the wait.
+        """
+        del on_wait, cancel
 
     @abstractmethod
     def list_profiles(self) -> List[Profile]:
@@ -451,6 +472,12 @@ class ServiceBackend(ProfileBackend):
         """The wrapped service."""
         return self._service
 
+    def configure_lock_wait(self, on_wait, cancel) -> None:
+        """Hands the wait callback and cancel event to the engine's lock policy."""
+        policy = self._service.engine.lock.policy
+        policy.on_wait = on_wait
+        policy.cancel = cancel
+
     @property
     def engine_version(self) -> str:
         """Version of the original Konsave loaded by the engine.
@@ -680,6 +707,49 @@ class FakeBackend(ProfileBackend):
             ["~/Downloads/Minimalista.knsv"] if archives is None else archives
         )
         self._sandbox: Optional[ConfigService] = None
+        self._other: Optional[Dict[str, Any]] = None
+        self._other_active = False
+        self._on_wait: Optional[Callable[[Optional[Dict[str, Any]]], None]] = None
+        self._cancel: Optional[threading.Event] = None
+        #: Seconds a call waits for the simulated other operation.
+        self.lock_timeout: float = 30.0
+
+    def configure_lock_wait(self, on_wait, cancel) -> None:
+        """Stores the wait callback and cancel event (see :meth:`start_other`)."""
+        self._on_wait = on_wait
+        self._cancel = cancel
+
+    def start_other(self, holder: Optional[Dict[str, Any]] = None) -> None:
+        """Simulates another process holding the lock (demo and tests).
+
+        Every following call waits, as the real backend would, until
+        :meth:`finish_other`, the cancel event or :attr:`lock_timeout`.
+
+        Args:
+            holder: Unverified holder information handed to ``on_wait``.
+        """
+        self._other = holder if holder is not None else {}
+        self._other_active = True
+
+    def finish_other(self) -> None:
+        """Ends the simulated operation of another process."""
+        self._other_active = False
+
+    def _wait_for_other(self) -> None:
+        """Waits while the simulated other operation runs."""
+        if not self._other_active:
+            return
+        if self._on_wait is not None:
+            self._on_wait(self._other or None)
+        deadline = time.monotonic() + self.lock_timeout
+        while self._other_active:
+            if self._cancel is not None and self._cancel.is_set():
+                raise LockCancelledError("the wait for the lock was cancelled")
+            if time.monotonic() >= deadline:
+                raise LockTimeoutError(
+                    "another Konsave operation is running", self._other or None
+                )
+            time.sleep(0.005)
 
     @property
     def initial_active(self) -> Optional[str]:
@@ -718,6 +788,7 @@ class FakeBackend(ProfileBackend):
 
     def _enter(self, operation: str, name: str = "") -> None:
         """Records a call, sleeps for the latency and raises a planned failure."""
+        self._wait_for_other()
         with self._lock:
             self.calls.append((operation, name))
             failure = self._failures.pop(operation, None)

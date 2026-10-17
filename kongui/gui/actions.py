@@ -13,6 +13,7 @@ from __future__ import annotations
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QDialog, QWidget
 
+from kongui.core import LockCancelledError
 from kongui.gui.context import AppContext
 from kongui.gui.controller import Outcome
 from kongui.gui.mock_data import SECTIONS
@@ -268,6 +269,10 @@ class OutcomeNotifier(QObject):
             activity = _ACTIVITY_KIND.get(outcome.operation)
             if activity:
                 self.ctx.activity.add(activity, outcome.title)
+        elif isinstance(outcome.error, LockCancelledError):
+            self.ctx.toasts.show_message(
+                "info", "Espera cancelada", "Nada foi alterado.", seconds=None
+            )
         else:
             self.ctx.toasts.show_message("error", outcome.title, text, seconds=0)
 

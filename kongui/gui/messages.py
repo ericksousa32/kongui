@@ -18,6 +18,7 @@ from kongui.core import (
     KonGuiError,
     LockBusyError,
     LockCancelledError,
+    LockTimeoutError,
     LockUnavailableError,
     OperationFailedError,
     OperationResult,
@@ -96,6 +97,42 @@ def _limit(lines, count: int = 4) -> Tuple[str, ...]:
     if len(lines) <= count:
         return lines
     return lines[:count] + (f"… e mais {len(lines) - count}.",)
+
+
+def holder_hint(holder: Optional[dict]) -> str:
+    """Describes who seems to hold the lock, or ``""``.
+
+    The information comes from a file any process may have written, so it is
+    presented as a hint, never as a fact.
+
+    Args:
+        holder: ``{"pid", "operation"}`` or ``None``.
+    """
+    if not holder:
+        return ""
+    return (
+        f"Indício (não verificado): “{holder.get('operation') or 'operação'}”, "
+        f"processo {holder.get('pid')}."
+    )
+
+
+def describe_wait(holder: Optional[dict]) -> Tuple[str, Tuple[str, ...]]:
+    """Texts for the "waiting for another operation" banner.
+
+    Args:
+        holder: Unverified information about the holder, or ``None``.
+
+    Returns:
+        tuple: ``(headline, detail lines)``.
+    """
+    lines = [
+        "Ela está rodando no terminal ou em outra janela do KonGUI. Nada foi "
+        "alterado até agora; a operação começa sozinha quando ela terminar."
+    ]
+    hint = holder_hint(holder)
+    if hint:
+        lines.append(hint)
+    return "Aguardando outra operação do Konsave…", tuple(lines)
 
 
 def failure_title(operation: str, name: str) -> str:
@@ -429,16 +466,22 @@ def describe_error(  # pylint: disable=too-many-return-statements
             "Nada foi gravado.",
         )
     if isinstance(error, LockBusyError):
-        lines = [
-            "Outra operação do Konsave está em andamento (no terminal ou em outra "
-            "janela do KonGUI). Nada foi alterado; tente de novo quando ela terminar."
-        ]
-        holder = error.holder
-        if holder:
-            lines.append(
-                f"Indício (não verificado): “{holder.get('operation') or 'operação'}”, "
-                f"processo {holder.get('pid')}."
+        if isinstance(error, LockTimeoutError):
+            first = (
+                "A outra operação do Konsave (no terminal ou em outra janela do "
+                "KonGUI) não terminou a tempo. Nada foi alterado; tente de novo "
+                "quando ela terminar."
             )
+        else:
+            first = (
+                "Outra operação do Konsave está em andamento (no terminal ou em "
+                "outra janela do KonGUI). Nada foi alterado; tente de novo quando "
+                "ela terminar."
+            )
+        lines = [first]
+        hint = holder_hint(error.holder)
+        if hint:
+            lines.append(hint)
         return tuple(lines)
     if isinstance(error, LockCancelledError):
         return ("A espera foi cancelada. Nada foi alterado.",)

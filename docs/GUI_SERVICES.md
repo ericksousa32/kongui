@@ -175,7 +175,8 @@ Konsave real, compara o perfil byte a byte e repete com o CLI original.
 * `replace` usa `rename` (mesmo sistema de arquivos) e só deixa resíduo `.kongui-*`
   se o processo morrer no meio.
 * Dois KonGUI (ou o `konsave` na linha de comando) ao mesmo tempo são serializados
-  pela trava entre processos; ver [`CONCURRENCY.md`](CONCURRENCY.md).
+  pela trava entre processos; a interface mostra a espera e permite cancelá-la (ver
+  [`CONCURRENCY.md`](CONCURRENCY.md) §4).
 * O motor redireciona `stdout` de forma global durante cada chamada.
 * A edição do `conf.yaml` está descrita em [`GUI_CONFIG.md`](GUI_CONFIG.md).
 * Não testado em uma sessão Plasma real.

@@ -263,8 +263,8 @@ antes de `apply`/`import` (requisito RN-01) existe desde a §9.
   bloqueantes.
 * Limites de tamanho, verificação de espaço em disco e proteção contra "zip
   bomb" em `export`/`import`.
-* Controles visuais da espera pela trava (aviso, cancelar, desabilitar ações):
-  ver [`CONCURRENCY.md`](CONCURRENCY.md) §4. A trava em si já existe.
+* Nada em relação à trava: ela e a interface de espera estão em
+  [`CONCURRENCY.md`](CONCURRENCY.md).
 * Suporte a `XDG_CONFIG_HOME` (o original fixa `~/.config`).
 * Validação em Fedora KDE (Plasma 6) real: valor de `XDG_CURRENT_DESKTOP` na
   sessão, caminhos dos arquivos do Plasma 6, sobrescrita pelo Plasma em execução,
