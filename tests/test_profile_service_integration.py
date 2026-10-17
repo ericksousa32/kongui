@@ -97,6 +97,25 @@ class SaveIntegrationTests(IntegrationCase):
         )
         self.assertEqual(os.listdir(self.engine.profiles_dir), [])
 
+    def test_every_accepted_name_stays_listed_and_removable(self):
+        """Audit: ``.kongui-x`` used to be saved but hidden from the list.
+
+        Whatever ``save`` accepts must be visible to ``list_profiles`` and
+        removable, and whatever is refused must leave nothing on disk.
+        """
+        for bad in (".kongui-hidden", ".kongui-", "é" * 150, "x" * 201):
+            with self.subTest(name=bad[:14]):
+                with self.assertRaises(ValidationError):
+                    self.profiles.save(bad)
+        self.assertEqual(os.listdir(self.engine.profiles_dir), [])
+        for good in (".kongui", "é" * 100, "meu perfil 🎨 ç", "a" * 200):
+            with self.subTest(name=good[:14]):
+                self.assertTrue(self.profiles.save(good).ok)
+                self.assertIn(good, [p.name for p in self.profiles.list_profiles()])
+                self.assertTrue(self.profiles.replace(good, confirmed=True).ok)
+                self.assertTrue(self.profiles.remove(good, confirmed=True).ok)
+        self.assertEqual(os.listdir(self.engine.profiles_dir), [])
+
     def test_existing_profile_requires_overwrite(self):
         self.profiles.save("work").raise_for_status()
         with self.assertRaises(ProfileExistsError):

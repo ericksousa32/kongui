@@ -36,13 +36,18 @@ from kongui.core.results import (
     ProfileInfo,
     ValidationReport,
 )
-from kongui.core.safety import validate_archive_name, validate_profile_name
+from kongui.core.safety import (
+    RESERVED_PREFIX,
+    validate_archive_name,
+    validate_profile_name,
+)
 
 ON_CONFLICT_CHOICES = ("error", "unique", "overwrite")
 
 #: Prefix of the temporary folders ``replace`` creates inside the profiles
-#: folder. They are never listed as profiles.
-TEMP_PREFIX = ".kongui-"
+#: folder. They are never listed as profiles, so profile names may not start
+#: with it (see :func:`kongui.core.safety.validate_profile_name`).
+TEMP_PREFIX = RESERVED_PREFIX
 
 #: Operations that are planned but deliberately not implemented yet.
 NOT_IMPLEMENTED_OPERATIONS: Mapping[str, str] = {

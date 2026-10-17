@@ -33,8 +33,9 @@ def profile_name_problem(name: str, existing: Collection[str] = ()) -> Optional[
     except ValidationError:
         return (
             "Nome inválido. Não use barras, “.” ou “..”, hífen no início, "
-            "espaços nas pontas, caracteres de controle ou a extensão .knsv "
-            "(máximo de 200 caracteres)."
+            "espaços nas pontas, caracteres de controle, a extensão .knsv ou "
+            "o prefixo reservado “.kongui-”. Máximo de 200 bytes (letras "
+            "acentuadas e emojis ocupam mais de um)."
         )
     if name in existing:
         return "Já existe um perfil com esse nome."
@@ -60,8 +61,8 @@ def archive_name_problem(name: str) -> Optional[str]:
     except ValidationError:
         return (
             "Nome inválido. Não use barras, “.” ou “..”, hífen no início, espaços "
-            "nas pontas, caracteres de controle, nem as extensões .knsv ou .zip "
-            "(máximo de 200 caracteres)."
+            "nas pontas, caracteres de controle, nem as extensões .knsv ou .zip. "
+            "Máximo de 200 bytes (letras acentuadas e emojis ocupam mais de um)."
         )
     return None
 
