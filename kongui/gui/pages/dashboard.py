@@ -25,7 +25,7 @@ class DashboardPage(Page):
 
     key = "dashboard"
     title = "Dashboard"
-    subtitle = "Visão geral dos seus perfis de aparência"
+    subtitle = "Visão geral dos seus perfis de customização"
     icon_name = "dashboard"
 
     def __init__(self, ctx: AppContext) -> None:
