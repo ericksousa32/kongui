@@ -88,7 +88,7 @@ Formato: o `.knsv` **original** do Konsave (um zip com `conf.yaml`, `save/` e
 | `-e PERFIL` | lista “Perfil” | o perfil precisa existir e ter `conf.yaml` válido |
 | `-d PASTA` | “Pasta de destino” + **Escolher…** | o original usa a pasta atual; aqui o padrão é `~/Downloads`. A pasta precisa existir e aceitar escrita (checado antes, com mensagem clara). `~` vale a home do motor |
 | `-n NOME` | “Nome do arquivo (sem extensão)” | começa igual ao perfil; mesmas regras de nome do core (sem `/`, `.`/`..`, `-` inicial, `.knsv`/`.zip`) |
-| `-f` | “Se o arquivo já existir” | ver abaixo |
+| `-f` | diálogo “O arquivo já existe” | ver abaixo |
 | `-i ARQUIVO` | área de soltar / **Escolher arquivo** | só `.knsv`; o arquivo é verificado (somente leitura) assim que é escolhido |
 | (nenhuma) | “Nome do perfil importado” | o original usa o nome do arquivo; ver “Renomear” |
 | (nenhuma) | “Aplicar o perfil depois de importar” | segundo passo separado: se falhar, o perfil continua importado e um aviso explica |
@@ -97,13 +97,13 @@ Formato: o `.knsv` **original** do Konsave (um zip com `conf.yaml`, `save/` e
 
 Sem `-f` o original **não pergunta**: acrescenta data e hora ao nome. Com `-f`
 substitui. O `force` do original também apaga uma pasta com o nome do arquivo,
-por isso a GUI nunca o repassa para pastas. Escolha “Se o arquivo já existir”:
+por isso a GUI nunca o repassa para pastas. Não há seletor: quando o destino já
+existe, a GUI **sempre pergunta**:
 
-| Opção | Se existir um `.knsv` | Se existir pasta, `.zip` ou link com esse nome |
-|---|---|---|
-| Perguntar (padrão) | diálogo: **Substituir**, **Usar nome único** ou Cancelar | diálogo só com **Usar nome único** |
-| Criar um nome único | `nome-2.knsv`, `nome-3.knsv`… (sem perguntar; nada é perdido) | idem |
-| Substituir | confirmação destrutiva; só substitui um arquivo regular | **recusa** (o original apagaria a pasta) |
+| Situação | Diálogo “O arquivo já existe” |
+|---|---|
+| existe um `.knsv` | **Substituir** (só um arquivo regular), **Usar nome único** (`nome-2.knsv`, `nome-3.knsv`…) ou Cancelar |
+| existe pasta, `.zip` ou link com esse nome | só **Usar nome único** ou Cancelar (o original apagaria a pasta) |
 
 Quando nada existe, a exportação vai com a política `error`: se alguém criar o
 arquivo no meio do caminho, ele **não** é sobrescrito. Diferença conhecida: o

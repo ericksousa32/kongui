@@ -37,8 +37,8 @@ PAGE_CLASSES: List[Type[Page]] = [
     DashboardPage,
     ProfilesPage,
     TransferPage,
-    ConfigPage,
     SettingsPage,
+    ConfigPage,
     AboutPage,
 ]
 

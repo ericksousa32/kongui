@@ -23,7 +23,7 @@ class StartupTests(GuiTestCase):
         self.assertTrue(window.isVisible())
         self.assertEqual(
             list(window.pages),
-            ["dashboard", "profiles", "transfer", "config", "settings", "about"],
+            ["dashboard", "profiles", "transfer", "settings", "config", "about"],
         )
         self.assertEqual(window.sidebar.keys(), list(window.pages))
         self.assertEqual(window.stack.count(), 6)
@@ -43,8 +43,8 @@ class StartupTests(GuiTestCase):
                 "Dashboard",
                 "Perfis",
                 "Importar / Exportar",
-                "Configuração do Konsave",
                 "Configurações",
+                "Editar .YAML",
                 "Sobre",
             ],
         )

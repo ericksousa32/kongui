@@ -51,13 +51,6 @@ DEFAULT_DESTINATION = "~/Downloads"
 RECENT_LIMIT = 5
 MAX_BADGES = 3
 
-#: Choices for "if the file already exists": ``(key, label)``.
-CONFLICT_CHOICES: Tuple[Tuple[str, str], ...] = (
-    ("ask", "Perguntar o que fazer"),
-    ("unique", "Criar um nome único"),
-    ("overwrite", "Substituir (pede confirmação)"),
-)
-
 FOLDER_PROBLEMS = {
     "missing": "A pasta de destino não existe.",
     "not_dir": "O destino não é uma pasta.",
@@ -208,12 +201,6 @@ class TransferPage(
         form.addWidget(self.filename_edit)
         self.filename_error = Label("", "danger", wrap=True)
         form.addWidget(self.filename_error)
-        form.addWidget(Label("Se o arquivo já existir", "muted"))
-        self.conflict_combo = QComboBox()
-        self.conflict_combo.setAccessibleName("Se o arquivo já existir")
-        for key, label in CONFLICT_CHOICES:
-            self.conflict_combo.addItem(label, key)
-        form.addWidget(self.conflict_combo)
         self.preview_label = Label("", "caption", wrap=True)
         form.addWidget(self.preview_label)
         self.export_error = Label("", "danger", wrap=True)
@@ -232,7 +219,6 @@ class TransferPage(
         self.export_combo.currentIndexChanged.connect(self._on_export_profile_changed)
         self.destination_edit.textChanged.connect(self._update_export_state)
         self.filename_edit.textChanged.connect(self._update_export_state)
-        self.conflict_combo.currentIndexChanged.connect(self._update_export_state)
         self.browse_destination.clicked.connect(self._choose_destination)
         self.export_button.clicked.connect(self.start_export)
         return card
@@ -322,7 +308,8 @@ class TransferPage(
 
         A file is never replaced without an explicit answer, and when nothing
         exists yet the plain ``error`` policy is used so that a file created in
-        the meantime is not overwritten silently.
+        the meantime is not overwritten silently. When the target exists the
+        user is always asked (replace, use a unique name, or cancel).
 
         Args:
             probe: The :class:`~kongui.gui.backend.ExportProbe` of the target.
@@ -331,38 +318,16 @@ class TransferPage(
             Optional[str]: ``error``, ``unique`` or ``overwrite``; ``None`` if
             the user cancelled or the export is not possible.
         """
-        choice = str(self.conflict_combo.currentData())
         if not probe.conflict:
-            return "unique" if choice == "unique" else "error"
-        if choice == "unique":
-            return "unique"
+            return "error"
         blocked = probe.conflict == "blocked"
-        if choice == "overwrite" and blocked:
-            self._export_failed(
-                "Já existe uma pasta, um .zip ou outro item com esse nome no destino. "
-                "O Konsave o apagaria, por isso a substituição foi recusada. "
-                "Escolha outro nome ou “Criar um nome único”."
-            )
-            return None
-        window = self.window()
-        if choice == "overwrite":
-            if ConfirmDialog.ask(
-                window,
-                "Substituir o arquivo existente?",
-                f"{probe.path} já existe e será substituído. O conteúdo antigo "
-                "é perdido e não há desfazer.",
-                "Substituir",
-                destructive=True,
-            ):
-                return "overwrite"
-            return None
         what = (
             "Já existe uma pasta, um .zip ou outro item com esse nome."
             if blocked
             else f"O arquivo {probe.path} já existe."
         )
         answer = ConflictDialog.ask(
-            window,
+            self.window(),
             "O arquivo já existe",
             f"{what}\nNovo nome sugerido: {probe.unique_path}",
             allow_replace=not blocked,

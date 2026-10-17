@@ -13,8 +13,8 @@ TITLES = {
     "dashboard": "Dashboard",
     "profiles": "Perfis",
     "transfer": "Importar / Exportar",
-    "config": "Configuração do Konsave",
     "settings": "Configurações",
+    "config": "Editar .YAML",
     "about": "Sobre",
 }
 

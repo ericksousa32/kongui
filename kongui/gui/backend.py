@@ -43,6 +43,7 @@ from kongui.core import (
     ValidationError,
 )
 from kongui.core import KEPT_PREFIX
+from kongui.core.engine import FALLBACK_VERSION
 from kongui.core.safety import validate_archive_name, validate_profile_name
 from kongui.gui.mock_data import SECTIONS, demo_profiles
 from kongui.gui.state import Profile
@@ -452,8 +453,13 @@ class ServiceBackend(ProfileBackend):
 
     @property
     def engine_version(self) -> str:
-        """Version of the original Konsave loaded by the engine."""
-        return self._service.engine.version
+        """Version of the original Konsave loaded by the engine.
+
+        Empty when it is unknown: running from a source checkout (Konsave not
+        installed as a package) the engine only has a placeholder.
+        """
+        version = self._service.engine.version
+        return "" if version == FALLBACK_VERSION else version
 
     def _config_service(self, operation: str) -> ConfigService:
         """The real configuration service."""

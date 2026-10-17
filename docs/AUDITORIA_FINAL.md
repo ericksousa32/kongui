@@ -63,7 +63,7 @@ não existe e é requisito; **Bloqueado** = depende de algo fora do alcance
 | `-e/--export-profile` | Página Exportar | Testado | `tests.test_gui_transfer_roundtrip` (ExportTests, CliCompatibilityTests) |
 | `-d/--export-directory` | “Pasta de destino” + Escolher… | Testado | padrão `~/Downloads` (o original usa a pasta atual); pasta verificada antes (`tests.test_gui_audit`) |
 | `-n/--export-name` | “Nome do arquivo” | Testado | regras de nome do core |
-| `-f` na exportação | “Se o arquivo já existir” (perguntar / nome único / substituir) | Testado | nunca repassa `force` a pastas; nome único `nome-2` em vez de `nome_fData` (diferença conhecida) |
+| `-f` na exportação | diálogo “O arquivo já existe” (substituir / nome único / cancelar), sempre exibido | Testado | nunca repassa `force` a pastas; nome único `nome-2` em vez de `nome_fData` (diferença conhecida) |
 | `-i/--import-profile` | Página Importar (soltar/escolher) | Testado | HostileArchiveIntegrationTests, InspectArchiveIntegrationTests, ImportTests |
 | `-v/--version` | Sobre → “Versão do Konsave” | Testado | `tests.test_gui_audit` (EngineVersionTests) |
 | `-h/--help` | — | N/A | não faz sentido em GUI |

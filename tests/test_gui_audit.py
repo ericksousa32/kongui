@@ -136,16 +136,37 @@ class ExportWarningTextTests(GuiTestCase):
 class EngineVersionTests(GuiTestCase):
     """``konsave --version`` had no graphical equivalent."""
 
-    def test_about_page_shows_the_version_of_the_real_engine(self):
+    def backend_with_version(self, version):
         from kongui.core import KonsaveEngine, ProfileService
         from kongui.gui.backend import ServiceBackend
 
         engine = KonsaveEngine(self.home)
         backend = ServiceBackend(ProfileService(engine))
-        self.assertEqual(backend.engine_version, engine.version)
-        window = self.make_window(backend=backend)
-        about = window.pages["about"]
-        self.assertEqual(about.info_values["Versão do Konsave"], engine.version)
+        patcher = mock.patch.object(
+            type(engine),
+            "version",
+            new_callable=mock.PropertyMock,
+            return_value=version,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return backend
+
+    def test_about_page_shows_the_version_of_the_real_engine(self):
+        backend = self.backend_with_version("2.2.0")
+        self.assertEqual(backend.engine_version, "2.2.0")
+        about = self.make_window(backend=backend).pages["about"]
+        self.assertEqual(about.info_values["Versão do Konsave"], "2.2.0")
+
+    def test_an_unknown_version_is_hidden_not_shown_as_a_placeholder(self):
+        """Running from a source checkout the engine only has ``0+unknown``."""
+        from kongui.core.engine import FALLBACK_VERSION
+
+        backend = self.backend_with_version(FALLBACK_VERSION)
+        self.assertEqual(backend.engine_version, "")
+        about = self.make_window(backend=backend).pages["about"]
+        self.assertNotIn("Versão do Konsave", about.info_values)
+        self.assertNotIn("0+unknown", str(about.info_values))
 
     def test_demo_does_not_invent_a_version(self):
         window = self.make_window()

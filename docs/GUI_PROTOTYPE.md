@@ -24,9 +24,9 @@ As preferências ficam em `<pasta de configuração do usuário>/kongui/kongui-g
 |---|---|---|---|---|
 | Dashboard | `dashboard` | `Ctrl+1` | Importar, Salvar perfil atual (`Ctrl+S`) | 4 cartões de resumo, perfil ativo, atividade recente |
 | Perfis | `profiles` | `Ctrl+2` | Limpar todos, Novo perfil (`Ctrl+N`) | busca (`Ctrl+F`), ordenação, grade/lista, cartões de perfil |
-| Importar / Exportar | `transfer` | `Ctrl+3` | — | formulário de exportação (perfil, pasta, nome, conflito), área de soltar `.knsv` com verificação, transferências recentes (ver [`GUI_SERVICES.md`](GUI_SERVICES.md) §4) |
-| Configuração do Konsave | `config` | `Ctrl+4` | Validar, Backups…, Descartar, Salvar | editor do `conf.yaml`: seções `save` e `export` separadas, texto YAML, painel de problemas com linha/coluna, backups e restauração (ver [`GUI_CONFIG.md`](GUI_CONFIG.md)) |
-| Configurações | `settings` | `Ctrl+5` | — | tema, exibição, duração dos avisos, dados de demonstração (só no modo `--demo`) |
+| Importar / Exportar | `transfer` | `Ctrl+3` | — | formulário de exportação (perfil, pasta, nome; se o arquivo já existir, sempre pergunta), área de soltar `.knsv` com verificação, transferências recentes (ver [`GUI_SERVICES.md`](GUI_SERVICES.md) §4) |
+| Configurações | `settings` | `Ctrl+4` | — | tema, exibição, duração dos avisos, dados de demonstração (só no modo `--demo`) |
+| Editar .YAML | `config` | `Ctrl+5` | Validar, Backups…, Descartar, Salvar | editor do `conf.yaml`: seções `save` e `export` separadas, texto YAML, painel de problemas com linha/coluna, backups e restauração (ver [`GUI_CONFIG.md`](GUI_CONFIG.md)) |
 | Sobre | `about` | `Ctrl+6` | — | versão, ambiente, links, aviso de protótipo |
 
 A navegação lateral é fixa (232 px) com ícone e rótulo. A janela tem tamanho

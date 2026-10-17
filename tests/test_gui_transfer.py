@@ -21,6 +21,7 @@ from kongui.core import (
     ValidationError,
 )
 from kongui.gui.backend import ExportProbe, FakeBackend
+from kongui.gui.widgets.common import Label
 from kongui.gui.widgets.dialogs import ConfirmDialog, ConflictDialog
 from tests.gui_helpers import WindowCase
 
@@ -43,7 +44,7 @@ class ExportCase(WindowCase):
         window = self.open_window(backend=backend, page="transfer")
         return window, window.pages["transfer"]
 
-    def export(self, page, name=None, policy=None, directory=None, profile=None):
+    def export(self, page, name=None, directory=None, profile=None):
         """Fills the form and presses *Exportar*."""
         if profile:
             page.select_profile(profile)
@@ -51,8 +52,6 @@ class ExportCase(WindowCase):
             page.destination_edit.setText(directory)
         if name is not None:
             page.filename_edit.setText(name)
-        if policy:
-            page.conflict_combo.setCurrentIndex(page.conflict_combo.findData(policy))
         started = page.start_export()
         if started and page._probing:
             # The folder check runs in the background; deliver just that job.
@@ -79,11 +78,10 @@ class ExportFormTests(ExportCase):
         self.assertEqual(page.export_combo.currentData(), "Trabalho")
         self.assertEqual(page.filename_edit.text(), "Trabalho")
         self.assertEqual(page.export_target(), "~/Downloads/Trabalho.knsv")
-        self.assertEqual(page.conflict_combo.currentData(), "ask")
-        self.assertEqual(
-            [page.conflict_combo.itemData(i) for i in range(3)],
-            ["ask", "unique", "overwrite"],
-        )
+        # no selector: an existing file always means "ask what to do"
+        self.assertFalse(hasattr(page, "conflict_combo"))
+        texts = [label.text() for label in page.findChildren(Label)]
+        self.assertNotIn("Se o arquivo já existir", texts)
         self.assertTrue(page.export_button.isEnabled())
         self.assertIn("~/Downloads/Trabalho.knsv", page.preview_label.text())
 
@@ -172,19 +170,15 @@ class ExportRunTests(ExportCase):
         self.assertEqual(self.exported(), [("Gaming", "/srv/out", "g1", "error")])
         self.assertEqual(self.outcomes[-1].name, "Gaming")
 
-    def test_a_free_name_uses_the_plain_policy_whatever_was_chosen(self):
+    def test_a_free_name_uses_the_plain_policy(self):
         """Nothing exists yet, so nothing may be replaced by accident."""
         window, page = self.open_transfer()
         self.spy_export()
-        self.export(page, policy="overwrite", name="novo")
-        self.run_all()
+        with conflict("overwrite") as dialog:
+            self.export(page, name="novo")
+            self.run_all()
+        dialog.assert_not_called()
         self.assertEqual(self.exported()[-1][3], "error")
-        self.export(page, policy="ask", name="novo2")
-        self.run_all()
-        self.assertEqual(self.exported()[-1][3], "error")
-        self.export(page, policy="unique", name="novo3")
-        self.run_all()
-        self.assertEqual(self.exported()[-1][3], "unique")
 
     def test_a_second_export_is_refused_while_one_runs(self):
         window, page = self.open_transfer()
@@ -256,8 +250,8 @@ class ExportConflictTests(ExportCase):
         self.spy_export()
         self.page.select_profile("Minimalista")  # "~/Downloads/Minimalista.knsv" exists
 
-    def run_export(self, policy):
-        started = self.export(self.page, policy=policy)
+    def run_export(self, *_ignored):
+        started = self.export(self.page)
         self.run_all()
         return started
 
@@ -285,22 +279,12 @@ class ExportConflictTests(ExportCase):
         self.assertEqual(self.exported()[-1][3], "overwrite")
         self.assertEqual(self.window.toasts.kinds()[-1], "success")
 
-    def test_unique_policy_does_not_ask(self):
-        with conflict("cancel") as dialog, confirm(False) as sure:
-            self.assertTrue(self.run_export("unique"))
-        dialog.assert_not_called()
-        sure.assert_not_called()
-        self.assertIn("~/Downloads/Minimalista-2.knsv", self.backend.archives)
-
-    def test_overwrite_policy_asks_for_confirmation(self):
-        with confirm(False) as sure:
-            self.assertFalse(self.run_export("overwrite"))
-        self.assertTrue(sure.call_args.kwargs["destructive"])
-        self.assertIn("Minimalista.knsv", sure.call_args.args[2])
-        self.assertEqual(self.exported(), [])
-        with confirm(True):
-            self.assertTrue(self.run_export("overwrite"))
-        self.assertEqual(self.exported()[-1][3], "overwrite")
+    def test_there_is_no_way_to_skip_the_question(self):
+        """The old selector (unique name / replace without asking) is gone."""
+        self.assertFalse(hasattr(self.page, "conflict_combo"))
+        with conflict("cancel") as dialog:
+            self.run_export()
+        dialog.assert_called_once()
 
     def test_the_controller_refuses_overwrite_without_confirmation(self):
         for value in (False, None, 1):
@@ -321,13 +305,9 @@ class ExportConflictTests(ExportCase):
         with conflict("cancel") as dialog:
             self.assertFalse(self.run_export("ask"))
         self.assertFalse(dialog.call_args.kwargs["allow_replace"])
-        with confirm(True) as sure:
-            self.assertFalse(self.run_export("overwrite"))
-        sure.assert_not_called()
-        self.assertEqual(self.window.toasts.kinds()[-1], "error")
-        self.assertIn("recusada", self.page.export_error.text())
         self.assertEqual(self.exported(), [])
-        self.assertTrue(self.run_export("unique"))
+        with conflict("unique"):
+            self.assertTrue(self.run_export())
         self.assertEqual(self.exported()[-1][3], "unique")
 
 

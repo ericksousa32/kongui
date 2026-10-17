@@ -349,8 +349,7 @@ class RealWindowFlowTests(RealBackendCase):
         with mock.patch.object(ConflictDialog, "ask", return_value="unique"):
             self.assertTrue(page.start_export())
         self.assertEqual(sorted(os.listdir(out)), ["work-2.knsv", "work.knsv"])
-        page.conflict_combo.setCurrentIndex(page.conflict_combo.findData("overwrite"))
-        with mock.patch.object(ConfirmDialog, "ask", return_value=False):
+        with mock.patch.object(ConflictDialog, "ask", return_value="cancel"):
             self.assertFalse(page.start_export())
         self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), digest)
 

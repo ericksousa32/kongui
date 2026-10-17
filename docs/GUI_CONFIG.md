@@ -1,6 +1,6 @@
 # Editor do `conf.yaml`
 
-A página **Configuração do Konsave** (`config`, `Ctrl+4`) edita
+A página **Editar .YAML** (`config`, `Ctrl+5`, logo abaixo de Configurações) edita
 `~/.config/konsave/conf.yaml`: as seções `save` e `export` separadamente (nomes
 dos grupos, pastas de origem, itens, placeholders) e o texto inteiro, sempre
 validando com o código original do Konsave antes de gravar.
