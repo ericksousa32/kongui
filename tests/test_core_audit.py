@@ -13,6 +13,7 @@ import zipfile
 import yaml
 
 from kongui.core import CONF_DIFFERS_PREFIX, ConfigMissingError, ConfigValidationError
+from kongui.core import Group, apply_model, parse_model
 from kongui.core.profiles import describe_conf_differences
 from tests.helpers import BASE_CONF, make_knsv, write
 from tests.test_profile_service_integration import IntegrationCase
@@ -152,6 +153,33 @@ class ExportNeedsTheActiveConfigTests(IntegrationCase):
         with self.assertRaises(ConfigMissingError):
             self.profiles.export("work", directory=self.work)
         self.assertEqual(os.listdir(self.work), [])
+
+
+class LineEndingTests(unittest.TestCase):
+    """A CRLF ``conf.yaml`` came back with mixed line endings."""
+
+    CRLF = BASE_CONF.replace("\n", "\r\n")
+
+    def add_group(self, text):
+        model = parse_model(text)
+        groups = tuple(model.groups("save")) + (Group("novo", "$HOME", ("x",), None),)
+        return apply_model(text, model.with_groups("save", groups))
+
+    def test_crlf_file_stays_crlf(self):
+        result = self.add_group(self.CRLF)
+        self.assertTrue(result.preserved)
+        self.assertEqual(result.text.count("\n"), result.text.count("\r\n"))
+        self.assertIn("novo", yaml.safe_load(result.text)["save"])
+
+    def test_lf_file_stays_lf(self):
+        result = self.add_group(BASE_CONF)
+        self.assertNotIn("\r", result.text)
+
+    def test_lossy_rewrite_also_keeps_crlf(self):
+        flow = 'save: {a: {location: "$HOME", entries: [x]}}\r\nexport: {}\r\n'
+        result = self.add_group(flow)
+        self.assertFalse(result.preserved)
+        self.assertEqual(result.text.count("\n"), result.text.count("\r\n"))
 
 
 if __name__ == "__main__":

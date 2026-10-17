@@ -323,7 +323,7 @@ def apply_model(text: str, model: ConfigModel) -> EditResult:
             "invalid YAML", [_located(text, _yaml_problem(error))]
         ) from error
     try:
-        new_text = _Editor(text, model).run()
+        new_text = _match_newlines(text, _Editor(text, model).run())
         if _normalized(yaml.safe_load(new_text)) == _normalized(wanted):
             return EditResult(new_text, True)
     except (_Unsupported, yaml.YAMLError):
@@ -331,7 +331,24 @@ def apply_model(text: str, model: ConfigModel) -> EditResult:
     regenerated = yaml.safe_dump(
         wanted, sort_keys=False, allow_unicode=True, default_flow_style=False
     )
-    return EditResult(regenerated, False)
+    return EditResult(_match_newlines(text, regenerated), False)
+
+
+def _match_newlines(original: str, edited: str) -> str:
+    """Keeps a CRLF file CRLF (lines the editor inserts are written with LF).
+
+    A file that mixes both endings is left as the editor produced it.
+
+    Args:
+        original: Text before the edit.
+        edited: Text after the edit.
+
+    Returns:
+        str: ``edited``, with ``\\r\\n`` line ends if ``original`` used only those.
+    """
+    if "\r\n" in original and "\n" not in original.replace("\r\n", ""):
+        return edited.replace("\r\n", "\n").replace("\n", "\r\n")
+    return edited
 
 
 def render_group(group: Group, indent: int, step: int = _STEP) -> str:
