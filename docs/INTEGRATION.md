@@ -98,7 +98,7 @@ converte uma falha em `OperationFailedError`.
 
 | Risco (auditoria) | Proteção |
 |---|---|
-| Nome de perfil `../x` ou `.` escapa/polui a pasta de perfis | `validate_profile_name` recusa separadores, `.`/`..`, caracteres de controle, espaços nas pontas, `-` inicial e `.knsv` |
+| Nome de perfil `../x` ou `.` escapa/polui a pasta de perfis | `validate_profile_name` recusa separadores, `.`/`..`, caracteres de controle, espaços nas pontas, `-` inicial, `.knsv` e o prefixo reservado `.kongui-` (a listagem esconde esse prefixo: o perfil ficaria invisível). O limite é de 200 **bytes** em UTF-8 (o Linux limita em bytes, não em caracteres) |
 | `apply`, `import`, `remove`, `wipe` são destrutivos | Exigem `confirmed=True` (exatamente `True`; `1` ou `"yes"` não valem) |
 | `export` com `force` apaga a pasta `<destino>/<nome>` | `force` nunca é usado para pastas; `on_conflict` = `error` (padrão), `unique` ou `overwrite` (só substitui um `.knsv` regular) |
 | `save` com entrada aninhada (`a/b`) aborta no meio | O `conf.yaml` é validado antes; entradas com `/`, `..` ou absolutas são erro |
@@ -155,9 +155,9 @@ comentários) está em `kongui/core/confedit.py` e `yamlmap.py`; ver
 | `replace(name, *, confirmed)` | `save_profile` (nome temporário) | Substituição real: salva a configuração atual em `.kongui-new-…`, troca por `rename` e apaga o antigo; se algo falhar, o perfil antigo continua (ou volta) ao lugar. Não altera o código do Konsave. Os temporários nunca aparecem em `list_profiles` |
 | `apply(name, *, confirmed, allow_outside_home=False)` | `apply_profile` | Sem backup; pastas são mescladas |
 | `remove(name, *, confirmed)` | `remove_profile` | Irreversível |
-| `export(name, *, directory, archive_name=None, on_conflict="error")` | `export` | A pasta de saída precisa existir; a pasta temporária de montagem fica nela |
+| `export(name, *, directory, archive_name=None, on_conflict="error")` | `export` | A pasta de saída precisa existir; a pasta temporária de montagem fica nela. Exige o `conf.yaml` ativo (`ConfigMissingError` se faltar: o original o copia para o arquivo). Devolve um **aviso** (`CONF_DIFFERS_PREFIX`) quando o `conf.yaml` ativo, que vai para o `.knsv`, tem grupos diferentes dos do perfil, de onde `save/` e `export/` são tirados |
 | `import_profile(archive_path, *, confirmed, allow_outside_home=False)` | `import_profile` | Grava a seção `export` do arquivo no sistema imediatamente |
-| `inspect_archive(archive_path, *, allow_outside_home=False)` | (somente leitura) | Aplica as mesmas verificações do `import_profile` e devolve `ArchiveInspection` (nome, tamanho, seções `save`/`export`, avisos, `name_taken`) sem extrair nada |
+| `inspect_archive(archive_path, *, allow_outside_home=False)` | (somente leitura) | Aplica as mesmas verificações do `import_profile` e devolve `ArchiveInspection` (nome, tamanho, seções `save`/`export`, avisos, `name_taken`) sem extrair nada. Os avisos incluem grupos sem pasta em `save/` (o perfil importado não poderia ser aplicado) e pastas que o `conf.yaml` do arquivo não lista (ignoradas ao aplicar) |
 | `wipe_all(*, confirmed)` | `wipe` | Apaga todos os perfis; mantém `conf.yaml` |
 
 ### `CliRunner(home, *, python=None, timeout=60, extra_pythonpath=(), allow_mutating=False, ...)`
@@ -195,6 +195,7 @@ python3 -m unittest tests.test_config_editor -v                 # edição do co
 python3 -m unittest tests.test_profile_service_mocked -v        # ProfileService, motor simulado
 python3 -m unittest tests.test_profile_service_integration -v   # ProfileService, motor original real
 python3 -m unittest tests.test_cli_runner -v                    # CliRunner (simulado e subprocesso real)
+python3 -m unittest tests.test_core_audit -v                   # achados da auditoria final (núcleo)
 python3 -m unittest tests.test_docs -v                          # esta documentação x o código
 ```
 

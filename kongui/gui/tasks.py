@@ -85,7 +85,7 @@ class _Job(QRunnable):
         except RuntimeError:
             # The interface was destroyed while the work ran: nobody is left
             # to receive the result (it used to print a traceback at exit).
-            return
+            pass
 
 
 class ThreadExecutor(Executor):

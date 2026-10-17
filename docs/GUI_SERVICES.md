@@ -32,6 +32,11 @@ Página ──► ProfileActions (diálogos) ──► ProfileController ──�
   `ProfileStore`, e um `Outcome` é emitido.
 * `tasks.py`: `ThreadExecutor` executa o trabalho numa thread e devolve o
   resultado à thread da interface por sinal; a interface não congela.
+* **Nada que toca o disco roda na thread da interface**: leituras (`conf.yaml`,
+  backups, inspeção de `.knsv`) passam por `controller.background`, e a
+  verificação da pasta de exportação (`probe_export`) também. A janela **não
+  fecha** enquanto uma operação roda (aviso “Operação em andamento”): o Konsave
+  não pode ser interrompido e fechar deixaria o processo órfão.
 * `OutcomeNotifier` (`actions.py`) mostra o aviso (erros ficam até serem
   fechados) e registra a atividade.
 * `messages.py` traduz resultados e exceções para pt-BR. Exceções desconhecidas
@@ -158,8 +163,12 @@ Konsave real, compara o perfil byte a byte e repete com o CLI original.
 * O `.knsv` não é assinado nem cifrado e o `conf.yaml` dele decide para onde os
   arquivos vão: a GUI só aceita destinos dentro da home, mas importe apenas
   arquivos de fontes confiáveis.
-* Exportar lê o `conf.yaml` **global** atual para a seção `export`, que pode
-  diferir do que o perfil tinha ao ser salvo (limitação do Konsave).
+* Exportar copia o `conf.yaml` **global** atual para dentro do `.knsv`, mas
+  monta `save/` e `export/` com os grupos do `conf.yaml` **do perfil**
+  (limitação do Konsave). Se eles diferirem, o arquivo se contradiz: grupo novo
+  impede aplicar o perfil importado; grupo removido é ignorado sem aviso. A GUI
+  avisa ao exportar e ao inspecionar o arquivo, mas **não reescreve** o
+  `conf.yaml` do arquivo (isso mudaria a saída do Konsave; decisão do projeto).
 * O bit executável e metadados de arquivos não sobrevivem ao ciclo exportar →
   importar (limitação do Konsave).
 * `replace` usa `rename` (mesmo sistema de arquivos) e só deixa resíduo `.kongui-*`

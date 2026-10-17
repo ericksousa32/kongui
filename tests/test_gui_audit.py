@@ -6,7 +6,11 @@ The names say what was wrong; the docstrings say how it showed up.
 import unittest
 from unittest import mock
 
-from tests.gui_helpers import HAVE_QT, GuiTestCase, ManualExecutor
+import yaml
+
+from tests.gui_helpers import HAVE_QT, GuiTestCase, ManualExecutor, WindowCase
+from kongui.gui.widgets.dialogs import ChoiceDialog, ConfirmDialog
+from tests.helpers import really_root
 
 
 @unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
@@ -259,6 +263,148 @@ class FreshAccountExportTests(GuiTestCase):
         self.assertTrue((home / "again.knsv").is_file())
         # the default conf differs from the Plasma archive's: the user is told
         self.assertTrue(any("differs" in w for w in result.warnings), result.warnings)
+
+
+FLOW = """save:
+  configs: {location: "$HOME/.config", entries: [kdeglobals]}
+export: {}
+"""
+
+
+@unittest.skipIf(really_root(), "the demo backend builds a real engine")
+@unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
+class ConfigPageFailurePathTests(WindowCase):
+    """Failure paths of the conf.yaml editor that no test had walked."""
+
+    def setUp(self):
+        super().setUp()
+        # Started before any window exists, so it outlives the window's cleanup
+        # (a dirty editor asks before closing; a real dialog would block).
+        patcher = mock.patch.object(ConfirmDialog, "ask", return_value=True)
+        self.confirm = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def open_config(self):
+        window = self.open_window(page="config", load=False)
+        self.run_all()
+        return window, window.pages["config"]
+
+    def sandbox(self):
+        return self.backend._config_service("test")  # pylint: disable=protected-access
+
+    def test_an_unreadable_file_shows_the_error_and_offers_no_editing(self):
+        self.backend = None
+        from kongui.gui.backend import FakeBackend
+
+        backend = FakeBackend()
+        with mock.patch.object(
+            backend,
+            "load_config",
+            side_effect=PermissionError(13, "negado", "/x/conf.yaml"),
+        ):
+            window = self.open_window(backend=backend, page="config", load=False)
+            self.run_all()
+        page = window.pages["config"]
+        self.assertFalse(page.error_banner.isHidden())
+        self.assertTrue(page.content.isHidden())
+        self.assertFalse(page.save_button.isEnabled())
+        self.assertFalse(page.backups_button.isEnabled())
+        self.assertFalse(page.save(), "no snapshot, nothing to write")
+
+    def test_a_failing_validation_blocks_saving_and_says_so(self):
+        window, page = self.open_config()
+        with mock.patch.object(
+            window.backend, "check_config", side_effect=RuntimeError("boom")
+        ):
+            page.validate_now()
+            self.run_all()
+        self.assertIsNone(page.check)
+        self.assertFalse(page.save_button.isEnabled())
+        digest = self.sandbox().digest()
+        self.assertFalse(page.save())
+        self.assertEqual(self.sandbox().digest(), digest)
+
+    def test_saving_while_busy_or_unchecked_writes_nothing(self):
+        window, page = self.open_config()
+        editor = page.editors["save"]
+        editor.add_group("novo")
+        editor.insert_text("$HOME")
+        digest = self.sandbox().digest()
+        # not validated yet: the text changed after the last check
+        self.assertFalse(page.save())
+        self.assertEqual(self.sandbox().digest(), digest)
+        self.run_all()
+        # now busy with another operation
+        window.controller.refresh()
+        self.assertFalse(page.save())
+        self.assertFalse(page.restore("conf.yaml.bak-x"), "restore also waits")
+        self.run_all()
+        self.assertEqual(self.sandbox().digest(), digest)
+        self.confirm.assert_not_called()
+
+    def test_nothing_to_save_and_nothing_to_discard_when_clean(self):
+        window, page = self.open_config()
+        self.run_all()
+        self.assertFalse(page.is_dirty)
+        self.assertFalse(page.discard())
+        self.assertFalse(page.save())
+        self.assertIn("Nada a salvar", window.toasts.titles())
+
+    def test_rewriting_without_comments_needs_an_explicit_yes(self):
+        window, page = self.open_config()
+        self.sandbox().write_text(FLOW)
+        page.reload()
+        self.run_all()
+        editor = page.editors["save"]
+        editor.add_group("novo")
+        editor.insert_text("$HOME")
+        self.run_all()
+        self.assertTrue(page._lossy)
+        self.assertTrue(
+            any(p.code == "comments-lost" for p in page.problems.problems),
+            page.problems.problems,
+        )
+        before = self.sandbox().digest()
+        backups = len(self.sandbox().list_backups())  # writing FLOW made one
+        self.confirm.return_value = False
+        self.assertFalse(page.save())
+        self.confirm.assert_called_once()
+        self.run_all()
+        self.assertEqual(self.sandbox().digest(), before, "declining wrote nothing")
+        self.assertEqual(len(self.sandbox().list_backups()), backups)
+        self.confirm.return_value = True
+        self.assertTrue(page.save())
+        self.run_all()
+        saved = yaml.safe_load(self.sandbox().read_text())
+        self.assertEqual(sorted(saved["save"]), ["configs", "novo"])
+        self.assertEqual(saved["save"]["configs"]["entries"], ["kdeglobals"])
+        self.assertEqual(len(self.sandbox().list_backups()), backups + 1)
+
+    def test_a_conflict_can_be_forced_through_restore(self):
+        window, page = self.open_config()
+        self.sandbox().write_text(FLOW)  # makes a backup of the default
+        name = self.sandbox().list_backups()[0].name
+        page.reload()
+        self.run_all()
+        self.sandbox().write_text(
+            FLOW.replace("kdeglobals", "other")
+        )  # behind its back
+        with mock.patch.object(ChoiceDialog, "ask", return_value="force"):
+            self.assertTrue(page.restore(name))
+            self.run_all()
+        self.assertIn("configuration file for konsave", self.sandbox().read_text())
+
+    def test_listing_backups_can_fail_without_breaking_the_page(self):
+        window, page = self.open_config()
+        with mock.patch.object(
+            window.backend,
+            "list_config_backups",
+            side_effect=PermissionError(13, "negado", "/x"),
+        ):
+            page.open_backups()
+            self.run_all()
+        self.assertIn("Não foi possível listar os backups", window.toasts.titles())
+        self.assertTrue(page.backups_button.isEnabled())
 
 
 if __name__ == "__main__":

@@ -93,6 +93,8 @@ temporário. Se o PySide6 não estiver instalado, eles são pulados.
 | `tests.test_gui_transfer` | importar e exportar na interface (backend em memória): formulário, conflitos, confirmações, erros |
 | `tests.test_gui_transfer_roundtrip` | exportar e importar nos serviços reais, em dois homes temporários; compatibilidade com o `python -m konsave` original |
 | `tests.test_gui_config` | editor do `conf.yaml` na interface (memória e serviços reais): validar, salvar, cancelar, backups, conflito, caracteres especiais |
+| `tests.test_gui_dialogs` | os diálogos acionados de verdade (substituir/nome único, recarregar/gravar, palavra digitada, nome de grupo, prévia e restauração de backup) e os auxiliares de `app.py` |
+| `tests.test_gui_audit` | achados da auditoria final: fechar durante operação, aviso de `conf.yaml` diferente, verificação da pasta de exportação fora da thread, versão do Konsave, exportar numa conta nova |
 | `tests.test_gui_support` | mensagens, executores, `FakeBackend`, `ProfileStore`, widgets de feedback |
 
 Verificação visual manual: abra o programa, alterne os três temas, redimensione

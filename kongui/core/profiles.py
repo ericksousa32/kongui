@@ -97,7 +97,9 @@ def describe_conf_differences(profile_data: Any, active_data: Any) -> str:
         marks = [f"+{name}" for name in active if name not in mine]
         marks += [f"-{name}" for name in mine if name not in active]
         marks += [
-            f"~{name}" for name in mine if name in active and mine[name] != active[name]
+            f"~{name}"
+            for name, group in mine.items()
+            if name in active and group != active[name]
         ]
         if marks:
             parts.append(f"{kind}({' '.join(marks)})")
@@ -759,9 +761,8 @@ class ProfileService:
         found = describe_conf_differences(mine, active)
         if not found:
             return ()
-        return (
-            f"{CONF_DIFFERS_PREFIX} (+ only in the active file, - only in the profile, ~ changed): {found}",
-        )
+        legend = "+ only in the active file, - only in the profile, ~ changed"
+        return (f"{CONF_DIFFERS_PREFIX} ({legend}): {found}",)
 
     @staticmethod
     def _archive_folder_warnings(
