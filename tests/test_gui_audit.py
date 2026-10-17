@@ -231,5 +231,35 @@ class StaleImportFolderMessageTests(unittest.TestCase):
         self.assertIn("/home/u/.config/konsave/temp/p", text)
 
 
+@unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
+class FreshAccountExportTests(GuiTestCase):
+    """import -> export on an account that never ran Konsave (found with the
+    real Plasma 6 archive ``tests/profile_test.knsv``)."""
+
+    def test_export_after_import_creates_the_default_config_like_the_cli(self):
+        import pathlib
+        import shutil
+
+        from kongui.core import KonsaveEngine, ProfileService
+        from kongui.gui.backend import ServiceBackend
+
+        home = pathlib.Path(self.home)
+        for folder in (".config", ".local/share"):
+            (home / folder).mkdir(parents=True, exist_ok=True)
+        archive = home / "profile_test.knsv"
+        shutil.copy(pathlib.Path(__file__).with_name("profile_test.knsv"), archive)
+        engine = KonsaveEngine(home)
+        backend = ServiceBackend(ProfileService(engine))
+        self.assertFalse(engine.config_file.exists())
+        backend.import_profile(str(archive), confirmed=True).raise_for_status()
+        self.assertFalse(engine.config_file.exists())  # import does not need it
+        result = backend.export_profile("profile_test", str(home), "again", "error")
+        self.assertTrue(result.ok, result.message)
+        self.assertTrue(engine.config_file.is_file())
+        self.assertTrue((home / "again.knsv").is_file())
+        # the default conf differs from the Plasma archive's: the user is told
+        self.assertTrue(any("differs" in w for w in result.warnings), result.warnings)
+
+
 if __name__ == "__main__":
     unittest.main()

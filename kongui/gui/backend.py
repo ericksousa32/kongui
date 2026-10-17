@@ -538,7 +538,14 @@ class ServiceBackend(ProfileBackend):
         archive_name: Optional[str] = None,
         on_conflict: str = "error",
     ) -> OperationResult:
-        """Exports with the original ``export`` (``-e``, ``-d``, ``-n``, ``-f``)."""
+        """Exports with the original ``export`` (``-e``, ``-d``, ``-n``, ``-f``).
+
+        The original CLI creates the default ``conf.yaml`` at start-up, on every
+        command, and ``export`` copies that file into the archive. A fresh
+        account that only imported a profile has none, so it is created here
+        too (an existing file is never touched).
+        """
+        self._service.config.ensure_default_config()
         return self._service.export(
             name,
             directory=self._expand(directory),

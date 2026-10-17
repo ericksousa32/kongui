@@ -446,6 +446,8 @@ class ProfileService:
             ValidationError: For invalid names, folder or ``on_conflict``.
             ProfileNotFoundError: If there is no such profile.
             ProfileInvalidError: If the profile has no ``conf.yaml``.
+            ConfigMissingError: If there is no active ``conf.yaml`` (the
+                original copies it into the archive and fails without it).
             ConfigValidationError: If the profile configuration is invalid.
             ArchiveExistsError: If the conflict policy forbids the target.
         """
@@ -453,6 +455,7 @@ class ProfileService:
         if on_conflict not in ON_CONFLICT_CHOICES:
             raise ValidationError(f"on_conflict must be one of {ON_CONFLICT_CHOICES}")
         info = self._require_valid_profile(name)
+        self._require_config()  # the original copies the active conf.yaml into the .knsv
         folder = Path(directory)
         if not folder.is_dir():
             raise ValidationError(f"output folder does not exist: {folder}")

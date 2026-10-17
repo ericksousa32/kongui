@@ -12,7 +12,7 @@ import zipfile
 
 import yaml
 
-from kongui.core import CONF_DIFFERS_PREFIX, ConfigValidationError
+from kongui.core import CONF_DIFFERS_PREFIX, ConfigMissingError, ConfigValidationError
 from kongui.core.profiles import describe_conf_differences
 from tests.helpers import BASE_CONF, make_knsv, write
 from tests.test_profile_service_integration import IntegrationCase
@@ -140,6 +140,18 @@ class InspectArchiveFolderTests(IntegrationCase):
         warnings = self.profiles.inspect_archive(archive).warnings
         self.assertEqual(len(warnings), 1, warnings)
         self.assertIn("folders that its conf.yaml does not list: old", warnings[0])
+
+
+class ExportNeedsTheActiveConfigTests(IntegrationCase):
+    """On a fresh account that only imported a profile, export crashed with a
+    bare ``FileNotFoundError: .../konsave/conf.yaml`` from the original code."""
+
+    def test_missing_active_config_is_a_clear_error_and_leaves_nothing(self):
+        self.profiles.save("work").raise_for_status()
+        self.config.config_path.unlink()
+        with self.assertRaises(ConfigMissingError):
+            self.profiles.export("work", directory=self.work)
+        self.assertEqual(os.listdir(self.work), [])
 
 
 if __name__ == "__main__":
