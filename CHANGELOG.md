@@ -6,9 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- (KonGUI) Interface language: English and Brazilian Portuguese with Qt translations, first-run detection from the system locale, a *Settings → Language* selector and live switching. See `docs/GUI_PROTOTYPE.md`
 - (KonGUI patch) Cross-process lock, `konsave/lock.py` + `konsave/__main__.py`: commands wait for other Konsave operations (`KONSAVE_LOCK_TIMEOUT`, exit code 75 on timeout). See `docs/KONSAVE_PATCHES.md`
 
 ### Changed
+- (KonGUI) The interface texts are now written in English in the code and translated to Portuguese through `kongui/gui/translations`; `Makefile` has a `translations` target
 - (KonGUI patch) `python_requires` is now `>=3.9`
 - Reorganized CLI arguments into logical groups (Profile Management, Import & Export, Options, Miscellaneous) for better readability
 - Improved all help messages with clearer and more descriptive text

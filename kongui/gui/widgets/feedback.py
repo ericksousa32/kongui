@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QProgressBar, QVBoxLayout
 
+from kongui.gui import i18n
 from kongui.gui.widgets.common import Button, Card, IconTile, Label, clear_layout
 
 
@@ -19,7 +20,9 @@ class BusyBar(QProgressBar):
         self.setRange(0, 0)
         self.setTextVisible(False)
         self.setFixedHeight(3)
-        self.setAccessibleName("Operação em andamento")
+        i18n.bind(
+            self, lambda: self.setAccessibleName(self.tr("Operation in progress"))
+        )
         self.hide()
 
     def set_busy(self, busy: bool) -> None:
@@ -55,7 +58,8 @@ class WaitBanner(Card):
         self._lines.setSpacing(2)
         self._column.addLayout(self._lines)
         row.addLayout(self._column, 1)
-        self.cancel_button = Button("Cancelar espera", variant="danger")
+        self._cancelling = False
+        self.cancel_button = Button(self._cancel_text, variant="danger")
         self.cancel_button.clicked.connect(self.cancel_requested)
         row.addWidget(self.cancel_button, 0, Qt.AlignmentFlag.AlignVCenter)
         self.hide()
@@ -84,8 +88,15 @@ class WaitBanner(Card):
         for line in lines:
             self._lines.addWidget(Label(line, "muted", wrap=True))
         self.cancel_button.setEnabled(not cancelling)
-        self.cancel_button.setText("Cancelando…" if cancelling else "Cancelar espera")
+        self._cancelling = cancelling
+        self.cancel_button.setText(self._cancel_text())
         self.setAccessibleName(title)
+
+    def _cancel_text(self) -> str:
+        """Label of the cancel button for the current state and language."""
+        if self._cancelling:
+            return self.tr("Cancelling…")
+        return self.tr("Cancel wait")
 
 
 class ErrorBanner(Card):
@@ -97,13 +108,14 @@ class ErrorBanner(Card):
 
     retry_requested = Signal()
 
-    def __init__(self, title: str = "Algo deu errado") -> None:
+    def __init__(self, title: Optional[str] = None) -> None:
         """Creates the banner, empty.
 
         Args:
-            title: Headline.
+            title: Headline; defaults to "Something went wrong".
         """
         super().__init__()
+        title = title or self.tr("Something went wrong")
         row = QHBoxLayout(self)
         row.setContentsMargins(20, 16, 20, 16)
         row.setSpacing(14)
@@ -116,9 +128,18 @@ class ErrorBanner(Card):
         self._lines.setSpacing(2)
         self._column.addLayout(self._lines)
         row.addLayout(self._column, 1)
-        self.retry_button = Button("Tentar novamente", icon_name="refresh")
+        self.retry_button = Button(lambda: self.tr("Try again"), icon_name="refresh")
         self.retry_button.clicked.connect(self.retry_requested)
         row.addWidget(self.retry_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.setAccessibleName(title)
+
+    def set_title(self, title: str) -> None:
+        """Changes only the headline (for example after a language change).
+
+        Args:
+            title: Headline; also the accessible name of the banner.
+        """
+        self.title_label.setText(title)
         self.setAccessibleName(title)
 
     def set_content(self, title: str, lines: Iterable[str]) -> None:
@@ -128,8 +149,7 @@ class ErrorBanner(Card):
             title: Headline.
             lines: Explanation lines.
         """
-        self.title_label.setText(title)
+        self.set_title(title)
         clear_layout(self._lines)
         for line in lines:
             self._lines.addWidget(Label(line, "muted", wrap=True))
-        self.setAccessibleName(title)

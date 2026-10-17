@@ -9,7 +9,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from tests.gui_helpers import HAVE_QT, WindowCase
+from tests.gui_helpers import HAVE_QT, WindowCase, pin_language
 from tests.test_gui_real_backend import RealBackendCase
 from tests.helpers import write
 
@@ -170,6 +170,10 @@ class DemoSafetyCopyTests(WindowCase):
 
 class MessageTests(unittest.TestCase):
     """The texts for the notes and errors."""
+
+    def setUp(self):
+        super().setUp()
+        pin_language(self)
 
     def test_notes(self):
         from kongui.core import KEPT_PREFIX, UNDO_PREFIX

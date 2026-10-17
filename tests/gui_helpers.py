@@ -59,6 +59,29 @@ class ManualExecutor:
         self.queue.clear()
 
 
+def pin_language(case: unittest.TestCase, locale_name: str = "pt_BR") -> None:
+    """Makes the interface run as if the system locale were ``locale_name``.
+
+    The detection reads the locale through ``kongui.gui.i18n.system_locale_name``,
+    which is patched here; the language is installed at once (a window applies it
+    again from its settings, with the same result) and removed at cleanup, so one
+    test never leaks its language into the next.
+
+    Args:
+        case: The running test.
+        locale_name: Locale name, for example ``pt_BR``, ``en_US`` or ``pt_PT``.
+    """
+    from kongui.gui import i18n
+    from kongui.gui.app import create_app
+
+    create_app([])
+    patcher = mock.patch.object(i18n, "system_locale_name", return_value=locale_name)
+    patcher.start()
+    case.addCleanup(patcher.stop)
+    case.addCleanup(i18n.manager().uninstall)
+    i18n.manager().apply_preference("")
+
+
 @unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
 class GuiTestCase(unittest.TestCase):
     """Base class: one shared ``QApplication``, a private ``$HOME``, cleanup.
@@ -70,6 +93,9 @@ class GuiTestCase(unittest.TestCase):
 
     app: "QApplication"
     window = None
+    #: System locale the test pretends to run in (the texts asserted by most
+    #: tests are Brazilian Portuguese). Tests of other languages override it.
+    LANGUAGE = "pt_BR"
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -92,6 +118,7 @@ class GuiTestCase(unittest.TestCase):
         from kongui.gui.theme import ThemeMode, get_theme
 
         self.addCleanup(lambda: get_theme().set_mode(ThemeMode.SYSTEM))
+        pin_language(self, self.LANGUAGE)
 
     def make_window(self, **kwargs):
         """Creates and shows a main window with in-memory settings.
@@ -125,7 +152,10 @@ class GuiTestCase(unittest.TestCase):
         """
         from PySide6.QtCore import QEvent
 
-        window.close()
+        try:
+            window.close()
+        except RuntimeError:  # already deleted by an earlier call
+            return
         window.deleteLater()
         self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()

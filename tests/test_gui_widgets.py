@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timedelta
 from unittest import mock
 
-from tests.gui_helpers import HAVE_QT, GuiTestCase
+from tests.gui_helpers import HAVE_QT, GuiTestCase, pin_language
 
 if HAVE_QT:
     from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
@@ -36,6 +36,10 @@ def contrast(first, second) -> float:
 class FormattingTests(unittest.TestCase):
     """Text helpers."""
 
+    def setUp(self):
+        super().setUp()
+        pin_language(self)
+
     def test_sizes(self):
         from kongui.gui.formatting import format_size
 
@@ -59,13 +63,6 @@ class FormattingTests(unittest.TestCase):
         for moment, expected in cases:
             with self.subTest(expected=expected):
                 self.assertEqual(format_relative(moment, now), expected)
-
-    def test_plural(self):
-        from kongui.gui.formatting import plural
-
-        self.assertEqual(plural(1, "perfil", "perfis"), "1 perfil")
-        self.assertEqual(plural(0, "perfil", "perfis"), "0 perfis")
-        self.assertEqual(plural(7, "perfil", "perfis"), "7 perfis")
 
 
 class ThemeTests(GuiTestCase):
@@ -389,10 +386,10 @@ class DialogTests(GuiTestCase):
     """Profile and confirmation dialogs."""
 
     def dialog(self, existing=("Trabalho",)):
-        from kongui.gui.mock_data import SECTIONS
+        from kongui.gui.mock_data import sections
         from kongui.gui.widgets.dialogs import ProfileDialog
 
-        dialog = ProfileDialog(None, existing, SECTIONS)
+        dialog = ProfileDialog(None, existing, sections())
         self.addCleanup(dialog.deleteLater)
         return dialog
 

@@ -25,7 +25,7 @@ from kongui.gui import messages
 from kongui.gui.backend import FakeBackend, ServiceBackend
 from kongui.gui.tasks import ThreadExecutor
 from tests import test_gui_real_backend as real
-from tests.gui_helpers import GuiTestCase, WindowCase
+from tests.gui_helpers import GuiTestCase, WindowCase, pin_language
 from tests.test_locking import HOLDER
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -211,6 +211,10 @@ class BackgroundReadTests(WindowCase):
 
 class MessageTests(unittest.TestCase):
     """The texts for the banner."""
+
+    def setUp(self):
+        super().setUp()
+        pin_language(self)
 
     def test_describe_wait_without_and_with_holder(self):
         title, lines = messages.describe_wait(None)

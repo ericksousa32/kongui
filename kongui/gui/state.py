@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QObject, QSettings, Signal
 
+from kongui.gui.i18n import NO_PREFERENCE, normalize_preference
 from kongui.gui.theme import ThemeMode
 
 
@@ -165,6 +166,8 @@ class AppSettings(QObject):
         "toast_seconds": 5,
         "profiles_view": "grid",
         "last_applied": "",
+        # "" = the user has not chosen: the system locale decides (and is never saved).
+        "language": NO_PREFERENCE,
     }
 
     def __init__(
@@ -194,11 +197,17 @@ class AppSettings(QObject):
                 return max(1, min(60, int(value)))  # type: ignore[call-overload]
             except (TypeError, ValueError):
                 return default
-        text = str(value)
+        return self._coerce_text(key, str(value), str(default))
+
+    @staticmethod
+    def _coerce_text(key: str, text: str, default: str) -> str:
+        """Cleans a text setting; an invalid value becomes its default."""
         if key == "theme":
             return ThemeMode.parse(text).value
-        if key == "profiles_view":
-            return text if text in ("grid", "list") else default
+        if key == "language":
+            return normalize_preference(text)
+        if key == "profiles_view" and text not in ("grid", "list"):
+            return default
         return text
 
     def get(self, key: str) -> object:

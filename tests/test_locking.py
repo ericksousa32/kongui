@@ -29,6 +29,7 @@ from konsave.lock import (
     default_lock_path,
     timeout_from_environment,
 )
+from tests.gui_helpers import pin_language
 from tests.helpers import IsolatedHomeTestCase, make_dist_info, really_root
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -516,6 +517,7 @@ class ServiceTests(LockCase):
 
     def setUp(self):
         super().setUp()
+        pin_language(self)
         self.profiles.save("work").raise_for_status()
         self.profiles.engine.lock.policy.timeout = 0.3
 

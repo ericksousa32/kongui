@@ -37,7 +37,7 @@ Everything below is covered by the automated test suite (run in temporary home d
 - **`conf.yaml` editor:** edit the `save` and `export` sections or the YAML text, with validation (problems reported with line and column), automatic backups of the previous file, and restore.
 - **Cross-process lock:** operations use a `flock` lock on `~/.config/konsave/.kongui.lock`. If another Konsave operation is running, KonGUI shows that it is waiting, stays responsive, and lets you cancel the wait. The bundled `konsave` command waits too (see [Command line](#command-line-bundled-konsave)). Programs that do not use the lock, such as Plasma itself or a text editor, are not covered.
 - **Interface:** dashboard, profiles, import/export, settings, YAML editor and about pages; light, dark and system themes; keyboard shortcuts (`Ctrl+1` to `Ctrl+6` switch pages).
-- **Language:** the interface is currently in Brazilian Portuguese only; internationalization is not implemented yet.
+- **Language:** English and Brazilian Portuguese. The first time it runs, KonGUI follows the system language (`pt_BR` gives Portuguese; any other locale, including `pt_PT`, gives English). Change it any time in *Settings → Language*; the choice is saved, applies immediately without restarting, and is never overwritten by the system language afterwards. See [Language](#language).
 - **Demo mode:** `--demo` runs the interface on fictitious in-memory data.
 - **Safety:** KonGUI refuses to run as root, and profile or archive names are validated before anything reaches the original code.
 
@@ -155,6 +155,16 @@ save:
 
 </details>
 
+## Language
+
+The interface is written in English and translated to Brazilian Portuguese with Qt translations (`kongui/gui/translations/*.ts`, compiled to `*.qm`). Which language is used:
+
+1. The language chosen in *Settings → Language*, if you chose one (stored in KonGUI's own settings file, never in Konsave's).
+2. Otherwise the system locale: exactly `pt_BR` selects Portuguese, anything else selects English. This detection is never saved, so a later change of the system language is followed until you choose a language yourself.
+3. A text with no translation is shown in English.
+
+Known limits: the demonstration profiles of `--demo` keep the language they were created in until you use *Restore fictitious profiles*; notices already on screen and entries already in the activity list keep the language they were written in; and messages that come from the bundled Konsave code are translated by matching their English text, so a message that Konsave later rewords may appear in English. Details are in [`docs/GUI_PROTOTYPE.md`](docs/GUI_PROTOTYPE.md#8-language-i18n).
+
 ## Roadmap
 
 No dates are promised. In rough order of priority:
@@ -189,6 +199,7 @@ pip install -r requirements_dev.txt
 python3 -m unittest discover -s tests -t .    # or: make tests
 black kongui tests
 pylint kongui
+make translations                              # after changing interface texts (see docs/GUI_PROTOTYPE.md)
 ```
 
 Run the tests as a regular user: they create temporary home directories and refuse to touch real files, and the file-writing ones are skipped when run as root. The tests never apply profiles to your real session.

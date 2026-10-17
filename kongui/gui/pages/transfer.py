@@ -13,6 +13,7 @@ import os
 from pathlib import PurePath
 from typing import List, Optional, Tuple
 
+from PySide6.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -24,10 +25,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kongui.gui import messages
+from kongui.gui import i18n, messages
 from kongui.gui.backend import ArchiveInfo
 from kongui.gui.context import AppContext
 from kongui.gui.formatting import format_size
+from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.pages.base import Page
 from kongui.gui.validation import archive_name_problem, profile_name_problem
 from kongui.gui.widgets.cards import ActivityRow
@@ -51,10 +53,16 @@ DEFAULT_DESTINATION = "~/Downloads"
 RECENT_LIMIT = 5
 MAX_BADGES = 3
 
+#: Why the destination folder is unusable (English sources of the "TransferPage"
+#: context, translated where they are shown).
 FOLDER_PROBLEMS = {
-    "missing": "A pasta de destino não existe.",
-    "not_dir": "O destino não é uma pasta.",
-    "not_writable": "Sem permissão de escrita na pasta de destino.",
+    "missing": QT_TRANSLATE_NOOP(
+        "TransferPage", "The destination folder does not exist."
+    ),
+    "not_dir": QT_TRANSLATE_NOOP("TransferPage", "The destination is not a folder."),
+    "not_writable": QT_TRANSLATE_NOOP(
+        "TransferPage", "No write permission in the destination folder."
+    ),
 }
 
 
@@ -63,7 +71,7 @@ def _short(section: str) -> str:
     return section.split(" (", maxsplit=1)[0]
 
 
-def _card_header(icon_name: str, title: str, subtitle: str) -> QHBoxLayout:
+def _card_header(icon_name: str, title: Text, subtitle: Text) -> QHBoxLayout:
     """Builds the icon + title row at the top of a card."""
     row = QHBoxLayout()
     row.setSpacing(12)
@@ -82,8 +90,10 @@ class TransferPage(
     """Export a profile to a ``.knsv`` file, or import one."""
 
     key = "transfer"
-    title = "Importar / Exportar"
-    subtitle = "Leve seus perfis para outro computador ou faça cópias"
+    TITLE = QT_TRANSLATE_NOOP("TransferPage", "Import / Export")
+    SUBTITLE = QT_TRANSLATE_NOOP(
+        "TransferPage", "Take your profiles to another computer or make copies"
+    )
     icon_name = "transfer"
 
     def __init__(self, ctx: AppContext) -> None:
@@ -95,7 +105,8 @@ class TransferPage(
         super().__init__(ctx)
         self._import_path: Optional[str] = None
         self._archive: Optional[ArchiveInfo] = None
-        self._archive_error: Tuple[str, ...] = ()
+        self._archive_failure: Optional[BaseException] = None
+        self._export_error_text: Optional[Text] = None
         self._inspecting = False
         self._probing = False
         self._probe_outcome: Optional[bool] = None
@@ -127,11 +138,63 @@ class TransferPage(
         self._update_export_state()
         self._update_import_state()
         self._build_recent()
+        self._bind_static_texts()
+
+    def _bind_static_texts(self) -> None:
+        """Keeps the accessible names and the check box text in the language."""
+        i18n.bind(
+            self.export_combo,
+            lambda: self.export_combo.setAccessibleName(self.tr("Profile to export")),
+        )
+        i18n.bind(
+            self.destination_edit,
+            lambda: self.destination_edit.setAccessibleName(
+                self.tr("Destination folder")
+            ),
+        )
+        i18n.bind(
+            self.filename_edit,
+            lambda: self.filename_edit.setAccessibleName(self.tr("File name")),
+        )
+        i18n.bind(
+            self.import_name_edit,
+            lambda: self.import_name_edit.setAccessibleName(
+                self.tr("Imported profile name")
+            ),
+        )
+        i18n.bind(
+            self.apply_after_check,
+            lambda: self.apply_after_check.setText(
+                self.tr("Apply the profile after importing")
+            ),
+        )
+
+    @property
+    def _archive_error(self) -> Tuple[str, ...]:
+        """Why the selected archive is unusable, in the current language."""
+        if self._archive_failure is None:
+            return ()
+        return messages.describe_error(self._archive_failure)
+
+    def retranslate(self) -> None:
+        """Shows the forms again in the new language, keeping what was typed."""
+        self._update_export_state()
+        if self._export_error_text is not None:
+            self.export_error.setText(resolve_text(self._export_error_text))
+            self.export_error.show()
+        self._update_import_state()
+        self._build_recent()
+
+    def _busy_notice(self) -> None:
+        """Tells that another operation is still running."""
+        self.ctx.toasts.show_message(
+            "info", self.tr("Wait"), self.tr("Another operation is still in progress.")
+        )
 
     def _disable_without_transfer(self) -> None:
         """Locks both forms for a backend that cannot transfer."""
         self.transfer_notice = Label(
-            "Importação e exportação não estão disponíveis neste modo.",
+            lambda: self.tr("Import and export are not available in this mode."),
             "muted",
             wrap=True,
         )
@@ -168,36 +231,36 @@ class TransferPage(
         outer.addLayout(
             _card_header(
                 "export",
-                "Exportar perfil",
-                "Gera um arquivo .knsv (o mesmo formato do Konsave) com o perfil escolhido.",
+                lambda: self.tr("Export profile"),
+                lambda: self.tr(
+                    "Creates a .knsv file (the same format as Konsave) with the "
+                    "chosen profile."
+                ),
             )
         )
         outer.addWidget(Separator())
         self.export_empty = EmptyState(
             "profiles",
-            "Nada para exportar",
-            "Crie um perfil primeiro na página Perfis.",
+            lambda: self.tr("Nothing to export"),
+            lambda: self.tr("Create a profile first on the Profiles page."),
         )
         outer.addWidget(self.export_empty)
         self.export_form = QWidget()
         form = QVBoxLayout(self.export_form)
         form.setContentsMargins(0, 0, 0, 0)
         form.setSpacing(8)
-        form.addWidget(Label("Perfil", "muted"))
+        form.addWidget(Label(lambda: self.tr("Profile"), "muted"))
         self.export_combo = QComboBox()
-        self.export_combo.setAccessibleName("Perfil a exportar")
         form.addWidget(self.export_combo)
-        form.addWidget(Label("Pasta de destino", "muted"))
+        form.addWidget(Label(lambda: self.tr("Destination folder"), "muted"))
         destination = QHBoxLayout()
         self.destination_edit = QLineEdit(DEFAULT_DESTINATION)
-        self.destination_edit.setAccessibleName("Pasta de destino")
-        self.browse_destination = Button("Escolher…", icon_name="folder")
+        self.browse_destination = Button(lambda: self.tr("Choose…"), icon_name="folder")
         destination.addWidget(self.destination_edit, 1)
         destination.addWidget(self.browse_destination)
         form.addLayout(destination)
-        form.addWidget(Label("Nome do arquivo (sem extensão)", "muted"))
+        form.addWidget(Label(lambda: self.tr("File name (without extension)"), "muted"))
         self.filename_edit = QLineEdit()
-        self.filename_edit.setAccessibleName("Nome do arquivo")
         form.addWidget(self.filename_edit)
         self.filename_error = Label("", "danger", wrap=True)
         form.addWidget(self.filename_error)
@@ -210,7 +273,9 @@ class TransferPage(
         form.addWidget(self.export_progress)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        self.export_button = Button("Exportar", variant="primary", icon_name="export")
+        self.export_button = Button(
+            lambda: self.tr("Export"), variant="primary", icon_name="export"
+        )
         buttons.addWidget(self.export_button)
         form.addLayout(buttons)
         outer.addWidget(self.export_form)
@@ -267,7 +332,9 @@ class TransferPage(
     def _choose_destination(self) -> None:
         """Opens the folder picker."""
         start = os.path.expanduser(self.destination_edit.text().strip() or "~")
-        chosen = QFileDialog.getExistingDirectory(self, "Pasta de destino", start)
+        chosen = QFileDialog.getExistingDirectory(
+            self, self.tr("Destination folder"), start
+        )
         if chosen:
             self.destination_edit.setText(chosen)
 
@@ -279,9 +346,9 @@ class TransferPage(
     def _export_problem(self) -> Optional[str]:
         """Returns why the export form is not valid, if it is not."""
         if not self.export_combo.currentData():
-            return "Escolha um perfil."
+            return self.tr("Choose a profile.")
         if not self.destination_edit.text().strip():
-            return "Informe a pasta de destino."
+            return self.tr("Enter the destination folder.")
         return archive_name_problem(self.filename_edit.text())
 
     def _update_export_state(self) -> None:
@@ -296,7 +363,9 @@ class TransferPage(
         self.filename_edit.setProperty("invalid", bool(problem and typed))
         repolish(self.filename_edit)
         self.preview_label.setText(
-            f"Arquivo final: {self.export_target()}" if not problem else ""
+            self.tr("Final file: {path}").format(path=self.export_target())
+            if not problem
+            else ""
         )
         self.export_error.hide()
         self.export_button.setEnabled(
@@ -322,24 +391,34 @@ class TransferPage(
             return "error"
         blocked = probe.conflict == "blocked"
         what = (
-            "Já existe uma pasta, um .zip ou outro item com esse nome."
+            self.tr("A folder, a .zip or another item with that name already exists.")
             if blocked
-            else f"O arquivo {probe.path} já existe."
+            else self.tr("The file {path} already exists.").format(path=probe.path)
+        )
+        suggestion = self.tr("Suggested new name: {path}").format(
+            path=probe.unique_path
         )
         answer = ConflictDialog.ask(
             self.window(),
-            "O arquivo já existe",
-            f"{what}\nNovo nome sugerido: {probe.unique_path}",
+            self.tr("The file already exists"),
+            f"{what}\n{suggestion}",
             allow_replace=not blocked,
         )
         return None if answer == "cancel" else answer
 
-    def _export_failed(self, text: str) -> None:
-        """Shows why an export could not start."""
-        self.export_error.setText(text)
+    def _export_failed(self, text: Text) -> None:
+        """Shows why an export could not start.
+
+        Args:
+            text: The reason, or a function returning it (so the message under
+                the form follows a language change).
+        """
+        self._export_error_text = text
+        shown = resolve_text(text)
+        self.export_error.setText(shown)
         self.export_error.show()
         self.ctx.toasts.show_message(
-            "error", "Não foi possível exportar o perfil", text, seconds=0
+            "error", self.tr("Could not export the profile"), shown, seconds=0
         )
 
     def start_export(self) -> bool:
@@ -359,9 +438,7 @@ class TransferPage(
             return False
         controller = self.ctx.controller
         if controller.busy or self._probing:
-            self.ctx.toasts.show_message(
-                "info", "Aguarde", "Outra operação ainda está em andamento."
-            )
+            self._busy_notice()
             return False
         name = str(self.export_combo.currentData())
         directory = self.destination_edit.text().strip()
@@ -386,6 +463,7 @@ class TransferPage(
     ) -> None:
         """Continues an export once the output folder has been looked at."""
         self._probing = False
+        self._export_error_text = None
         # Refresh first: it hides the previous error, and the continuation may
         # show a new one (or start the export, which locks the form itself).
         self._update_export_state()
@@ -405,14 +483,23 @@ class TransferPage(
         """Applies the conflict policy to the probe and starts the export."""
         if error is not None or probe is None:
             self._export_failed(
-                " ".join(messages.describe_error(error))
+                (lambda: " ".join(messages.describe_error(error)))
                 if error is not None
-                else "Não foi possível verificar a pasta de destino."
+                else (lambda: self.tr("Could not check the destination folder."))
             )
             return False
         if probe.folder_problem:
+            code = probe.folder_problem
             self._export_failed(
-                FOLDER_PROBLEMS.get(probe.folder_problem, "Pasta de destino inválida.")
+                lambda: QCoreApplication.translate(
+                    "TransferPage",
+                    FOLDER_PROBLEMS.get(
+                        code,
+                        QT_TRANSLATE_NOOP(
+                            "TransferPage", "Invalid destination folder."
+                        ),
+                    ),
+                )
             )
             return False
         policy = self._export_policy(probe)
@@ -426,9 +513,7 @@ class TransferPage(
             confirmed=policy == "overwrite",
         )
         if not started:
-            self.ctx.toasts.show_message(
-                "info", "Aguarde", "Outra operação ainda está em andamento."
-            )
+            self._busy_notice()
         return started
 
     # ---- import -----------------------------------------------------------------
@@ -442,8 +527,10 @@ class TransferPage(
         outer.addLayout(
             _card_header(
                 "import",
-                "Importar perfil",
-                "Lê um arquivo .knsv do Konsave e cria um novo perfil.",
+                lambda: self.tr("Import profile"),
+                lambda: self.tr(
+                    "Reads a Konsave .knsv file and creates a new profile."
+                ),
             )
         )
         outer.addWidget(Separator())
@@ -455,7 +542,9 @@ class TransferPage(
         form.setSpacing(8)
         file_row = QHBoxLayout()
         self.file_label = Label("", wrap=True)
-        self.clear_file_button = Button("Trocar", variant="ghost", icon_name="x")
+        self.clear_file_button = Button(
+            lambda: self.tr("Change"), variant="ghost", icon_name="x"
+        )
         file_row.addWidget(self.file_label, 1)
         file_row.addWidget(self.clear_file_button)
         form.addLayout(file_row)
@@ -466,19 +555,20 @@ class TransferPage(
         form.addLayout(self.contents_row)
         self.import_info = Label("", "caption", wrap=True)
         form.addWidget(self.import_info)
-        form.addWidget(Label("Nome do perfil importado", "muted"))
+        form.addWidget(Label(lambda: self.tr("Imported profile name"), "muted"))
         self.import_name_edit = QLineEdit()
-        self.import_name_edit.setAccessibleName("Nome do perfil importado")
         form.addWidget(self.import_name_edit)
         self.import_error = Label("", "danger", wrap=True)
         form.addWidget(self.import_error)
-        self.apply_after_check = QCheckBox("Aplicar o perfil depois de importar")
+        self.apply_after_check = QCheckBox()
         form.addWidget(self.apply_after_check)
         self.import_progress = BusyBar()
         form.addWidget(self.import_progress)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        self.import_button = Button("Importar", variant="primary", icon_name="import")
+        self.import_button = Button(
+            lambda: self.tr("Import"), variant="primary", icon_name="import"
+        )
         buttons.addWidget(self.import_button)
         form.addLayout(buttons)
         outer.addWidget(self.import_form)
@@ -495,7 +585,7 @@ class TransferPage(
     def _choose_file(self) -> None:
         """Opens the file picker."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Escolher arquivo", "", "Perfis Konsave (*.knsv)"
+            self, self.tr("Choose file"), "", self.tr("Konsave profiles (*.knsv)")
         )
         if path:
             self.set_import_file(path)
@@ -503,7 +593,9 @@ class TransferPage(
     def _on_drop_rejected(self) -> None:
         """Warns about a drop without ``.knsv`` files."""
         self.ctx.toasts.show_message(
-            "warning", "Arquivo não suportado", "Solte um arquivo com a extensão .knsv."
+            "warning",
+            self.tr("Unsupported file"),
+            self.tr("Drop a file with the .knsv extension."),
         )
 
     def set_import_file(self, path: Optional[str]) -> bool:
@@ -524,7 +616,7 @@ class TransferPage(
         self._inspect_token += 1
         self._import_path = path
         self._archive = None
-        self._archive_error = ()
+        self._archive_failure = None
         self._inspecting = path is not None
         if path:
             self.import_name_edit.setText(PurePath(path).stem)
@@ -549,17 +641,15 @@ class TransferPage(
             return
         self._inspecting = False
         self._archive = info
-        self._archive_error = (
-            messages.describe_error(error) if error is not None else ()
-        )
+        self._archive_failure = error
         self._update_import_state()
 
     def _import_problem(self) -> Optional[str]:
         """Returns why the import form is not valid, if it is not."""
         if not self._import_path:
-            return "Escolha um arquivo."
+            return self.tr("Choose a file.")
         if self._inspecting:
-            return "Verificando o arquivo…"
+            return self.tr("Checking the file…")
         if self._archive_error:
             return " ".join(self._archive_error)
         return profile_name_problem(
@@ -581,18 +671,25 @@ class TransferPage(
         self.contents_row.addStretch(1)
         if info.export_sections:
             self.import_info.setText(
-                "Ao importar, arquivos das seções "
-                + ", ".join(_short(name) for name in info.export_sections)
-                + " são gravados direto no sistema, sem backup."
+                self.tr(
+                    "When importing, files from the sections {sections} are "
+                    "written straight to the system, without a backup."
+                ).format(
+                    sections=", ".join(_short(name) for name in info.export_sections)
+                )
             )
         else:
-            self.import_info.setText("Este arquivo não grava nada fora dos perfis.")
+            self.import_info.setText(
+                self.tr("This file does not write anything outside the profiles.")
+            )
         if info.warnings:
             self.import_info.setText(
                 self.import_info.text()
                 + "\n"
                 + "\n".join(
-                    f"Aviso: {messages.describe_warning(line)}"
+                    self.tr("Warning: {text}").format(
+                        text=messages.describe_warning(line)
+                    )
                     for line in info.warnings
                 )
             )
@@ -603,11 +700,12 @@ class TransferPage(
         self.drop_zone.setVisible(not has_file)
         self.import_form.setVisible(has_file)
         if has_file:
-            size = f" · {format_size(self._archive.size_mb)}" if self._archive else ""
-            checking = " · verificando…" if self._inspecting else ""
-            self.file_label.setText(
-                f"{PurePath(self._import_path or '').name}{size}{checking}"
-            )
+            parts = [PurePath(self._import_path or "").name]
+            if self._archive:
+                parts.append(format_size(self._archive.size_mb))
+            if self._inspecting:
+                parts.append(self.tr("checking…"))
+            self.file_label.setText(" · ".join(parts))
         self.file_error.setText(" ".join(self._archive_error))
         self.file_error.setVisible(bool(self._archive_error))
         self._fill_contents()
@@ -636,23 +734,33 @@ class TransferPage(
         name = self.import_name_edit.text()
         apply_after = self.apply_after_check.isChecked()
         info = self._archive
-        writes = (
-            "Os arquivos das seções "
-            + ", ".join(_short(name) for name in info.export_sections)
-            + " serão "
-            if info and info.export_sections
-            else "Os arquivos do perfil serão "
-        )
-        demo = self.ctx.backend.capabilities.demo
+        if info and info.export_sections:
+            writes = self.tr(
+                "The files from the sections {sections} will be written to the "
+                "system, replacing the current ones."
+            ).format(sections=", ".join(_short(item) for item in info.export_sections))
+        else:
+            writes = self.tr(
+                "The profile files will be written to the system, replacing the "
+                "current ones."
+            )
+        sentences = [
+            writes,
+            self.tr(
+                "Before that, the files that would be overwritten are copied "
+                "(Settings → Safety copies)."
+            ),
+            self.tr("The profile will also be saved in your list."),
+        ]
+        if apply_after:
+            sentences.append(self.tr("The profile will be applied right after."))
+        if self.ctx.backend.capabilities.demo:
+            sentences.append(self.tr("(Prototype: nothing will be changed.)"))
         if not ConfirmDialog.ask(
             self.window(),
-            f"Importar “{name}”?",
-            f"{writes}gravados no sistema, substituindo os atuais. Antes disso, os arquivos "
-            "que seriam sobrescritos são copiados (Configurações → Cópias de segurança). "
-            "O perfil também será salvo na sua lista."
-            + (" O perfil será aplicado em seguida." if apply_after else "")
-            + (" (Protótipo: nada será alterado.)" if demo else ""),
-            "Importar",
+            self.tr("Import “{name}”?").format(name=name),
+            " ".join(sentences),
+            self.tr("Import"),
             destructive=True,
         ):
             return False
@@ -660,9 +768,7 @@ class TransferPage(
             self._import_path, name, apply_after, confirmed=True
         )
         if not started:
-            self.ctx.toasts.show_message(
-                "info", "Aguarde", "Outra operação ainda está em andamento."
-            )
+            self._busy_notice()
         return started
 
     # ---- recent -----------------------------------------------------------------
@@ -670,14 +776,14 @@ class TransferPage(
     def _build_recent(self) -> None:
         """Rebuilds the list of recent transfers."""
         clear_layout(self.recent_layout)
-        self.recent_layout.addWidget(self.section_title("Transferências recentes"))
+        self.recent_layout.addWidget(self.section_title(self.tr("Recent transfers")))
         rows: List = [
             entry
             for entry in self.ctx.activity.entries()
             if entry.kind in ("export", "import")
         ][:RECENT_LIMIT]
         if not rows:
-            self.recent_layout.addWidget(Label("Nenhuma transferência ainda.", "muted"))
+            self.recent_layout.addWidget(Label(self.tr("No transfers yet."), "muted"))
             return
         for entry in rows:
             self.recent_layout.addWidget(ActivityRow(entry))

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from kongui.gui.formatting import format_datetime, format_kib
 from kongui.gui.validation import group_name_problem, profile_name_problem
 from kongui.gui.widgets.common import Button, Label, repolish
 
@@ -51,7 +52,7 @@ class BaseDialog(QDialog):
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
         buttons.addStretch(1)
-        self.cancel_button = Button("Cancelar")
+        self.cancel_button = Button(self.tr("Cancel"))
         self.confirm_button = Button(confirm_text, variant=variant)
         self.confirm_button.setDefault(True)
         self.cancel_button.clicked.connect(self.reject)
@@ -70,7 +71,7 @@ class ConfirmDialog(BaseDialog):
         parent: Optional[QWidget],
         title: str,
         message: str,
-        confirm_text: str = "Confirmar",
+        confirm_text: str = "",
         *,
         destructive: bool = False,
         require_text: str = "",
@@ -81,13 +82,16 @@ class ConfirmDialog(BaseDialog):
             parent: Parent window.
             title: Heading.
             message: Explanation of what will happen.
-            confirm_text: Label of the confirm button.
+            confirm_text: Label of the confirm button; defaults to "Confirm".
             destructive: Use the red button style for irreversible actions.
             require_text: Word that must be typed exactly before the confirm
                 button is enabled (for the most destructive actions).
         """
         super().__init__(
-            parent, title, confirm_text, "danger-solid" if destructive else "primary"
+            parent,
+            title,
+            confirm_text or self.tr("Confirm"),
+            "danger-solid" if destructive else "primary",
         )
         self.message_label = Label(message, wrap=True)
         self.body.addWidget(self.message_label)
@@ -95,10 +99,15 @@ class ConfirmDialog(BaseDialog):
         self.confirm_edit: Optional[QLineEdit] = None
         if require_text:
             self.body.addWidget(
-                Label(f"Digite {require_text} para confirmar:", "muted")
+                Label(
+                    self.tr("Type {word} to confirm:").format(word=require_text),
+                    "muted",
+                )
             )
             self.confirm_edit = QLineEdit()
-            self.confirm_edit.setAccessibleName(f"Digite {require_text} para confirmar")
+            self.confirm_edit.setAccessibleName(
+                self.tr("Type {word} to confirm").format(word=require_text)
+            )
             self.confirm_edit.textChanged.connect(self._check_text)
             self.body.addWidget(self.confirm_edit)
             self.confirm_button.setEnabled(False)
@@ -114,7 +123,7 @@ class ConfirmDialog(BaseDialog):
         parent: Optional[QWidget],
         title: str,
         message: str,
-        confirm_text: str = "Confirmar",
+        confirm_text: str = "",
         *,
         destructive: bool = False,
         require_text: str = "",
@@ -125,7 +134,7 @@ class ConfirmDialog(BaseDialog):
             parent: Parent window.
             title: Heading.
             message: Explanation.
-            confirm_text: Label of the confirm button.
+            confirm_text: Label of the confirm button; defaults to "Confirm".
             destructive: Use the red button style.
             require_text: Word the user must type to enable the confirm button.
 
@@ -159,13 +168,13 @@ class ConflictDialog(BaseDialog):
             parent: Parent window.
             title: Heading.
             message: Explanation of what exists.
-            allow_replace: Offer "Substituir" (not when a folder or ``.zip``
+            allow_replace: Offer "Replace" (not when a folder or ``.zip``
                 with that name is in the way: the original would delete it).
         """
-        super().__init__(parent, title, "Usar nome único", "primary")
+        super().__init__(parent, title, self.tr("Use a unique name"), "primary")
         self.choice = "cancel"
         self.body.addWidget(Label(message, wrap=True))
-        self.replace_button = Button("Substituir", variant="danger-solid")
+        self.replace_button = Button(self.tr("Replace"), variant="danger-solid")
         self.replace_button.setVisible(allow_replace)
         self.button_row.insertWidget(self.button_row.count() - 1, self.replace_button)
         self.confirm_button.clicked.connect(lambda: self._pick("unique"))
@@ -192,7 +201,7 @@ class ConflictDialog(BaseDialog):
             parent: Parent window.
             title: Heading.
             message: Explanation.
-            allow_replace: Offer "Substituir".
+            allow_replace: Offer "Replace".
 
         Returns:
             str: ``cancel``, ``unique`` or ``overwrite``.
@@ -212,8 +221,8 @@ class ProfileDialog(BaseDialog):
         existing_names: Collection[str],
         sections: Sequence[str],
         *,
-        title: str = "Salvar perfil atual",
-        confirm_text: str = "Salvar",
+        title: str = "",
+        confirm_text: str = "",
         ask_details: bool = True,
     ) -> None:
         """Creates the dialog.
@@ -222,28 +231,33 @@ class ProfileDialog(BaseDialog):
             parent: Parent window.
             existing_names: Names that cannot be reused.
             sections: Section names offered as check boxes (all start checked).
-            title: Heading.
-            confirm_text: Label of the confirm button.
+            title: Heading; defaults to "Save current profile".
+            confirm_text: Label of the confirm button; defaults to "Save".
             ask_details: Show the description and the section check boxes. Off
                 when the backend cannot store them (only the name is asked).
         """
-        super().__init__(parent, title, confirm_text, "primary")
+        super().__init__(
+            parent,
+            title or self.tr("Save current profile"),
+            confirm_text or self.tr("Save"),
+            "primary",
+        )
         self._existing = set(existing_names)
-        self.body.addWidget(Label("Nome", "muted"))
+        self.body.addWidget(Label(self.tr("Name"), "muted"))
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("Ex.: Trabalho")
-        self.name_edit.setAccessibleName("Nome do perfil")
+        self.name_edit.setPlaceholderText(self.tr("E.g.: Work"))
+        self.name_edit.setAccessibleName(self.tr("Profile name"))
         self.body.addWidget(self.name_edit)
         self.error_label = Label("", "danger", wrap=True)
         self.body.addWidget(self.error_label)
         self.description_edit = QPlainTextEdit()
         self.description_edit.setFixedHeight(64)
-        self.description_edit.setAccessibleName("Descrição do perfil")
+        self.description_edit.setAccessibleName(self.tr("Profile description"))
         self.section_checks: List[QCheckBox] = []
         if ask_details:
-            self.body.addWidget(Label("Descrição (opcional)", "muted"))
+            self.body.addWidget(Label(self.tr("Description (optional)"), "muted"))
             self.body.addWidget(self.description_edit)
-            self.body.addWidget(Label("O que incluir", "muted"))
+            self.body.addWidget(Label(self.tr("What to include"), "muted"))
             for section in sections:
                 check = QCheckBox(section)
                 check.setChecked(True)
@@ -259,18 +273,22 @@ class ProfileDialog(BaseDialog):
         problem = profile_name_problem(self.name_edit.text(), self._existing)
         if problem:
             return problem
-        if self.section_checks and not any(
-            check.isChecked() for check in self.section_checks
-        ):
-            return "Escolha ao menos uma seção."
+        if self._no_section_chosen():
+            return self.tr("Choose at least one section.")
         return None
+
+    def _no_section_chosen(self) -> bool:
+        """Whether there are section check boxes and none is checked."""
+        return bool(self.section_checks) and not any(
+            check.isChecked() for check in self.section_checks
+        )
 
     def _update(self) -> None:
         """Refreshes the error text and the confirm button."""
         error = self.validation_error()
         typed = bool(self.name_edit.text())
         # Do not scold before the user typed anything.
-        shown = error if error and (typed or "seção" in error) else ""
+        shown = error if error and (typed or self._no_section_chosen()) else ""
         self.error_label.setText(shown)
         self.error_label.setVisible(bool(shown))
         self.name_edit.setProperty("invalid", bool(error and typed))
@@ -369,29 +387,37 @@ class GroupNameDialog(BaseDialog):
         parent: Optional[QWidget],
         existing: Collection[str],
         *,
-        title: str = "Novo grupo",
-        confirm_text: str = "Adicionar",
+        title: str = "",
+        confirm_text: str = "",
     ) -> None:
         """Creates the dialog.
 
         Args:
             parent: Parent window.
             existing: Names already used in the section.
-            title: Heading.
-            confirm_text: Label of the confirm button.
+            title: Heading; defaults to "New group".
+            confirm_text: Label of the confirm button; defaults to "Add".
         """
-        super().__init__(parent, title, confirm_text, "primary")
+        super().__init__(
+            parent,
+            title or self.tr("New group"),
+            confirm_text or self.tr("Add"),
+            "primary",
+        )
         self._existing = set(existing)
         self.body.addWidget(
             Label(
-                "O nome do grupo é também o nome da pasta dentro do perfil salvo.",
+                self.tr(
+                    "The group name is also the name of the folder inside the "
+                    "saved profile."
+                ),
                 "muted",
                 wrap=True,
             )
         )
         self.name_edit = QLineEdit()
-        self.name_edit.setAccessibleName("Nome do grupo")
-        self.name_edit.setPlaceholderText("Ex.: configs")
+        self.name_edit.setAccessibleName(self.tr("Group name"))
+        self.name_edit.setPlaceholderText(self.tr("E.g.: configs"))
         self.body.addWidget(self.name_edit)
         self.error_label = Label("", "danger", wrap=True)
         self.body.addWidget(self.error_label)
@@ -450,29 +476,35 @@ class SafetyCopiesDialog(BaseDialog):
             on_restore: Called with the selected ``SnapshotInfo``.
             on_delete: Called with the selected ``SnapshotInfo``.
         """
-        super().__init__(parent, "Cópias de segurança", "Restaurar", "primary")
-        self.cancel_button.setText("Fechar")
+        super().__init__(
+            parent, self.tr("Safety copies"), self.tr("Restore"), "primary"
+        )
+        self.cancel_button.setText(self.tr("Close"))
         self.setMinimumWidth(640)
         self._copies: List[Any] = []
         self._on_restore = on_restore
         self._on_delete = on_delete
         self.body.addWidget(
             Label(
-                "Antes de aplicar um perfil ou importar um arquivo, o KonGUI copia "
-                "os arquivos que seriam sobrescritos. Elas nunca são apagadas "
-                "sozinhas: apague as que não precisa mais.",
+                self.tr(
+                    "Before applying a profile or importing a file, KonGUI copies "
+                    "the files that would be overwritten. They are never deleted "
+                    "automatically: delete the ones you no longer need."
+                ),
                 "muted",
                 wrap=True,
             )
         )
         self.list_widget = QListWidget()
-        self.list_widget.setAccessibleName("Cópias de segurança disponíveis")
+        self.list_widget.setAccessibleName(self.tr("Available safety copies"))
         self.list_widget.setMinimumHeight(180)
         self.body.addWidget(self.list_widget)
-        self.status_label = Label("Carregando…", "muted", wrap=True)
+        self.status_label = Label(self.tr("Loading…"), "muted", wrap=True)
         self.body.addWidget(self.status_label)
-        self.delete_button = Button("Apagar", variant="danger", icon_name="trash")
-        self.delete_button.setAccessibleName("Apagar a cópia selecionada")
+        self.delete_button = Button(
+            self.tr("Delete"), variant="danger", icon_name="trash"
+        )
+        self.delete_button.setAccessibleName(self.tr("Delete the selected copy"))
         self.button_row.insertWidget(1, self.delete_button)
         self.confirm_button.clicked.disconnect()
         self.confirm_button.clicked.connect(self._restore)
@@ -503,21 +535,27 @@ class SafetyCopiesDialog(BaseDialog):
         previous = self.selected()
         self._copies = list(copies)
         self.list_widget.clear()
-        words = {"apply": "Antes de aplicar", "import": "Antes de importar"}
         for copy in self._copies:
-            size = f"{copy.size_bytes / 1024:.1f} KB".replace(".", ",")
+            when = format_datetime(copy.created)
             if copy.problem:
-                text = f"{copy.created:%d/%m/%Y %H:%M:%S}  ·  ilegível: {copy.problem}"
+                text = self.tr("{when}  ·  unreadable: {problem}").format(
+                    when=when, problem=copy.problem
+                )
             else:
-                what = words.get(copy.operation, "Antes de restaurar")
-                text = (
-                    f"{copy.created:%d/%m/%Y %H:%M:%S}  ·  {what}"
-                    + (f" “{copy.profile}”" if copy.operation != "restore" else "")
-                    + f"  ·  {copy.replaced} substituído(s), "
-                    f"{copy.created_files} criado(s)  ·  {size}"
+                text = self.tr(
+                    "{when}  ·  {what}  ·  {replaced} replaced, {created} created"
+                    "  ·  {size}"
+                ).format(
+                    when=when,
+                    what=self._what(copy),
+                    replaced=copy.replaced,
+                    created=copy.created_files,
+                    size=format_kib(copy.size_bytes),
                 )
             self.list_widget.addItem(QListWidgetItem(text))
-        self.status_label.setText("" if self._copies else "Ainda não há cópias.")
+        self.status_label.setText(
+            "" if self._copies else self.tr("There are no copies yet.")
+        )
         if self._copies:
             row = 0
             if previous is not None:
@@ -526,6 +564,14 @@ class SafetyCopiesDialog(BaseDialog):
                 )
             self.list_widget.setCurrentRow(row)
         self._sync()
+
+    def _what(self, copy: Any) -> str:
+        """Says which operation a safety copy was made before."""
+        if copy.operation == "apply":
+            return self.tr("Before applying “{profile}”").format(profile=copy.profile)
+        if copy.operation == "import":
+            return self.tr("Before importing “{profile}”").format(profile=copy.profile)
+        return self.tr("Before restoring")
 
     def _sync(self) -> None:
         """Enables the buttons that make sense now."""
@@ -570,9 +616,12 @@ class BackupsDialog(BaseDialog):
                 and calls ``on_done(text, error)`` in the interface thread.
         """
         super().__init__(
-            parent, "Backups do conf.yaml", "Restaurar este backup", "primary"
+            parent,
+            self.tr("conf.yaml backups"),
+            self.tr("Restore this backup"),
+            "primary",
         )
-        self.cancel_button.setText("Fechar")
+        self.cancel_button.setText(self.tr("Close"))
         self.setMinimumWidth(640)
         self.chosen: Optional[str] = None
         self._loader = loader
@@ -580,29 +629,35 @@ class BackupsDialog(BaseDialog):
         self._names: List[str] = []
         self.body.addWidget(
             Label(
-                "Cada vez que o conf.yaml é salvo ou restaurado, a versão anterior é "
-                "guardada ao lado dele. Restaurar também guarda a versão atual.",
+                self.tr(
+                    "Each time conf.yaml is saved or restored, the previous "
+                    "version is kept next to it. Restoring also keeps the "
+                    "current version."
+                ),
                 "muted",
                 wrap=True,
             )
         )
         self.list_widget = QListWidget()
-        self.list_widget.setAccessibleName("Backups disponíveis")
+        self.list_widget.setAccessibleName(self.tr("Available backups"))
         self.list_widget.setMaximumHeight(150)
         self.body.addWidget(self.list_widget)
-        self.empty_label = Label("Ainda não há backups.", "muted")
+        self.empty_label = Label(self.tr("There are no backups yet."), "muted")
         self.body.addWidget(self.empty_label)
         self.preview = QPlainTextEdit()
         self.preview.setReadOnly(True)
         self.preview.setMinimumHeight(200)
-        self.preview.setAccessibleName("Conteúdo do backup")
+        self.preview.setAccessibleName(self.tr("Backup contents"))
         self.body.addWidget(self.preview)
         self.status_label = Label("", "danger", wrap=True)
         self.body.addWidget(self.status_label)
         for info in backups:
-            size = f"{info.size_bytes / 1024:.1f} KB".replace(".", ",")
             item = QListWidgetItem(
-                f"{info.created.strftime('%d/%m/%Y %H:%M:%S')}  ·  {size}  ·  {info.name}"
+                self.tr("{when}  ·  {size}  ·  {name}").format(
+                    when=format_datetime(info.created),
+                    size=format_kib(info.size_bytes),
+                    name=info.name,
+                )
             )
             self.list_widget.addItem(item)
             self._names.append(info.name)
@@ -631,7 +686,7 @@ class BackupsDialog(BaseDialog):
         if not 0 <= row < len(self._names):
             return
         name = self._names[row]
-        self.preview.setPlainText("Carregando…")
+        self.preview.setPlainText(self.tr("Loading…"))
         self._loader(name, lambda text, error: self._loaded(token, text, error))
 
     def _loaded(
@@ -643,8 +698,9 @@ class BackupsDialog(BaseDialog):
         if error is not None or text is None:
             self.preview.setPlainText("")
             self.status_label.setText(
-                "Não foi possível ler este backup: "
-                + (str(error) or "erro desconhecido")
+                self.tr("Could not read this backup: {reason}").format(
+                    reason=str(error) or self.tr("unknown error")
+                )
             )
             return
         self.preview.setPlainText(text)

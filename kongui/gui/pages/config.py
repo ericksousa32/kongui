@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QTimer
 from PySide6.QtGui import QFontDatabase, QTextCursor
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -32,7 +32,7 @@ from kongui.core import (
     apply_model,
     parse_model,
 )
-from kongui.gui import messages
+from kongui.gui import i18n, messages
 from kongui.gui.backend import ConfigCheck, ConfigSnapshot
 from kongui.gui.context import AppContext
 from kongui.gui.controller import Outcome
@@ -55,14 +55,18 @@ KINDS = ("save", "export")
 #: Wait after the last keystroke in the text tab before validating.
 CHECK_DELAY_MS = 350
 
+#: English sources of the section introductions (context "ConfigPage").
 INTROS = {
-    "save": (
-        "Arquivos de configuração que entram no perfil quando você o salva, e "
-        "que são copiados de volta ao sistema quando você o aplica."
+    "save": QT_TRANSLATE_NOOP(
+        "ConfigPage",
+        "Files that go into the profile when you save it, and that are copied "
+        "back to the system when you apply it.",
     ),
-    "export": (
-        "Itens que não ficam no perfil (temas, ícones, fontes…): só vão para o "
-        "arquivo .knsv ao exportar e são gravados no sistema ao importar."
+    "export": QT_TRANSLATE_NOOP(
+        "ConfigPage",
+        "Items that do not stay in the profile (themes, icons, fonts…): they "
+        "only go into the .knsv file when exporting and are written to the "
+        "system when importing.",
     ),
 }
 
@@ -73,8 +77,10 @@ class ConfigPage(
     """Edits ``~/.config/konsave/conf.yaml`` with validation and backups."""
 
     key = "config"
-    title = "Editar .YAML"
-    subtitle = "Edite o conf.yaml com validação, backup e restauração"
+    TITLE = QT_TRANSLATE_NOOP("ConfigPage", "Edit .YAML")
+    SUBTITLE = QT_TRANSLATE_NOOP(
+        "ConfigPage", "Edit conf.yaml with validation, backup and restore"
+    )
     icon_name = "file"
 
     def __init__(self, ctx: AppContext) -> None:
@@ -96,9 +102,11 @@ class ConfigPage(
         self._load_token = 0
         self._retry: Optional[Tuple[str, str]] = None
         self._building = False
+        self._load_error: Optional[BaseException] = None
+        self._check_error: Optional[BaseException] = None
 
         self._build_status()
-        self.error_banner = ErrorBanner("Não foi possível abrir o conf.yaml")
+        self.error_banner = ErrorBanner(self.tr("Could not open conf.yaml"))
         self.error_banner.retry_requested.connect(self.reload)
         self.error_banner.hide()
         self.body.addWidget(self.error_banner)
@@ -111,9 +119,9 @@ class ConfigPage(
 
         self.view_control = SegmentedControl(
             [
-                ("save", "Seção save", "save"),
-                ("export", "Seção export", "export"),
-                ("text", "Texto (YAML)", "file"),
+                ("save", lambda: self.tr("“save” section"), "save"),
+                ("export", lambda: self.tr("“export” section"), "export"),
+                ("text", lambda: self.tr("Text (YAML)"), "file"),
             ]
         )
         self.view_control.set_value("save")
@@ -126,7 +134,10 @@ class ConfigPage(
         self.stack = QStackedWidget()
         self.editors: Dict[str, SectionEditor] = {}
         for kind in KINDS:
-            editor = SectionEditor(kind, INTROS[kind])
+            editor = SectionEditor(
+                kind,
+                lambda k=kind: QCoreApplication.translate("ConfigPage", INTROS[k]),
+            )
             editor.changed.connect(
                 lambda groups, k=kind: self._on_section_changed(k, groups)
             )
@@ -138,15 +149,20 @@ class ConfigPage(
         text_column.setSpacing(8)
         text_column.addWidget(
             Label(
-                "Edição avançada do arquivo inteiro. Comentários e chaves "
-                "desconhecidas ficam como estão; o que for inválido é apontado "
-                "abaixo e impede de salvar.",
+                lambda: self.tr(
+                    "Advanced editing of the whole file. Comments and unknown "
+                    "keys stay as they are; anything invalid is pointed out "
+                    "below and prevents saving."
+                ),
                 "muted",
                 wrap=True,
             )
         )
         self.text_edit = QPlainTextEdit()
-        self.text_edit.setAccessibleName("Texto do conf.yaml")
+        i18n.bind(
+            self.text_edit,
+            lambda: self.text_edit.setAccessibleName(self.tr("conf.yaml text")),
+        )
         self.text_edit.setFont(
             QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         )
@@ -160,10 +176,14 @@ class ConfigPage(
         self.problems.goto.connect(self.goto_problem)
         content.addWidget(self.problems)
 
-        self.validate_button = Button("Validar agora", icon_name="check")
-        self.backups_button = Button("Backups…", icon_name="clock")
-        self.discard_button = Button("Descartar alterações", icon_name="x")
-        self.save_button = Button("Salvar", variant="primary", icon_name="save")
+        self.validate_button = Button(
+            lambda: self.tr("Validate now"), icon_name="check"
+        )
+        self.backups_button = Button(lambda: self.tr("Backups…"), icon_name="clock")
+        self.discard_button = Button(lambda: self.tr("Discard changes"), icon_name="x")
+        self.save_button = Button(
+            lambda: self.tr("Save"), variant="primary", icon_name="save"
+        )
         self.validate_button.clicked.connect(self.validate_now)
         self.backups_button.clicked.connect(self.open_backups)
         self.discard_button.clicked.connect(self.discard)
@@ -190,11 +210,11 @@ class ConfigPage(
         column = QVBoxLayout()
         column.setSpacing(2)
         self.path_label = Label("conf.yaml", "h2")
-        self.state_label = Label("Carregando…", "muted", wrap=True)
+        self.state_label = Label(self.tr("Loading…"), "muted", wrap=True)
         column.addWidget(self.path_label)
         column.addWidget(self.state_label)
         row.addLayout(column, 1)
-        self.dirty_badge = Badge("Alterações não salvas", "warning")
+        self.dirty_badge = Badge(lambda: self.tr("Unsaved changes"), "warning")
         self.dirty_badge.hide()
         row.addWidget(self.dirty_badge)
         self.body.addWidget(card)
@@ -262,7 +282,8 @@ class ConfigPage(
         self._load_token += 1
         token = self._load_token
         self.loading = True
-        self.state_label.setText("Carregando…")
+        self._load_error = None
+        self.state_label.setText(self.tr("Loading…"))
         self.error_banner.hide()
         self.ctx.controller.background(
             self.ctx.backend.load_config,
@@ -280,44 +301,80 @@ class ConfigPage(
             return
         self.loading = False
         if error is not None or snapshot is None:
-            lines = messages.describe_error(error) if error else ("Erro desconhecido.",)
-            self.error_banner.set_content("Não foi possível abrir o conf.yaml", lines)
-            self.error_banner.show()
-            self.content.hide()
-            self.state_label.setText("Erro ao ler o arquivo")
+            self._load_error = error or RuntimeError("unknown")
+            self._show_load_failure()
             self._sync_buttons()
             return
         self.snapshot = snapshot
         self._loaded_text = snapshot.text
         self._lossy = False
         self.path_label.setText(snapshot.path)
-        count = len(snapshot.backups)
-        state = (
-            "O arquivo ainda não existe; ao salvar, ele será criado a partir do "
-            "modelo padrão."
-            if not snapshot.exists
-            else "Arquivo em uso pelo Konsave."
-        )
-        backups = (
-            f" {count} {'backup guardado' if count == 1 else 'backups guardados'}."
-            if count
-            else " Nenhum backup ainda."
-        )
-        self.state_label.setText(state + backups)
-        notice = ""
-        if snapshot.sandbox:
-            notice = (
-                "Modo de demonstração: você está editando uma cópia temporária do "
-                "conf.yaml padrão; o arquivo real não é lido nem alterado."
-            )
-        self.notice_label.setText(notice)
-        self.notice_label.setVisible(bool(notice))
+        self._show_status()
         for editor in self.editors.values():
             editor.set_placeholders(snapshot.keywords, snapshot.functions)
         self.error_banner.hide()
         self.content.show()
         self._set_text(snapshot.text, source="load")
         self._start_check()
+
+    def _show_load_failure(self) -> None:
+        """Shows why the file could not be opened, in the current language."""
+        error = self._load_error
+        lines = (
+            messages.describe_error(error)
+            if error is not None and not isinstance(error, RuntimeError)
+            else (self.tr("Unknown error."),)
+        )
+        self.error_banner.set_content(self.tr("Could not open conf.yaml"), lines)
+        self.error_banner.show()
+        self.content.hide()
+        self.state_label.setText(self.tr("Error reading the file"))
+
+    def _show_status(self) -> None:
+        """Sets the state line and the demo notice from the loaded snapshot."""
+        snapshot = self.snapshot
+        if snapshot is None:
+            return
+        count = len(snapshot.backups)
+        state = (
+            self.tr(
+                "The file does not exist yet; saving will create it from the "
+                "default template."
+            )
+            if not snapshot.exists
+            else self.tr("File in use by Konsave.")
+        )
+        backups = (
+            self.tr("%n backup(s) kept.", "", count)
+            if count
+            else self.tr("No backups yet.")
+        )
+        self.state_label.setText(f"{state} {backups}")
+        notice = ""
+        if snapshot.sandbox:
+            notice = self.tr(
+                "Demo mode: you are editing a temporary copy of the default "
+                "conf.yaml; the real file is neither read nor changed."
+            )
+        self.notice_label.setText(notice)
+        self.notice_label.setVisible(bool(notice))
+
+    def retranslate(self) -> None:
+        """Shows the status, the findings and the messages in the new language.
+
+        The edited text, the view and the selection are not touched.
+        """
+        self.error_banner.set_title(self.tr("Could not open conf.yaml"))
+        if self.loading or (self.snapshot is None and self._load_error is None):
+            self.state_label.setText(self.tr("Loading…"))
+        elif self._load_error is not None:
+            self._show_load_failure()
+        else:
+            self._show_status()
+        if self._check_error is not None:
+            self.problems.set_failure(messages.describe_error(self._check_error))
+        else:
+            self.problems.retranslate()
 
     # ------------------------------------------------------------ editing
 
@@ -349,6 +406,7 @@ class ConfigPage(
                 chosen = (select or {}).get(kind)
                 editor.set_groups(self.model.groups(kind), chosen)
         self.check = None
+        self._check_error = None
         self.problems.set_pending()
         self._sync_buttons()
 
@@ -364,7 +422,7 @@ class ConfigPage(
         except ConfigParseError as error:
             self.ctx.toasts.show_message(
                 "error",
-                "Não foi possível aplicar a edição",
+                self.tr("Could not apply the edit"),
                 " ".join(messages.describe_error(error)),
             )
             editor.set_groups(self.model.groups(kind))
@@ -423,6 +481,7 @@ class ConfigPage(
         self._check_token += 1
         token = self._check_token
         text = self._text
+        self._check_error = None
         self.problems.set_pending()
         self.ctx.controller.background(
             lambda: self.ctx.backend.check_config(text),
@@ -441,11 +500,14 @@ class ConfigPage(
             return
         if error is not None or value is None:
             self.check = None
-            self.problems.set_failure(
-                messages.describe_error(error) if error else ("Erro desconhecido.",)
-            )
+            self._check_error = error
+            if error is not None:
+                self.problems.set_failure(messages.describe_error(error))
+            else:
+                self.problems.set_failure((self.tr("Unknown error."),))
             self._sync_buttons()
             return
+        self._check_error = None
         self.check = value
         self._check_text = text
         extra: List[Problem] = []
@@ -513,11 +575,13 @@ class ConfigPage(
         assert self.snapshot is not None
         if self._lossy and not ConfirmDialog.ask(
             self.window(),
-            "Salvar sem os comentários?",
-            "Esta edição não pôde manter os comentários do arquivo. As chaves "
-            "desconhecidas continuam, mas os comentários serão perdidos (o "
-            "arquivo anterior fica guardado como backup).",
-            "Salvar assim mesmo",
+            self.tr("Save without the comments?"),
+            self.tr(
+                "This edit could not keep the file's comments. Unknown keys are "
+                "kept, but the comments will be lost (the previous file is kept "
+                "as a backup)."
+            ),
+            self.tr("Save anyway"),
             destructive=True,
         ):
             return False
@@ -536,18 +600,30 @@ class ConfigPage(
         if self.snapshot is None:
             return ("info", "", "")
         if self._busy():
-            return ("info", "Aguarde", "Outra operação ainda está em andamento.")
+            return (
+                "info",
+                self.tr("Wait"),
+                self.tr("Another operation is still in progress."),
+            )
         if self.check is None or self._check_text != self._text:
             self.validate_now()
-            return ("info", "Verificando o arquivo", "Salve de novo quando terminar.")
+            return (
+                "info",
+                self.tr("Checking the file"),
+                self.tr("Save again when it finishes."),
+            )
         if not self.check.ok:
             return (
                 "error",
-                "O conf.yaml tem erros e não foi salvo",
-                "Corrija os itens em vermelho abaixo. Nada foi gravado.",
+                self.tr("conf.yaml has errors and was not saved"),
+                self.tr("Fix the items in red below. Nothing was written."),
             )
         if not (self.is_dirty or not self.snapshot.exists):
-            return ("info", "Nada a salvar", "O arquivo já está como você o deixou.")
+            return (
+                "info",
+                self.tr("Nothing to save"),
+                self.tr("The file is already as you left it."),
+            )
         return None
 
     def discard(self, confirm: bool = True) -> bool:
@@ -563,10 +639,12 @@ class ConfigPage(
             return False
         if confirm and not ConfirmDialog.ask(
             self.window(),
-            "Descartar as alterações?",
-            "As alterações feitas aqui, ainda não salvas, serão perdidas. O arquivo "
-            "no disco não foi tocado.",
-            "Descartar",
+            self.tr("Discard the changes?"),
+            self.tr(
+                "The changes made here, not yet saved, will be lost. The file on "
+                "disk was not touched."
+            ),
+            self.tr("Discard"),
             destructive=True,
         ):
             return False
@@ -581,10 +659,12 @@ class ConfigPage(
             return True
         return ConfirmDialog.ask(
             parent,
-            "Sair sem salvar o conf.yaml?",
-            "Há alterações não salvas no editor. Se sair agora, elas serão "
-            "perdidas; nada foi gravado.",
-            "Sair sem salvar",
+            self.tr("Leave without saving conf.yaml?"),
+            self.tr(
+                "There are unsaved changes in the editor. If you leave now, they "
+                "will be lost; nothing was written."
+            ),
+            self.tr("Leave without saving"),
             destructive=True,
         )
 
@@ -605,7 +685,7 @@ class ConfigPage(
         if error is not None:
             self.ctx.toasts.show_message(
                 "error",
-                "Não foi possível listar os backups",
+                self.tr("Could not list the backups"),
                 " ".join(messages.describe_error(error)),
             )
             return
@@ -626,18 +706,18 @@ class ConfigPage(
         """
         if self.snapshot is None or self._busy():
             return False
-        lost = (
-            " As alterações não salvas no editor também serão perdidas."
-            if self.is_dirty
-            else ""
+        message = self.tr(
+            "The current conf.yaml will be replaced by the backup's contents. A "
+            "copy of the current file is kept as a new backup, so you can go "
+            "back."
         )
+        if self.is_dirty:
+            message += " " + self.tr("Unsaved changes in the editor will also be lost.")
         if not force and not ConfirmDialog.ask(
             self.window(),
-            "Restaurar este backup?",
-            "O conf.yaml atual será substituído pelo conteúdo do backup. Uma cópia "
-            "do arquivo atual é guardada como novo backup, então dá para voltar."
-            + lost,
-            "Restaurar",
+            self.tr("Restore this backup?"),
+            message,
+            self.tr("Restore"),
             destructive=True,
         ):
             return False
@@ -670,14 +750,16 @@ class ConfigPage(
         """Asks what to do when the file changed on disk after loading."""
         choice = ChoiceDialog.ask(
             self.window(),
-            "O conf.yaml mudou no disco",
-            "Outro programa alterou o arquivo depois que ele foi aberto aqui. "
-            "Você pode recarregar a versão do disco (descartando o que está no "
-            "editor), gravar mesmo assim (o arquivo do disco fica guardado como "
-            "backup) ou cancelar e decidir depois.",
+            self.tr("conf.yaml changed on disk"),
+            self.tr(
+                "Another program changed the file after it was opened here. You "
+                "can reload the version on disk (discarding what is in the "
+                "editor), write anyway (the file on disk is kept as a backup) or "
+                "cancel and decide later."
+            ),
             [
-                ("reload", "Recarregar do disco", "default"),
-                ("force", "Gravar mesmo assim", "danger-solid"),
+                ("reload", self.tr("Reload from disk"), "default"),
+                ("force", self.tr("Write anyway"), "danger-solid"),
             ],
         )
         if choice == "reload":

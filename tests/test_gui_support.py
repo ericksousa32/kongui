@@ -21,11 +21,15 @@ from kongui.gui import messages
 from kongui.gui.backend import FakeBackend, ProfileBackend, ServiceBackend
 from kongui.gui.state import Profile, ProfileStore
 from kongui.gui.tasks import InlineExecutor, ThreadExecutor
-from tests.gui_helpers import GuiTestCase, ManualExecutor
+from tests.gui_helpers import GuiTestCase, ManualExecutor, pin_language
 
 
 class MessagesTests(unittest.TestCase):
     """pt-BR texts for results and errors."""
+
+    def setUp(self):
+        super().setUp()
+        pin_language(self)
 
     def test_known_errors_have_friendly_texts(self):
         cases = {
@@ -80,7 +84,7 @@ class MessagesTests(unittest.TestCase):
     def test_every_operation_has_a_verb_and_a_success_text(self):
         for operation in ("save", "overwrite", "apply", "remove", "wipe_all"):
             with self.subTest(operation=operation):
-                self.assertIn(operation, messages.VERBS)
+                self.assertIn(operation, messages.FAILURE_TITLES)
                 self.assertIn(operation, messages.SUCCESS)
 
     def test_apply_has_a_hint_only_on_success(self):
@@ -91,6 +95,10 @@ class MessagesTests(unittest.TestCase):
 
 class FakeBackendTests(unittest.TestCase):
     """The in-memory backend follows the real rules."""
+
+    def setUp(self):
+        super().setUp()
+        pin_language(self)
 
     def test_capabilities(self):
         self.assertTrue(FakeBackend.capabilities.demo)

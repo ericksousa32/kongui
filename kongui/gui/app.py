@@ -10,6 +10,7 @@ from PySide6.QtCore import QStandardPaths
 from PySide6.QtWidgets import QApplication
 
 from kongui.core.errors import EngineLoadError, RunningAsRootError
+from kongui.gui import i18n
 from kongui.core.safety import ensure_not_root
 from kongui.gui.backend import FakeBackend, ProfileBackend, ServiceBackend
 from kongui.gui.main_window import MainWindow
@@ -87,11 +88,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = [arg for arg in args if arg != "--demo"]
     try:
         ensure_not_root()
-        backend = build_backend(demo)
-    except (RunningAsRootError, EngineLoadError) as error:
+    except RunningAsRootError as error:
         print(f"kongui: {error}", file=sys.stderr)
         return 1
+    backend: Optional[ProfileBackend] = None
+    if not demo:
+        # Nothing graphical exists yet if Konsave cannot be loaded.
+        try:
+            backend = build_backend(False)
+        except EngineLoadError as error:
+            print(f"kongui: {error}", file=sys.stderr)
+            return 1
     app = create_app(args)
-    window = MainWindow(AppSettings(settings_path()), backend)
+    settings = AppSettings(settings_path())
+    # The language is chosen before anything that makes texts (the demo data).
+    i18n.manager().follow(settings)
+    if backend is None:
+        backend = build_backend(True)
+    window = MainWindow(settings, backend)
     window.show()
     return app.exec()

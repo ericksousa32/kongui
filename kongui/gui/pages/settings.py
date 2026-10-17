@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from PySide6.QtCore import QT_TRANSLATE_NOOP
 from PySide6.QtWidgets import QLineEdit, QSpinBox, QVBoxLayout
 
-from kongui.gui import messages
+from kongui.gui import i18n, messages
 from kongui.gui.context import AppContext
 from kongui.gui.controller import Outcome
+from kongui.gui.i18n import SUPPORTED, Text, effective_language
 from kongui.gui.pages.base import Page
 from kongui.gui.theme import ThemeMode
 from kongui.gui.widgets.common import Button, Card, SegmentedControl, Separator
@@ -24,8 +26,10 @@ class SettingsPage(Page):  # pylint: disable=too-many-instance-attributes
     """Appearance, behaviour, notifications and demo data."""
 
     key = "settings"
-    title = "Configurações"
-    subtitle = "Aparência e comportamento do aplicativo"
+    TITLE = QT_TRANSLATE_NOOP("SettingsPage", "Settings")
+    SUBTITLE = QT_TRANSLATE_NOOP(
+        "SettingsPage", "Appearance and behavior of the application"
+    )
     icon_name = "settings"
 
     def __init__(self, ctx: AppContext) -> None:
@@ -37,27 +41,52 @@ class SettingsPage(Page):  # pylint: disable=too-many-instance-attributes
         super().__init__(ctx)
         settings = ctx.settings
 
-        appearance = self._group("Aparência")
+        language = self._group(lambda: self.tr("Language"))
+        # The names are written in their own language and never translated.
+        self.language_control = SegmentedControl(
+            [(code, name, None) for code, name in SUPPORTED.items()]
+        )
+        self.language_control.set_value(effective_language(settings.get("language")))
+        self.language_control.selected.connect(
+            lambda value: settings.set("language", value)
+        )
+        language.addWidget(
+            SettingRow(
+                lambda: self.tr("Interface language"),
+                lambda: self.tr(
+                    "Follows your system language until you choose one here. "
+                    "The change applies immediately."
+                ),
+                self.language_control,
+            )
+        )
+
+        appearance = self._group(lambda: self.tr("Appearance"))
         self.theme_control = SegmentedControl(
             [
-                (ThemeMode.SYSTEM.value, "Sistema", "monitor"),
-                (ThemeMode.LIGHT.value, "Claro", "sun"),
-                (ThemeMode.DARK.value, "Escuro", "moon"),
+                (ThemeMode.SYSTEM.value, lambda: self.tr("System"), "monitor"),
+                (ThemeMode.LIGHT.value, lambda: self.tr("Light"), "sun"),
+                (ThemeMode.DARK.value, lambda: self.tr("Dark"), "moon"),
             ]
         )
         self.theme_control.set_value(str(settings.get("theme")))
         self.theme_control.selected.connect(lambda value: settings.set("theme", value))
         appearance.addWidget(
             SettingRow(
-                "Tema",
-                "“Sistema” segue o esquema de cores e a cor de destaque do Plasma.",
+                lambda: self.tr("Theme"),
+                lambda: self.tr(
+                    "“System” follows the Plasma color scheme and accent color."
+                ),
                 self.theme_control,
             )
         )
 
-        profiles = self._group("Perfis")
+        profiles = self._group(lambda: self.tr("Profiles"))
         self.view_control = SegmentedControl(
-            [("grid", "Grade", "grid"), ("list", "Lista", "list")]
+            [
+                ("grid", lambda: self.tr("Grid"), "grid"),
+                ("list", lambda: self.tr("List"), "list"),
+            ]
         )
         self.view_control.set_value(str(settings.get("profiles_view")))
         self.view_control.selected.connect(
@@ -65,54 +94,77 @@ class SettingsPage(Page):  # pylint: disable=too-many-instance-attributes
         )
         profiles.addWidget(
             SettingRow(
-                "Exibição padrão", "Como a página Perfis é mostrada.", self.view_control
+                lambda: self.tr("Default view"),
+                lambda: self.tr("How the Profiles page is shown."),
+                self.view_control,
             )
         )
         self.folder_edit = QLineEdit(PROFILES_FOLDER)
         self.folder_edit.setReadOnly(True)
         self.folder_edit.setMinimumWidth(260)
-        self.folder_edit.setAccessibleName("Pasta de perfis")
+        i18n.bind(
+            self.folder_edit,
+            lambda: self.folder_edit.setAccessibleName(self.tr("Profiles folder")),
+        )
         profiles.addWidget(
             SettingRow(
-                "Pasta de perfis", "Somente leitura nesta versão.", self.folder_edit
+                lambda: self.tr("Profiles folder"),
+                lambda: self.tr("Read-only in this version."),
+                self.folder_edit,
             )
         )
 
-        safety = self._group("Cópias de segurança")
-        self.copies_button = Button("Gerenciar…", icon_name="clock")
+        safety = self._group(lambda: self.tr("Safety copies"))
+        self.copies_button = Button(lambda: self.tr("Manage…"), icon_name="clock")
         self.copies_button.clicked.connect(self.open_safety_copies)
         safety.addWidget(
             SettingRow(
-                "Antes de aplicar ou importar",
-                "Os arquivos que seriam sobrescritos são copiados antes. Restaure "
-                "ou apague as cópias aqui; elas nunca são apagadas sozinhas.",
+                lambda: self.tr("Before applying or importing"),
+                lambda: self.tr(
+                    "The files that would be overwritten are copied first. "
+                    "Restore or delete the copies here; they are never deleted "
+                    "automatically."
+                ),
                 self.copies_button,
             )
         )
         self._copies_dialog: Optional[SafetyCopiesDialog] = None
 
-        notifications = self._group("Notificações")
+        notifications = self._group(lambda: self.tr("Notifications"))
         self.seconds_spin = QSpinBox()
         self.seconds_spin.setRange(1, 60)
         self.seconds_spin.setSuffix(" s")
         self.seconds_spin.setValue(int(settings.get("toast_seconds")))  # type: ignore[call-overload]
-        self.seconds_spin.setAccessibleName("Duração das notificações")
+        i18n.bind(
+            self.seconds_spin,
+            lambda: self.seconds_spin.setAccessibleName(
+                self.tr("Notification duration")
+            ),
+        )
         self.seconds_spin.valueChanged.connect(
             lambda value: settings.set("toast_seconds", value)
         )
         notifications.addWidget(
             SettingRow(
-                "Duração", "Tempo que cada aviso fica na tela.", self.seconds_spin
+                lambda: self.tr("Duration"),
+                lambda: self.tr("How long each notice stays on screen."),
+                self.seconds_spin,
             )
         )
-        self.test_button = Button("Testar", icon_name="info")
+        self.test_button = Button(lambda: self.tr("Test"), icon_name="info")
         self.test_button.clicked.connect(
             lambda: ctx.toasts.show_message(
-                "info", "Notificação de teste", "É assim que os avisos aparecem."
+                "info",
+                self.tr("Test notification"),
+                self.tr("This is how notices appear."),
             )
         )
         notifications.addWidget(
-            SettingRow("Visualizar", "Mostra um aviso de exemplo.", self.test_button)
+            SettingRow(
+                lambda: self.tr("Preview"),
+                lambda: self.tr("Shows an example notice."),
+                self.test_button,
+            )
         )
 
         self.clear_button = None
@@ -123,7 +175,7 @@ class SettingsPage(Page):  # pylint: disable=too-many-instance-attributes
 
         settings.changed.connect(self._on_setting_changed)
 
-    def _group(self, title: str) -> QVBoxLayout:
+    def _group(self, title: Text) -> QVBoxLayout:
         """Adds a titled card to the page and returns its layout."""
         card = Card()
         layout = QVBoxLayout(card)
@@ -143,27 +195,33 @@ class SettingsPage(Page):  # pylint: disable=too-many-instance-attributes
             self.view_control.set_value(str(value))
         elif key == "toast_seconds":
             self.seconds_spin.setValue(int(value))  # type: ignore[call-overload]
+        elif key == "language":
+            self.language_control.set_value(effective_language(value))
 
     def _build_demo(self) -> None:
         """Adds the demonstration-data group (demo backend only)."""
-        demo = self._group("Dados de demonstração")
+        demo = self._group(lambda: self.tr("Demo data"))
         self.clear_button = Button(
-            "Esvaziar perfis", variant="danger", icon_name="trash"
+            lambda: self.tr("Empty profiles"), variant="danger", icon_name="trash"
         )
         self.clear_button.clicked.connect(self._clear_profiles)
-        self.reset_button = Button("Restaurar fictícios", icon_name="refresh")
+        self.reset_button = Button(
+            lambda: self.tr("Restore fictitious profiles"), icon_name="refresh"
+        )
         self.reset_button.clicked.connect(self._reset_profiles)
         demo.addWidget(
             SettingRow(
-                "Lista vazia",
-                "Remove todos os perfis fictícios para mostrar os estados vazios.",
+                lambda: self.tr("Empty list"),
+                lambda: self.tr(
+                    "Removes all fictitious profiles to show the empty states."
+                ),
                 self.clear_button,
             )
         )
         demo.addWidget(
             SettingRow(
-                "Dados originais",
-                "Volta aos sete perfis de exemplo.",
+                lambda: self.tr("Original data"),
+                lambda: self.tr("Goes back to the seven example profiles."),
                 self.reset_button,
             )
         )

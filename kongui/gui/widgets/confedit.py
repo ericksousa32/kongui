@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QCoreApplication, Qt, Signal
 from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QFrame,
@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (
 
 from kongui.core import Group, Problem
 from kongui.core.safety import is_plain_name
-from kongui.gui import messages
+from kongui.gui import i18n, messages
+from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.theme import get_theme
 from kongui.gui.validation import group_name_problem
 from kongui.gui.widgets.common import (
@@ -32,9 +33,6 @@ from kongui.gui.widgets.common import (
     repolish,
 )
 from kongui.gui.widgets.dialogs import GroupNameDialog
-
-#: Text put in a function placeholder when it is inserted, to be replaced.
-FUNCTION_SAMPLE = "texto"
 
 
 class SectionEditor(QWidget):  # pylint: disable=too-many-instance-attributes
@@ -50,26 +48,30 @@ class SectionEditor(QWidget):  # pylint: disable=too-many-instance-attributes
 
     changed = Signal(object)
 
-    def __init__(self, kind: str, intro: str) -> None:
+    def __init__(self, kind: str, intro: Text) -> None:
         """Creates the editor.
 
         Args:
             kind: ``"save"`` or ``"export"``.
-            intro: One or two sentences about what the section does.
+            intro: One or two sentences about what the section does (text or
+                function returning it).
         """
         super().__init__()
         self.kind = kind
         self.groups: Tuple[Group, ...] = ()
         self._updating = False
         self._resolved: Dict[str, str] = {}
+        self._placeholders: Tuple[Sequence[str], Sequence[str]] = ((), ())
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
         self.intro_label = Label(intro, "muted", wrap=True)
         outer.addWidget(self.intro_label)
         self.unavailable_label = Label(
-            "O texto do arquivo não pôde ser lido como formulário. Corrija os "
-            "problemas na aba “Texto” para voltar a editar por aqui.",
+            lambda: self.tr(
+                "The file text could not be read as a form. Fix the problems in "
+                "the “Text” tab to edit here again."
+            ),
             "danger",
             wrap=True,
         )
@@ -84,14 +86,21 @@ class SectionEditor(QWidget):  # pylint: disable=too-many-instance-attributes
         left_column = QVBoxLayout(left)
         left_column.setContentsMargins(14, 12, 14, 12)
         left_column.setSpacing(8)
-        left_column.addWidget(Label("Grupos", "h2"))
+        left_column.addWidget(Label(lambda: self.tr("Groups"), "h2"))
         self.group_list = QListWidget()
-        self.group_list.setAccessibleName(f"Grupos de {kind}")
+        i18n.bind(
+            self.group_list,
+            lambda: self.group_list.setAccessibleName(
+                self.tr("{kind} groups").format(kind=kind)
+            ),
+        )
         self.group_list.setMinimumWidth(190)
         left_column.addWidget(self.group_list, 1)
         buttons = QHBoxLayout()
-        self.add_button = Button("Adicionar", icon_name="plus")
-        self.remove_button = Button("Remover", variant="danger", icon_name="trash")
+        self.add_button = Button(lambda: self.tr("Add"), icon_name="plus")
+        self.remove_button = Button(
+            lambda: self.tr("Remove"), variant="danger", icon_name="trash"
+        )
         buttons.addWidget(self.add_button)
         buttons.addWidget(self.remove_button)
         left_column.addLayout(buttons)
@@ -102,7 +111,9 @@ class SectionEditor(QWidget):  # pylint: disable=too-many-instance-attributes
         self.form.setContentsMargins(18, 14, 18, 14)
         self.form.setSpacing(6)
         self.empty_label = Label(
-            "Nenhum grupo selecionado. Adicione um grupo ou escolha um da lista.",
+            lambda: self.tr(
+                "No group selected. Add a group or pick one from the list."
+            ),
             "muted",
             wrap=True,
         )
@@ -114,18 +125,20 @@ class SectionEditor(QWidget):  # pylint: disable=too-many-instance-attributes
         self.form.addWidget(self.detail, 1)
         row.addWidget(right, 1)
 
-        detail.addWidget(Label("Nome do grupo", "muted"))
+        detail.addWidget(Label(lambda: self.tr("Group name"), "muted"))
         self.name_edit = QLineEdit()
-        self.name_edit.setAccessibleName("Nome do grupo")
+        i18n.bind(
+            self.name_edit,
+            lambda: self.name_edit.setAccessibleName(self.tr("Group name")),
+        )
         detail.addWidget(self.name_edit)
         self.name_error = Label("", "danger", wrap=True)
         self.name_error.hide()
         detail.addWidget(self.name_error)
 
-        detail.addWidget(Label("Pasta de origem (location)", "muted"))
+        detail.addWidget(Label(lambda: self.tr("Source folder (location)"), "muted"))
         self.location_edit = QLineEdit()
-        self.location_edit.setAccessibleName("Pasta de origem")
-        self.location_edit.setPlaceholderText("Ex.: $HOME/.config")
+        i18n.bind(self.location_edit, self._retranslate_location)
         detail.addWidget(self.location_edit)
         self.placeholder_row = QHBoxLayout()
         self.placeholder_row.setSpacing(4)
@@ -138,15 +151,18 @@ class SectionEditor(QWidget):  # pylint: disable=too-many-instance-attributes
         detail.addWidget(self.resolved_label)
 
         detail.addWidget(Separator())
-        detail.addWidget(Label("Arquivos e pastas (entries)", "muted"))
+        detail.addWidget(Label(lambda: self.tr("Files and folders (entries)"), "muted"))
         self.entries_list = QListWidget()
-        self.entries_list.setAccessibleName("Itens do grupo")
+        i18n.bind(
+            self.entries_list,
+            lambda: self.entries_list.setAccessibleName(self.tr("Group items")),
+        )
         self.entries_list.setMinimumHeight(120)
         detail.addWidget(self.entries_list, 1)
         entry_buttons = QHBoxLayout()
-        self.entry_add_button = Button("Adicionar item", icon_name="plus")
+        self.entry_add_button = Button(lambda: self.tr("Add item"), icon_name="plus")
         self.entry_remove_button = Button(
-            "Remover item", variant="danger", icon_name="trash"
+            lambda: self.tr("Remove item"), variant="danger", icon_name="trash"
         )
         entry_buttons.addWidget(self.entry_add_button)
         entry_buttons.addWidget(self.entry_remove_button)
@@ -154,8 +170,10 @@ class SectionEditor(QWidget):  # pylint: disable=too-many-instance-attributes
         detail.addLayout(entry_buttons)
         detail.addWidget(
             Label(
-                "Cada item é o nome de um arquivo ou pasta dentro da pasta de "
-                "origem. Duplo clique edita; não use “/”.",
+                lambda: self.tr(
+                    "Each item is the name of a file or folder inside the source "
+                    "folder. Double-click to edit; do not use “/”."
+                ),
                 "caption",
                 wrap=True,
             )
@@ -172,8 +190,32 @@ class SectionEditor(QWidget):  # pylint: disable=too-many-instance-attributes
         self.entry_remove_button.clicked.connect(self.remove_current_entry)
         self.entries_list.currentRowChanged.connect(self._sync_buttons)
         self._show_detail(False)
+        i18n.bind(self, self._retranslate, now=False)
 
     # -------------------------------------------------------------- content
+
+    def _retranslate_location(self) -> None:
+        """Sets the texts of the location field in the current language."""
+        self.location_edit.setAccessibleName(self.tr("Source folder"))
+        self.location_edit.setPlaceholderText(self.tr("E.g.: $HOME/.config"))
+
+    def _retranslate(self) -> None:
+        """Rebuilds what was made from language-dependent text.
+
+        The typed values, the selection and the groups are not touched.
+        """
+        keywords, functions = self._placeholders
+        self.set_placeholders(keywords, functions)
+        self._show_resolved()
+        for row in range(self.entries_list.count()):
+            self._paint_entry(self.entries_list.item(row))
+        if self.name_error.isVisible():
+            self._preview_name(self.name_edit.text())
+
+    @staticmethod
+    def function_sample() -> str:
+        """Text put in a function placeholder when it is inserted, to be replaced."""
+        return QCoreApplication.translate("SectionEditor", "text")
 
     def set_placeholders(
         self, keywords: Sequence[str], functions: Sequence[str]
@@ -184,22 +226,30 @@ class SectionEditor(QWidget):  # pylint: disable=too-many-instance-attributes
             keywords: Names with their ``$`` (``$HOME``…).
             functions: Function names (``ENDS_WITH``…).
         """
+        self._placeholders = (tuple(keywords), tuple(functions))
         clear_layout(self.placeholder_row)
         clear_layout(self.function_row)
         self.placeholder_buttons = {}
-        self.placeholder_row.addWidget(Label("Inserir:", "caption"))
-        self.function_row.addWidget(Label("Funções:", "caption"))
+        self.placeholder_row.addWidget(Label(self.tr("Insert:"), "caption"))
+        self.function_row.addWidget(Label(self.tr("Functions:"), "caption"))
+        sample = self.function_sample()
         for token in keywords:
-            button = Button(token, variant="ghost", tooltip=f"Inserir {token}")
+            button = Button(
+                token,
+                variant="ghost",
+                tooltip=self.tr("Insert {token}").format(token=token),
+            )
             button.clicked.connect(lambda _c=False, t=token: self.insert_text(t))
             self.placeholder_row.addWidget(button)
             self.placeholder_buttons[token] = button
         for name in functions:
-            template = f"${{{name}='{FUNCTION_SAMPLE}'}}"
+            template = f"${{{name}='{sample}'}}"
             button = Button(
                 f"${{{name}}}",
                 variant="ghost",
-                tooltip=f"Inserir {template} (troque “{FUNCTION_SAMPLE}” pelo texto)",
+                tooltip=self.tr(
+                    "Insert {template} (replace “{sample}” with your text)"
+                ).format(template=template, sample=sample),
             )
             button.clicked.connect(lambda _c=False, t=template: self.insert_text(t))
             self.function_row.addWidget(button)
@@ -346,14 +396,21 @@ class SectionEditor(QWidget):  # pylint: disable=too-many-instance-attributes
             item.setToolTip("")
         else:
             item.setForeground(QBrush(tokens.danger))
-            item.setToolTip("Use só o nome do arquivo ou pasta, sem “/”.")
+            item.setToolTip(
+                QCoreApplication.translate(
+                    "SectionEditor",
+                    "Use only the name of the file or folder, without “/”.",
+                )
+            )
 
     def _show_resolved(self) -> None:
         """Shows the resolved location of the selected group."""
         name = self.current_name()
         text = self._resolved.get(name or "")
         self.resolved_label.setText(
-            f"O Konsave resolve esta pasta como: {text}" if text else ""
+            self.tr("Konsave resolves this folder as: {path}").format(path=text)
+            if text
+            else ""
         )
         self.resolved_label.setVisible(bool(text))
 
@@ -528,10 +585,8 @@ class ProblemRow(QFrame):
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 4, 0, 4)
         row.setSpacing(10)
-        badge = Badge(
-            "Erro" if problem.is_error else "Aviso",
-            "danger" if problem.is_error else "warning",
-        )
+        kind = self.tr("Error") if problem.is_error else self.tr("Warning")
+        badge = Badge(kind, "danger" if problem.is_error else "warning")
         badge.setFixedWidth(52)
         row.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         column = QVBoxLayout()
@@ -541,11 +596,11 @@ class ProblemRow(QFrame):
         column.addWidget(self.place_label)
         column.addWidget(self.text_label)
         row.addLayout(column, 1)
-        self.goto_button = Button("Ir para", variant="ghost", icon_name="edit")
+        self.goto_button = Button(self.tr("Go to"), variant="ghost", icon_name="edit")
         self.goto_button.clicked.connect(lambda: self.goto.emit(problem))
         row.addWidget(self.goto_button, 0, Qt.AlignmentFlag.AlignTop)
         self.setAccessibleName(
-            f"{'Erro' if problem.is_error else 'Aviso'}: {self.text_label.text()}"
+            self.tr("{kind}: {text}").format(kind=kind, text=self.text_label.text())
         )
 
 
@@ -564,12 +619,30 @@ class ProblemList(Card):
         column = QVBoxLayout(self)
         column.setContentsMargins(18, 14, 18, 14)
         column.setSpacing(6)
-        self.summary_label = Label("Ainda não verificado.", "h2")
+        self._summary: Text = lambda: self.tr("Not checked yet.")
+        self.summary_label = Label(self._summary_text, "h2")
         column.addWidget(self.summary_label)
         self._rows = QVBoxLayout()
         self._rows.setSpacing(0)
         column.addLayout(self._rows)
         self.problems: Tuple[Problem, ...] = ()
+        i18n.bind(self, self.retranslate, now=False)
+
+    def _summary_text(self) -> str:
+        """Current headline in the current language."""
+        return resolve_text(self._summary)
+
+    def _set_summary(self, summary: Text) -> None:
+        """Sets the headline, kept as a function so it follows the language."""
+        self._summary = summary
+        self.summary_label.setText(resolve_text(summary))
+
+    def retranslate(self) -> None:
+        """Rebuilds the rows in the current language."""
+        if self.problems:
+            self.set_problems(self.problems)
+        else:
+            self.summary_label.setText(self._summary_text())
 
     def rows(self) -> List[ProblemRow]:
         """The rows currently shown."""
@@ -579,17 +652,37 @@ class ProblemList(Card):
             if isinstance(self._rows.itemAt(i).widget(), ProblemRow)
         ]
 
-    def set_pending(self, text: str = "Verificando…") -> None:
-        """Marks the list as out of date while a check runs."""
-        self.summary_label.setText(text)
+    def set_pending(self, text: Optional[str] = None) -> None:
+        """Marks the list as out of date while a check runs.
+
+        Args:
+            text: Headline; defaults to "Checking…".
+        """
+        if text is None:
+            self._set_summary(lambda: self.tr("Checking…"))
+        else:
+            self._set_summary(text)
 
     def set_failure(self, lines: Sequence[str]) -> None:
         """Shows that the check itself could not run."""
         self.problems = ()
         clear_layout(self._rows)
-        self.summary_label.setText("Não foi possível verificar o arquivo")
+        self._set_summary(lambda: self.tr("The file could not be checked"))
         for line in lines:
             self._rows.addWidget(Label(line, "muted", wrap=True))
+
+    def _count_summary(self, errors: int, warnings: int) -> str:
+        """Headline such as "2 errors and 1 warning"."""
+        parts = []
+        if errors:
+            parts.append(self.tr("%n error(s)", "", errors))
+        if warnings:
+            parts.append(self.tr("%n warning(s)", "", warnings))
+        if len(parts) == 2:
+            return self.tr("{errors} and {warnings}").format(
+                errors=parts[0], warnings=parts[1]
+            )
+        return parts[0]
 
     def set_problems(self, problems: Sequence[Problem]) -> None:
         """Shows the findings, errors first and in file order.
@@ -605,14 +698,9 @@ class ProblemList(Card):
         errors = sum(1 for p in ordered if p.is_error)
         warnings = len(ordered) - errors
         if not ordered:
-            self.summary_label.setText("Nenhum problema encontrado")
+            self._set_summary(lambda: self.tr("No problems found"))
         else:
-            parts = []
-            if errors:
-                parts.append(f"{errors} {'erro' if errors == 1 else 'erros'}")
-            if warnings:
-                parts.append(f"{warnings} {'aviso' if warnings == 1 else 'avisos'}")
-            self.summary_label.setText(" e ".join(parts))
+            self._set_summary(lambda: self._count_summary(errors, warnings))
         for problem in ordered:
             row = ProblemRow(problem)
             row.goto.connect(self.goto)

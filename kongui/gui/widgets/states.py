@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from kongui.gui import icons
+from kongui.gui.i18n import Text
 from kongui.gui.theme import get_theme
 from kongui.gui.widgets.common import Button, Label
 
@@ -24,18 +25,19 @@ class EmptyState(QWidget):
     def __init__(
         self,
         icon_name: str,
-        title: str,
-        hint: str,
-        action_text: Optional[str] = None,
+        title: Text,
+        hint: Text,
+        action_text: Optional[Text] = None,
         action_icon: Optional[str] = None,
     ) -> None:
         """Creates the placeholder.
 
         Args:
             icon_name: Illustration icon.
-            title: Short headline.
-            hint: One or two sentences explaining what to do.
-            action_text: Label of the action button; no button if ``None``.
+            title: Short headline (text or function returning it).
+            hint: One or two sentences explaining what to do (idem).
+            action_text: Label of the action button (idem); no button if
+                ``None``.
             action_icon: Icon of the action button.
         """
         super().__init__()

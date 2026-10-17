@@ -26,6 +26,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from PySide6.QtCore import QCoreApplication as Q
+
 from kongui.core import (
     ArchiveExistsError,
     BackupInfo,
@@ -47,7 +49,8 @@ from kongui.core import (
 from kongui.core import KEPT_PREFIX
 from kongui.core.engine import FALLBACK_VERSION
 from kongui.core.safety import validate_archive_name, validate_profile_name
-from kongui.gui.mock_data import SECTIONS, demo_profiles
+from kongui.gui.mock_data import demo_profiles
+from kongui.gui.mock_data import sections as demo_sections
 from kongui.gui.state import Profile
 
 
@@ -660,6 +663,10 @@ class ServiceBackend(ProfileBackend):
             shutil.rmtree(staging, ignore_errors=True)
 
 
+#: ``FakeBackend`` argument meaning "the active fictitious profile".
+DEMO_ACTIVE = ""
+
+
 class FakeBackend(ProfileBackend):
     """In-memory profiles for demo mode and tests.
 
@@ -679,7 +686,7 @@ class FakeBackend(ProfileBackend):
         profiles: Optional[List[Profile]] = None,
         *,
         latency: float = 0.0,
-        active: Optional[str] = "Trabalho",
+        active: Optional[str] = DEMO_ACTIVE,
         archives: Optional[List[str]] = None,
     ) -> None:
         """Creates the backend.
@@ -687,7 +694,8 @@ class FakeBackend(ProfileBackend):
         Args:
             profiles: Initial profiles; the fictitious ones by default.
             latency: Seconds every call sleeps, to make loading states visible.
-            active: Name reported by :attr:`initial_active`.
+            active: Name reported by :attr:`initial_active`; by default the
+                active fictitious profile (the first one), ``None`` for none.
             archives: Paths of archives that "already exist" in the fictitious
                 file system (``~/Downloads/Minimalista.knsv`` by default).
         """
@@ -698,7 +706,9 @@ class FakeBackend(ProfileBackend):
         ]
         self._items: Dict[str, Profile] = {item.name: item for item in self._initial}
         self._latency = latency
-        self._active = active
+        self._active = (
+            Q.translate("mock_data", "Work") if active == DEMO_ACTIVE else active
+        )
         self._failures: Dict[str, BaseException] = {}
         self.calls: List[Tuple[str, str]] = []
         self.blocked: set = set()
@@ -816,10 +826,10 @@ class FakeBackend(ProfileBackend):
         with self._lock:
             if name in self._items:
                 raise ProfileExistsError(f"profile already exists: {name}")
-            chosen = tuple(sections) or SECTIONS[:5]
+            chosen = tuple(sections) or demo_sections()[:5]
             self._items[name] = Profile(
                 name,
-                description or "Sem descrição.",
+                description or Q.translate("FakeBackend", "No description."),
                 chosen,
                 round(4.0 + 7.3 * len(chosen), 1),
                 datetime.now(),
@@ -878,9 +888,15 @@ class FakeBackend(ProfileBackend):
             original = self._items.get(name)
             if original is None:
                 raise ProfileNotFoundError(f"profile not found: {name}")
-            candidate, counter = f"{name} (cópia)", 2
+            candidate, counter = (
+                Q.translate("FakeBackend", "{name} (copy)").format(name=name),
+                2,
+            )
             while candidate in self._items:
-                candidate, counter = f"{name} (cópia {counter})", counter + 1
+                candidate = Q.translate("FakeBackend", "{name} (copy {number})").format(
+                    name=name, number=counter
+                )
+                counter += 1
             self._items[candidate] = replace(
                 original, name=candidate, modified=datetime.now()
             )
@@ -923,7 +939,13 @@ class FakeBackend(ProfileBackend):
         with self._lock:
             taken = name in self._items
         return ArchiveInfo(
-            path, name, size, tuple(SECTIONS[:4]), (SECTIONS[4],), (), taken
+            path,
+            name,
+            size,
+            tuple(demo_sections()[:4]),
+            (demo_sections()[4],),
+            (),
+            taken,
         )
 
     def export_profile(
@@ -975,7 +997,9 @@ class FakeBackend(ProfileBackend):
             sections = tuple(info.save_sections) + tuple(info.export_sections)
             self._items[target] = Profile(
                 target,
-                f"Importado de {os.path.basename(path)}.",
+                Q.translate("FakeBackend", "Imported from {file}.").format(
+                    file=os.path.basename(path)
+                ),
                 sections,
                 max(info.size_mb, 0.1),
                 datetime.now(),

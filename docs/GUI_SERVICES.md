@@ -5,9 +5,9 @@ KonGUI's `ProfileService` (and, through it, the original Konsave). The code in
 `konsave/` was **not changed**, except for the cross-process lock described in
 [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md).
 
-Note on interface texts: the interface is currently in Brazilian Portuguese.
-Labels and messages are quoted below as they appear on screen, with an English
-gloss in parentheses where needed.
+Note on interface texts: the interface is available in English and Brazilian
+Portuguese. Labels and messages are quoted below as they appear in the Portuguese
+interface, with an English gloss in parentheses where needed.
 
 ## 1. How to use
 
@@ -45,7 +45,7 @@ Page ──► ProfileActions (dialogs) ──► ProfileController ──► Ex
   orphaned.
 * `OutcomeNotifier` (`actions.py`) shows the notice (errors stay until closed) and
   records the activity.
-* `messages.py` translates results and exceptions to pt-BR. Unknown exceptions
+* `messages.py` translates results and exceptions to the language in use. Unknown exceptions
   appear with their type, so that a bug does not stay hidden.
 
 ## 3. The six operations
@@ -139,7 +139,7 @@ unique name is `name_fDD-MM-YYYY:HH-MM-SS`; the core's is `name-2`.
 ### Errors
 
 Permission denied, a missing file or folder and other `OSError`s become messages in
-pt-BR (and are not logged as bugs). Export failures stay on screen until closed and
+the language in use (and are not logged as bugs). Export failures stay on screen until closed and
 the form stays filled in.
 
 ## 5. Tests

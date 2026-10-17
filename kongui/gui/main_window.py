@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kongui.gui import messages
+from kongui.gui import i18n, messages
 from kongui.gui.actions import OutcomeNotifier
 from kongui.gui.backend import FakeBackend, ProfileBackend
 from kongui.gui.context import AppContext
@@ -73,6 +73,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 600)
         self.resize(1140, 740)
         self.settings = settings or AppSettings()
+        self.language = i18n.manager()
+        self.language.follow(self.settings)
         self.theme = get_theme()
         self.theme.set_mode(ThemeMode.parse(self.settings.get("theme")))
 
@@ -125,7 +127,12 @@ class MainWindow(QMainWindow):
             page = page_class(self.context)
             self.pages[page.key] = page
             self.stack.addWidget(page)
-            self.sidebar.add_item(page.key, page.title, page.icon_name, f"Ctrl+{index}")
+            self.sidebar.add_item(
+                page.key,
+                lambda page=page: page.title,  # type: ignore[misc]
+                page.icon_name,
+                f"Ctrl+{index}",
+            )
             QShortcut(
                 QKeySequence(f"Ctrl+{index}"),
                 self,
@@ -139,8 +146,23 @@ class MainWindow(QMainWindow):
         self.notifier = OutcomeNotifier(self.context)
         self.controller.state_changed.connect(self._sync_busy)
         self.wait_banner.cancel_requested.connect(self.controller.cancel_wait)
+        i18n.bind(self, self._retranslate, now=False)
         self.show_page("dashboard")
         QTimer.singleShot(0, self.controller.refresh)
+
+    def _retranslate(self) -> None:
+        """Updates the window texts after a language change.
+
+        The sidebar buttons, the pages and the toasts translate themselves; the
+        top bar and the window title belong to the page being shown. The wait
+        banner is rebuilt from the controller state.
+        """
+        page = self.stack.currentWidget()
+        if page is None:
+            return
+        self.top_bar.set_page(page.title, page.subtitle, page.header_actions())  # type: ignore[attr-defined]
+        self.setWindowTitle(f"{page.title} — KonGUI")  # type: ignore[attr-defined]
+        self._sync_busy()
 
     def _sync_busy(self) -> None:
         """Shows the busy bar while an operation is running."""
@@ -164,13 +186,17 @@ class MainWindow(QMainWindow):
         """
         if self.controller.busy:
             text = (
-                "Cancele a espera ou aguarde a outra operação terminar antes de "
-                "fechar."
+                self.tr(
+                    "Cancel the wait or wait for the other operation to finish "
+                    "before closing."
+                )
                 if self.controller.waiting
-                else "Espere terminar antes de fechar: fechar agora poderia deixar "
-                "arquivos pela metade."
+                else self.tr(
+                    "Wait for it to finish before closing: closing now could "
+                    "leave files half-written."
+                )
             )
-            self.toasts.show_message("warning", "Operação em andamento", text)
+            self.toasts.show_message("warning", self.tr("Operation in progress"), text)
             event.ignore()
             return
         for page in self.pages.values():

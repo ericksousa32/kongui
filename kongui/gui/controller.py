@@ -19,7 +19,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QObject, Signal, Slot
 
 from kongui.core import (
     ConfirmationRequiredError,
@@ -125,7 +125,7 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         self._store = store
         self._settings = settings
         self._state = LoadState.IDLE
-        self._error: Tuple[str, ...] = ()
+        self._error_cause: Optional[BaseException] = None
         self._current: Optional[Tuple[str, str]] = None
         self._waiting: Optional[Dict[str, Any]] = None
         self._cancelling = False
@@ -154,8 +154,14 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
 
     @property
     def error(self) -> Tuple[str, ...]:
-        """Why the last listing failed (empty unless ``state`` is ``ERROR``)."""
-        return self._error
+        """Why the last listing failed (empty unless ``state`` is ``ERROR``).
+
+        The lines are written when read, in the interface language of that
+        moment, so a language switch shows an open error in the new language.
+        """
+        if self._error_cause is None:
+            return ()
+        return messages.describe_error(self._error_cause)
 
     @property
     def busy(self) -> bool:
@@ -395,7 +401,11 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
             return replace(
                 result,
                 warnings=result.warnings
-                + (f"O perfil foi importado, mas não foi aplicado: {reason}",),
+                + (
+                    self.tr(
+                        "The profile was imported but not applied: {reason}"
+                    ).format(reason=reason),
+                ),
             )
 
         if self.busy:
@@ -622,14 +632,14 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         if profiles is not None:
             self._after_listing(operation, name, result, profiles)
             self._state = LoadState.READY
-            self._error = ()
+            self._error_cause = None
         elif operation == "list" and error is not None:
             self._state = LoadState.ERROR
-            self._error = messages.describe_error(error)
+            self._error_cause = error
         elif self._state is LoadState.LOADING and operation not in _CONFIG_OPERATIONS:
             self._state = LoadState.READY if self._store.profiles() else LoadState.ERROR
             if self._state is LoadState.ERROR:
-                self._error = messages.describe_error(error) if error else ()
+                self._error_cause = error
         if (
             not name
             and result is not None
@@ -701,7 +711,11 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
             details.append(str(result.path))
         if operation in ("save_config", "restore_config") and result is not None:
             if result.backup is not None:
-                details.append(f"Cópia do arquivo anterior: {result.backup.name}")
+                details.append(
+                    QCoreApplication.translate(
+                        "ProfileController", "Copy of the previous file: {name}"
+                    ).format(name=result.backup.name)
+                )
         hint = messages.outcome_hint(operation, True)
         if hint:
             details.append(hint)
@@ -709,8 +723,10 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
             details += [messages.describe_note(line) for line in result.warnings]
         if list_error is not None:
             details.append(
-                "A lista de perfis não pôde ser atualizada: "
-                + " ".join(messages.describe_error(list_error))
+                QCoreApplication.translate(
+                    "ProfileController",
+                    "The profile list could not be refreshed: {reason}",
+                ).format(reason=" ".join(messages.describe_error(list_error)))
             )
         return Outcome(
             operation,

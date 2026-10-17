@@ -48,7 +48,10 @@ class Toast(QFrame):
             column.addWidget(Label(text, "muted", wrap=True))
         row.addLayout(column, 1)
         self.close_button = Button(
-            variant="icon", icon_name="x", tooltip="Fechar", icon_size=14
+            variant="icon",
+            icon_name="x",
+            tooltip=lambda: self.tr("Close"),
+            icon_size=14,
         )
         row.addWidget(self.close_button, 0)
         get_theme().changed.connect(self._refresh)

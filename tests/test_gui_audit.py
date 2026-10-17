@@ -8,7 +8,13 @@ from unittest import mock
 
 import yaml
 
-from tests.gui_helpers import HAVE_QT, GuiTestCase, ManualExecutor, WindowCase
+from tests.gui_helpers import (
+    HAVE_QT,
+    GuiTestCase,
+    ManualExecutor,
+    WindowCase,
+    pin_language,
+)
 from kongui.gui.widgets.dialogs import ChoiceDialog, ConfirmDialog
 from tests.helpers import really_root
 
@@ -243,6 +249,10 @@ class ExportFolderCheckTests(GuiTestCase):
 
 class StaleImportFolderMessageTests(unittest.TestCase):
     """The message told the user to delete a folder without saying which."""
+
+    def setUp(self):
+        super().setUp()
+        pin_language(self)
 
     def test_the_folder_is_named(self):
         from kongui.core import ValidationError

@@ -5,9 +5,9 @@ below Settings) edits `~/.config/konsave/conf.yaml`: the `save` and `export`
 sections separately (group names, source folders, items, placeholders) and the
 whole text, always validating with Konsave's original code before writing.
 
-Note on interface texts: the interface is currently in Brazilian Portuguese.
-Labels and messages are quoted below as they appear on screen, with an English
-gloss in parentheses where needed.
+Note on interface texts: the interface is available in English and Brazilian
+Portuguese. Labels and messages are quoted below as they appear in the Portuguese
+interface, with an English gloss in parentheses where needed.
 
 ## 1. Audit: what the file is and how Konsave reads it
 
@@ -111,7 +111,7 @@ end).
 * **Continuous validation**: on every edit the text is validated in the background
   by `ConfigService.validate_text` (the original reader). The problems panel lists
   errors and warnings with **line, column, path** (`save.configs.entries[3]`) and
-  the explanation in pt-BR; **Ir para** (Go to) opens the right field (or the line,
+  the explanation in the language in use; **Ir para** (Go to) opens the right field (or the line,
   in the text).
 * **Salvar** (Save) is enabled only when the check of the current text has
   finished and has **no errors**. The service validates again and refuses if there

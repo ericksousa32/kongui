@@ -8,9 +8,10 @@ wiring, the loading states and the limitations are in
 changed, except for the cross-process lock listed in
 [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md).
 
-Note on interface texts: the interface is currently in Brazilian Portuguese (fixed
-in the code; internationalization is a future step). Labels are quoted below as
-they appear on screen, with an English gloss in parentheses where needed.
+Note on interface texts: the interface is available in English and Brazilian
+Portuguese (see [section 8](#8-language-i18n)). Labels are quoted below as they
+appear in the Portuguese interface, with an English gloss in parentheses where
+needed.
 
 ## 1. How to run
 
@@ -49,13 +50,14 @@ size of 900 × 600.
 | `backend.py` | `ProfileBackend`, `ServiceBackend` (real services) and `FakeBackend` (memory); the only GUI module that imports the engine and the services |
 | `controller.py` | `ProfileController`: runs one operation at a time, loading state, updates the `ProfileStore` |
 | `tasks.py` | executors: `ThreadExecutor` (worker thread), `InlineExecutor` (tests) |
-| `messages.py` | pt-BR success and error texts |
+| `i18n.py` | interface language: detection, `QTranslator` loading, live switching (`translations/*.ts` and `*.qm`) |
+| `messages.py` | success and error texts (English source, translated through `i18n`) |
 | `mock_data.py` | **all** the fictitious data (seven profiles, six events, list of sections) |
 | `actions.py` | confirmation dialogs and calls to the controller; notice and activity for each result |
 | `validation.py` | name rules (reuses `kongui.core.safety.validate_profile_name`) |
 | `theme.py` | color tokens, Qt palette, style sheet and `ThemeManager` |
 | `icons.py` | SVG icons drawn in code and colored by the theme |
-| `formatting.py` | sizes, relative dates and plurals in pt-BR |
+| `formatting.py` | sizes, dates and relative dates in the language in use |
 | `widgets/` | reusable pieces: `common` (button, label, badge, card, segmented control), `grid` (adaptive grid), `cards`, `shell` (side and top bars), `states` (empty state), `search`, `toast`, `dialogs`, `dropzone`, `rows`, `feedback` (busy bar, wait banner and error strip), `confedit` (section editor and problems list for `conf.yaml`) |
 | `pages/` | one class per page, on top of `pages/base.py` |
 
@@ -92,6 +94,7 @@ If PySide6 is not installed, they are skipped.
 | `tests.test_gui_startup` | opening, fixed structure, icons, preferences, `main` entry point, isolation from Konsave |
 | `tests.test_gui_navigation` | side bar, top bar, shortcuts, theme switch |
 | `tests.test_gui_widgets` | adaptive grid, notices, dialogs, drop area, theme, formatting |
+| `tests.test_i18n` | language detection and saved choice, first run per locale, persistence after restart, live switching (page and typed data kept), later dialogs / notices / errors, fallback, plurals and formats, completeness and freshness of the `.ts` / `.qm` files, no Portuguese literals in the code |
 | `tests.test_gui_interaction` | each page: search, sorting, apply, remove, export, import, settings |
 | `tests.test_gui_operations` | the six operations, one by one, in the interface (in-memory backend): loading, success, error, confirmation |
 | `tests.test_gui_real_backend` | the six operations on the real services, in a temporary `$HOME` |
@@ -125,6 +128,73 @@ profile "Minimalista" without checking "Substituir" (Replace).
   verification.
 * Accessibility: accessible names, keyboard focus and contrast were handled, but
   there was no test with a screen reader.
-* pt-BR texts are fixed in the code; internationalization (`tr`) is missing.
+* Language limits are listed in [section 8](#8-language-i18n).
 * The window depends on its own icon style; system theme icons
   (`QIcon.fromTheme`) are a future option.
+
+## 8. Language (i18n)
+
+**Source language.** Every text in the code is English. `kongui/gui/translations/`
+holds `kongui_en.ts` / `kongui_pt_BR.ts` (Qt Linguist sources) and the compiled
+`kongui_en.qm` / `kongui_pt_BR.qm` (committed, and packaged through `package_data`
+in `setup.py`). English is also the fallback: a text with no translation, a missing
+or unreadable `.qm`, or an unknown language code shows the English source and never
+raises.
+
+**Which language is used** (`i18n.py`):
+
+* The `language` key of KonGUI's own settings (`kongui-gui.ini`, never Konsave's
+  files). The empty value means "no preference"; valid values are `en` and `pt_BR`.
+  Anything else is read as "no preference".
+* With no preference, `QLocale.system().name()` decides: exactly `pt_BR` (with
+  `.UTF-8` or `@modifier` stripped) gives Portuguese, any other locale, including
+  `pt_PT` and `pt`, gives English. Detection is **never written** to the settings,
+  so an explicit choice is the only thing that is stored and it is never overwritten.
+
+**Switching.** `LanguageManager` (one per process, `i18n.manager()`) replaces the
+`QTranslator`s (KonGUI's and Qt's own `qtbase_<lang>`), sets `QLocale` and sends
+`QEvent.LanguageChange` to every top-level widget. Qt does not deliver the
+application-wide event reliably, hence the explicit broadcast. Widgets refresh without being
+recreated:
+
+* `Label`, `Badge` and `Button` accept a text or a function returning the text; the
+  function is evaluated again on each change.
+* `i18n.bind(owner, apply)` runs `apply` on `LanguageChange` for anything else.
+* `Page` has `TITLE` / `SUBTITLE` and a `retranslate()` hook; pages with built
+  content (profile cards, counts, problem list, status line) rebuild it there. The
+  current page, search text, sort order, form fields and the YAML text are kept.
+* Dialogs are created per use, so they are always in the current language.
+
+**Writing texts.** Use `self.tr("...")` (or `QCoreApplication.translate("Context",
+"...")` where there is no `self`) with a *literal* context and text, because
+`pyside6-lupdate` only reads literals. Messages are complete sentences with named
+fields (`"Apply “{name}”?".format(name=name)`), never concatenated fragments. Plurals
+use Qt's `%n` form (`self.tr("%n profile(s)", "", count)`). Texts defined at import
+time use `QT_TRANSLATE_NOOP`. Not translated: proper names (KonGUI, Konsave, Plasma),
+commands, paths, file extensions, section keys (`save`, `export`) and technical values.
+
+**Updating the catalogs.** After adding or changing a text run `make translations`
+(`pyside6-lupdate` then `pyside6-lrelease`), translate the new messages left
+`unfinished` in `kongui_pt_BR.ts`, run it again and commit the `.ts` and `.qm`.
+`tests.test_i18n` fails if a `.ts` file lacks a text of the code, if a `.qm` is not
+what its `.ts` compiles to, if a message is unfinished or lost a `{field}` / `%n`, or
+if a Portuguese literal appears in the code. To add a language, add it to
+`i18n.SUPPORTED`, create the two files and extend `detect_language`.
+
+**Konsave messages.** Text that comes from the bundled Konsave code (`kongui/core`,
+`konsave/`) is not changed; `messages.py` maps its known English messages with
+regular expressions to translatable sentences. An unknown message is shown as it
+came, with a generic prefix.
+
+**Limitations.**
+
+* Notices already on screen and entries already in the activity list keep the language
+  they were written in; the next ones use the new language.
+* The fictitious `--demo` profiles (names, descriptions, sections, activity) are data
+  created in the language in use at that moment; they are recreated in the new
+  language by *Restore fictitious profiles* or on the next start.
+* Brazilian Portuguese counts 0 as singular, as Qt / CLDR do ("0 perfil").
+* A Konsave message that is reworded in a future release may show in English until
+  its pattern in `messages.py` is adapted (see `KONSAVE_PATCHES.md`).
+* Messages printed to the terminal by `kongui.gui.app.main` before the window exists
+  (for example "Konsave not found") are English only.

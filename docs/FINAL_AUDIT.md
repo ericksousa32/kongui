@@ -6,9 +6,9 @@ tested after the first report. Everything that was provably broken and within re
 was fixed; what depends on testing in a real Plasma session is marked as in
 progress or blocked.
 
-Note on interface texts: the interface is currently in Brazilian Portuguese. Labels
-and messages are quoted in this document as they appear on screen, with an English
-gloss in parentheses where needed.
+Note on interface texts: the interface is available in English and Brazilian
+Portuguese. Labels and messages are quoted in this document as they appear in the
+Portuguese interface, with an English gloss in parentheses where needed.
 
 ## 1. Scope and method
 
