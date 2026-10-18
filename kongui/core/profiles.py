@@ -37,6 +37,17 @@ from kongui.core.errors import (
     ValidationError,
 )
 from kongui.core.lock import EXCLUSIVE, SHARED, guarded
+from kongui.core.profilemeta import (
+    DESCRIPTION_NOT_REMOVED,
+    DESCRIPTION_NOT_SAVED,
+    ProfileDetails,
+    clean_description,
+    copy_description,
+    profile_sections,
+    read_description,
+    remove_description,
+    write_description,
+)
 from kongui.core.results import (
     ArchiveInspection,
     OperationResult,
@@ -188,10 +199,75 @@ class ProfileService:
                 return profile
         raise ProfileNotFoundError(f"profile not found: {name}")
 
+    @guarded(SHARED)
+    def profile_details(self, names: Iterable[str]) -> Dict[str, ProfileDetails]:
+        """Reads the description and the sections of some profiles.
+
+        This is separate from :meth:`list_profiles` so the operations, which
+        list profiles often, do not parse every ``conf.yaml``. It never fails
+        for one bad profile: a profile that disappeared is left out, and a
+        damaged file just means no description and no sections.
+
+        Args:
+            names: Profile names (names that are not valid are ignored).
+
+        Returns:
+            Dict[str, ProfileDetails]: Details of each profile found.
+        """
+        found: Dict[str, ProfileDetails] = {}
+        for name in names:
+            try:
+                validate_profile_name(name)
+            except ValidationError:
+                continue
+            folder = self._engine.profiles_dir / name
+            if folder.is_dir() and not os.path.islink(folder):
+                found[name] = ProfileDetails(
+                    read_description(folder), profile_sections(folder)
+                )
+        return found
+
     # --------------------------------------------------------------- operations
 
     @guarded(EXCLUSIVE)
-    def save(self, name: str, *, overwrite: bool = False) -> OperationResult:
+    def set_description(self, name: str, description: str) -> OperationResult:
+        """Sets, changes or clears the description of a profile.
+
+        Only the small ``.kongui-profile.json`` file of the profile is written;
+        the profile's own files, the ``conf.yaml`` and the ``.knsv`` format are
+        not touched, and the folder keeps its modification time.
+
+        Args:
+            name: Profile name.
+            description: New text; empty removes the description.
+
+        Returns:
+            OperationResult: Outcome, with the profile folder as ``path``.
+
+        Raises:
+            ValidationError: If the name or the text is not acceptable.
+            ProfileNotFoundError: If there is no such profile.
+            OSError: If the file could not be written (nothing is left behind).
+        """
+        validate_profile_name(name)
+        text = clean_description(description)
+        profile = self.get_profile(name)
+        write_description(profile.path, text)
+        return OperationResult(
+            operation="set_description",
+            ok=True,
+            message=f"description of '{name}' updated",
+            path=profile.path,
+        )
+
+    @guarded(EXCLUSIVE)
+    def save(
+        self,
+        name: str,
+        *,
+        overwrite: bool = False,
+        description: Optional[str] = None,
+    ) -> OperationResult:
         """Saves the current configuration as a profile (``save_profile``).
 
         With ``overwrite`` the original ``force`` flag is used, which *merges*
@@ -201,17 +277,23 @@ class ProfileService:
         Args:
             name: Profile name.
             overwrite: Allow saving over an existing profile.
+            description: Text to keep with the profile (``None`` leaves an
+                existing description alone). If the profile is saved but the
+                description cannot be written, the result is still ``ok`` and
+                carries a warning starting with
+                :data:`~kongui.core.profilemeta.DESCRIPTION_NOT_SAVED`.
 
         Returns:
             OperationResult: Outcome, with the profile folder as ``path``.
 
         Raises:
-            ValidationError: If the name is not acceptable.
+            ValidationError: If the name or the description is not acceptable.
             ConfigMissingError: If there is no active ``conf.yaml``.
             ConfigValidationError: If the active configuration is invalid.
             ProfileExistsError: If the profile exists and ``overwrite`` is false.
         """
         validate_profile_name(name)
+        text = None if description is None else clean_description(description)
         self._require_config()
         report = self._config.validate()
         if not report.ok:
@@ -226,6 +308,11 @@ class ProfileService:
         notes: List[str] = []
         if not ok and not existed:
             notes.append(self._remove_created(target))
+        if ok and text is not None:
+            try:
+                write_description(target, text)
+            except OSError as error:
+                notes.append(f"{DESCRIPTION_NOT_SAVED}{error.strerror or error}")
         return self._result(
             "save",
             ok,
@@ -291,6 +378,21 @@ class ProfileService:
                 call,
                 "",
                 f"replace failed; profile '{name}' was left as it was",
+                existing.path,
+                report.warnings,
+                notes,
+            )
+        try:
+            copy_description(existing.path, fresh)
+        except OSError as error:
+            notes.append(self._remove_created(fresh))
+            return self._result(
+                "replace",
+                False,
+                call,
+                "",
+                f"replace failed: the description could not be carried over "
+                f"({error.strerror or error}); profile '{name}' was left as it was",
                 existing.path,
                 report.warnings,
                 notes,
@@ -592,6 +694,14 @@ class ProfileService:
             for leftover in (target, staging):
                 if os.path.lexists(leftover):
                     notes.append(self._remove_created(leftover))
+        else:
+            # Konsave copies everything under ``save/`` into the profile, so an
+            # archive could plant a description. An imported profile starts
+            # without one: the file format carries none.
+            try:
+                remove_description(target)
+            except OSError as error:
+                notes.append(f"{DESCRIPTION_NOT_REMOVED}{error.strerror or error}")
         result = self._result(
             "import",
             ok,

@@ -136,6 +136,14 @@ unique name is `name_fDD-MM-YYYY:HH-MM-SS`; the core's is `name-2`.
   imported from there; the copy is deleted at the end, even on error, and the
   original is not touched. It is not a new format.
 
+### Profile details
+
+The save dialog asks for an optional description (500 characters at most). *Edit
+details…* in the card menu changes it later; cancelling changes nothing and an empty
+text clears it. If a profile is saved but its description cannot be written, the
+notice is a **warning** (not a success) that says so; a failed edit is an error and
+keeps the previous text. The description is shown as plain text.
+
 ### Limits and free space
 
 Before the engine is called, an import refuses a file above 512 MiB, an archive with
@@ -173,8 +181,14 @@ CLI.
   come back on their own: restore the safety copy (§7).
 * "Active" is only the last profile applied from this interface (`last_applied`);
   Konsave does not record it.
-* Konsave stores neither a description nor sections: in real mode the save dialog
-  asks only for the name and the cards show no description.
+* Konsave stores no description: KonGUI keeps one in a small file inside the profile
+  folder (see [`INTEGRATION.md`](INTEGRATION.md) §11). It does not travel in the
+  `.knsv` (an imported profile starts without one), and it is lost if the profile
+  folder is removed or replaced by something that does not copy it.
+* The sections shown on a card are the `save` groups of the profile's `conf.yaml`
+  that hold files. Choosing what to include when saving is not offered: edit the
+  `conf.yaml` (*Edit .YAML*) instead. In demo mode the save dialog still shows the
+  fictitious check boxes.
 * No cancellation or partial progress; only "busy". Exporting or importing a large
   profile can take long and blocks other operations.
 * The limits and the free-space estimates are simple constants and approximations

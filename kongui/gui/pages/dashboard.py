@@ -11,6 +11,7 @@ from kongui.gui.actions import ProfileActions
 from kongui.gui.context import AppContext
 from kongui.gui.controller import LoadState
 from kongui.gui.formatting import format_relative, format_size
+from kongui.gui.messages import section_label
 from kongui.gui.pages.base import Page
 from kongui.gui.widgets.cards import ActivityRow, StatCard
 from kongui.gui.widgets.common import Badge, Button, Card, Label, clear_layout
@@ -150,11 +151,14 @@ class DashboardPage(Page):
         head.addWidget(Label(active.name, "h2"), 1)
         head.addWidget(Badge(self.tr("Active"), "accent"))
         self.active_layout.addLayout(head)
-        self.active_layout.addWidget(Label(active.description, "muted", wrap=True))
+        if active.description:
+            self.active_layout.addWidget(
+                Label(active.description, "muted", wrap=True, plain=True)
+            )
         chips = QHBoxLayout()
         chips.setSpacing(6)
         for section in active.sections:
-            chips.addWidget(Badge(section.split(" (", maxsplit=1)[0]))
+            chips.addWidget(Badge(section_label(section).split(" (", maxsplit=1)[0]))
         chips.addStretch(1)
         self.active_layout.addLayout(chips)
         buttons = QHBoxLayout()

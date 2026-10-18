@@ -35,6 +35,13 @@ from kongui.core.errors import (
     SnapshotNotFoundError,
     ValidationError,
 )
+from kongui.core.profilemeta import (
+    DESCRIPTION_NOT_REMOVED,
+    DESCRIPTION_NOT_SAVED,
+    MAX_DESCRIPTION_CHARS,
+    ProfileDetails,
+    clean_description,
+)
 from kongui.core.profiles import (
     CONF_DIFFERS_PREFIX,
     NOT_IMPLEMENTED_OPERATIONS,
@@ -68,6 +75,11 @@ from kongui.core.results import (
 )
 
 __all__ = [
+    "DESCRIPTION_NOT_REMOVED",
+    "DESCRIPTION_NOT_SAVED",
+    "MAX_DESCRIPTION_CHARS",
+    "clean_description",
+    "ProfileDetails",
     "EngineLock",
     "LockBusyError",
     "LockCancelledError",

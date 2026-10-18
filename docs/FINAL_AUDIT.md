@@ -100,6 +100,7 @@ not exist and is a requirement; **Blocked** = depends on something out of reach;
 | Refusal to run as root | Tested | `tests.test_engine`, `tests.test_cli_runner` |
 | **RN-01 / P-1:** copy of the files `apply`/`import` overwrite, before writing; a failed copy prevents the operation | Tested | `tests.test_snapshot` (ApplySnapshotTests, ImportSnapshotTests), `tests.test_gui_backups` (RealSafetyCopyTests) |
 | RN-01: restore (files, mode, links, created files), with confirmation, manifest validation, paths only inside the home, undo of the restore | Tested | RestoreRulesTests, EdgeCaseTests |
+| Profile description (small file inside the profile folder) and read-only sections: persistence, isolation between profiles, renamed folder, removal, import without metadata (a description planted in an archive is dropped), failed writes, `replace` carry-over, no change to the exported archive; dialog, card, warnings, plain-text display, friendly group names | Tested | `tests.test_profile_details`, `tests.test_gui_details` |
 | RN-01: list/delete copies in the interface; buttons locked during an operation; nothing is deleted by itself | Tested | `tests.test_gui_backups` (DemoSafetyCopyTests) |
 | Import → export preserves the profile (real Plasma 6 archive) | Tested | identical, except `conf.yaml` (A-4/§5) |
 | `.knsv` exchanged with the original `konsave` in both directions | Tested | CliCompatibilityTests |
@@ -132,15 +133,18 @@ window exists are English only.
 | P-2 | Cross-process lock (two KonGUI, or KonGUI + `konsave`) | Tested (mechanism, CLI, services and wait/cancel interface) | `fcntl.flock` on `~/.config/konsave/.kongui.lock`; `tests.test_locking`, `tests.test_gui_lock_wait`; see `CONCURRENCY.md` and `KONSAVE_PATCHES.md`. B-1 below no longer applies to the minimal changes authorized only for the lock |
 | P-3 | Limits for zip bombs, total size and disk space on import/export | Tested (basic protection) | 512 MiB file, 2 GiB really decompressed (stops at the limit), 10,000 entries, free-space check before import and export, friendly messages, failed export keeps the previous one; `tests.test_transfer_limits`; see `INTEGRATION.md` §10. Limits are fixed constants and estimates, not guarantees (see §4) |
 | B-1 | Progress and cancellation of operations | Blocked | the engine cannot be interrupted, and `konsave/` is only changed for the lock; today there is only "busy" |
-| B-2 | Profile description and sections | Blocked | Konsave does not store these data |
+| B-2 | Profile description and sections | Tested (description and read-only sections) | the description is a small file inside the profile folder and the sections come from the profile's `conf.yaml` (`INTEGRATION.md` §11; `tests.test_profile_details`, `tests.test_gui_details`). The description does not travel in the `.knsv`; choosing what to include when saving is not offered (manual, through *Edit .YAML*) |
 | B-3 | Validation in a real Plasma session (actually applying, Wayland/drag-and-drop, SELinux, Flatpak) | **In progress** | the project owner is testing in a real Plasma session; results are not recorded here yet. The screenshots in `screenshots/` (Fedora 44, Qt 6.12, demo mode) show that the interface renders there, but they do not validate applying profiles, Wayland, SELinux or Flatpak |
 
 ## 4. Why it is not complete
 
 P-2 (cross-process lock, with wait and cancel in the interface) and P-3 (basic
 limits and free-space checks, `INTEGRATION.md` §10) were implemented and tested. The
-project is still not declared complete: B-1 and B-2 do not prevent use, but they
-limit what can be claimed, and B-3 (real-session testing) is still in progress.
+project is still not declared complete: B-1 does not prevent use, but it limits
+what can be claimed, and B-3 (real-session testing) is still in progress. B-2 was
+resolved in part (description and read-only sections, `INTEGRATION.md` §11); what
+remains of it is by design: the description does not travel in the `.knsv`, and
+choosing what a profile contains stays manual in the `conf.yaml` editor.
 
 Limits of P-3: the limits are constants, not a policy; the free-space check is an
 estimate and is not atomic with the operation (another program can fill the disk
@@ -173,12 +177,12 @@ lock (external tools, see `CONCURRENCY.md` §5); the copy has no size limit (the
 
 ## 6. Test results
 
-Measured on 2026-10-18 at commit `e9bf257` (branch `dev`, with the transfer limits and the English-only demo data merged), Python 3.13, Qt offscreen,
+Measured on 2026-10-18 on branch `feat/profile-details` (uncommitted work on top of `dev` at `4ae5f57`), Python 3.13, Qt offscreen,
 as an unprivileged user with a temporary `$HOME`:
 
-* 855 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes).
+* 912 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes).
 * Coverage of `kongui/` with `coverage run --branch --source=kongui`: **96%**
-  (6663 statements, 212 not run; 1594 branches, 123 partly covered). `konsave/` was
+  (6930 statements, 224 not run; 1664 branches, 127 partly covered). `konsave/` was
   not measured. The lowest modules: `gui/__main__.py` 0% (three lines, only the
   `python -m kongui.gui` entry), `core/yamlmap.py` 87%, `gui/messages.py` 88%,
   `gui/widgets/dropzone.py` 88%, `gui/widgets/confedit.py` 90%, `gui/backend.py` 90%.

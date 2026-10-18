@@ -11,6 +11,7 @@ from kongui.gui import i18n
 from kongui.gui.actions import ProfileActions
 from kongui.gui.context import AppContext
 from kongui.gui.controller import LoadState
+from kongui.gui.messages import section_label
 from kongui.gui.pages.base import Page
 from kongui.gui.state import Profile
 from kongui.gui.widgets.cards import ProfileCard
@@ -43,7 +44,12 @@ def filter_and_sort(profiles: List[Profile], query: str, sort: str) -> List[Prof
 
     def matches(profile: Profile) -> bool:
         haystack = " ".join(
-            (profile.name, profile.description, *profile.sections)
+            (
+                profile.name,
+                profile.description,
+                *profile.sections,
+                *(section_label(section) for section in profile.sections),
+            )
         ).casefold()
         return needle in haystack
 
@@ -212,6 +218,7 @@ class ProfilesPage(Page):
         busy_texts = {
             "apply": self.tr("Applying…"),
             "overwrite": self.tr("Overwriting…"),
+            "set_description": self.tr("Saving details…"),
             "remove": self.tr("Removing…"),
         }
         cards = []
@@ -226,6 +233,7 @@ class ProfilesPage(Page):
                 list_mode=list_mode,
                 can_export=caps.transfer,
                 can_duplicate=caps.duplicate,
+                can_edit_details=caps.descriptions,
                 locked=busy,
                 busy_text=text,
             )
@@ -234,6 +242,9 @@ class ProfilesPage(Page):
             )
             card.export_requested.connect(self.ctx.export_profile)
             card.duplicate_requested.connect(self.actions.duplicate)
+            card.details_requested.connect(
+                lambda name: self.actions.edit_details(self.window(), name)
+            )
             card.overwrite_requested.connect(
                 lambda name: self.actions.overwrite(self.window(), name)
             )
