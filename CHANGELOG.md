@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - (KonGUI) Protections for `.knsv` import and export: size (512 MiB), real decompressed size (2 GiB), entry count (10,000), free-space check before import and export, clear messages for corrupted archives and full disks. The format and the engine are unchanged. See `docs/INTEGRATION.md` §10
 
 ### Changed
+- (KonGUI) The fictitious data of `--demo` mode (profile names, descriptions, areas, activity) is now always English and no longer part of the translation catalogs; the interface stays translated
 - (KonGUI) The interface texts are now written in English in the code and translated to Portuguese through `kongui/gui/translations`; `Makefile` has a `translations` target
 - (KonGUI patch) `python_requires` is now `>=3.9`
 - Reorganized CLI arguments into logical groups (Profile Management, Import & Export, Options, Miscellaneous) for better readability

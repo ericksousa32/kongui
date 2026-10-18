@@ -490,7 +490,7 @@
     <name>FakeBackend</name>
     <message>
         <source>No description.</source>
-        <extracomment>Seconds a call waits for the simulated other operation.</extracomment>
+        <extracomment>Export conflict policies (see ``ProfileService.export``): refuse, pick a free name, or replace an existing ``.knsv`` file. ``FakeBackend`` argument meaning &quot;the active fictitious profile&quot;. Seconds a call waits for the simulated other operation.</extracomment>
         <translation>Sem descrição.</translation>
     </message>
     <message>
@@ -2108,122 +2108,6 @@
     <message>
         <source>Unexpected error ({type}): {error}</source>
         <translation>Erro inesperado ({type}): {error}</translation>
-    </message>
-</context>
-<context>
-    <name>mock_data</name>
-    <message>
-        <source>Work</source>
-        <extracomment>Export conflict policies (see ``ProfileService.export``): refuse, pick a free name, or replace an existing ``.knsv`` file. ``FakeBackend`` argument meaning &quot;the active fictitious profile&quot;.</extracomment>
-        <translation>Trabalho</translation>
-    </message>
-    <message>
-        <source>Plasma (panels and widgets)</source>
-        <translation>Plasma (painéis e widgets)</translation>
-    </message>
-    <message>
-        <source>Keyboard shortcuts</source>
-        <translation>Atalhos de teclado</translation>
-    </message>
-    <message>
-        <source>Icons and cursors</source>
-        <translation>Ícones e cursores</translation>
-    </message>
-    <message>
-        <source>Application themes</source>
-        <translation>Temas de aplicativos</translation>
-    </message>
-    <message>
-        <source>Fonts</source>
-        <translation>Fontes</translation>
-    </message>
-    <message>
-        <source>Wallpaper</source>
-        <translation>Papel de parede</translation>
-    </message>
-    <message>
-        <source>Konsole and Dolphin</source>
-        <translation>Konsole e Dolphin</translation>
-    </message>
-    <message>
-        <source>Single panel, dark theme and shortcuts for side-by-side windows.</source>
-        <translation>Painel único, tema escuro e atalhos para janelas lado a lado.</translation>
-    </message>
-    <message>
-        <source>Minimalist</source>
-        <translation>Minimalista</translation>
-    </message>
-    <message>
-        <source>No widgets, monochrome icons and a plain wallpaper.</source>
-        <translation>Sem widgets, ícones monocromáticos e papel de parede liso.</translation>
-    </message>
-    <message>
-        <source>Gaming</source>
-        <translation>Gaming</translation>
-    </message>
-    <message>
-        <source>Effects turned off and a floating panel.</source>
-        <translation>Efeitos desativados e painel flutuante.</translation>
-    </message>
-    <message>
-        <source>Presentation</source>
-        <translation>Apresentação</translation>
-    </message>
-    <message>
-        <source>Large fonts and high contrast for a projector.</source>
-        <translation>Fontes grandes e alto contraste para projetor.</translation>
-    </message>
-    <message>
-        <source>Retro</source>
-        <translation>Retrô</translation>
-    </message>
-    <message>
-        <source>Classic look with a bottom taskbar.</source>
-        <translation>Visual clássico com barra de tarefas inferior.</translation>
-    </message>
-    <message>
-        <source>Night</source>
-        <translation>Noturno</translation>
-    </message>
-    <message>
-        <source>Warm colors and reduced brightness.</source>
-        <translation>Cores quentes e brilho reduzido.</translation>
-    </message>
-    <message>
-        <source>Tablet</source>
-        <translation>Tablet</translation>
-    </message>
-    <message>
-        <source>Larger touch targets and a side panel.</source>
-        <translation>Alvos de toque maiores e painel lateral.</translation>
-    </message>
-    <message>
-        <source>Profile “{name}” applied</source>
-        <translation>Perfil “{name}” aplicado</translation>
-    </message>
-    <message>
-        <source>Profile “{name}” updated</source>
-        <translation>Perfil “{name}” atualizado</translation>
-    </message>
-    <message>
-        <source>“{name}” exported to {folder}</source>
-        <translation>“{name}” exportado para {folder}</translation>
-    </message>
-    <message>
-        <source>“{name}” imported from {file}</source>
-        <translation>“{name}” importado de {file}</translation>
-    </message>
-    <message>
-        <source>Profile “{name}” created</source>
-        <translation>Perfil “{name}” criado</translation>
-    </message>
-    <message>
-        <source>Profile “{name}” removed</source>
-        <translation>Perfil “{name}” removido</translation>
-    </message>
-    <message>
-        <source>Test</source>
-        <translation>Teste</translation>
     </message>
 </context>
 <context>

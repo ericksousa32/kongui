@@ -120,8 +120,8 @@ not exist and is a requirement; **Blocked** = depends on something out of reach;
 | Translation files are packaged | Tested | `package_data` in `setup.py`, checked by `tests.test_i18n`; a wheel built with `python -m build --wheel` in a clean virtual environment (2026-10-17) contains the four files in `kongui/gui/translations/`, no `tests/`, and still contains `mock_data.py` (demo mode) |
 
 Limits (see `GUI_PROTOTYPE.md`, section 8): notices and activity entries already
-shown keep the language they were written in; the fictitious demo data keeps the
-language it was created in until restored; messages from the bundled Konsave are
+shown keep the language they were written in; the fictitious demo data is always
+English (not translated); messages from the bundled Konsave are
 translated by matching their English text; terminal messages printed before the
 window exists are English only.
 

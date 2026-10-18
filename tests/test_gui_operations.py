@@ -55,7 +55,7 @@ class ListOperationTests(OperationCase):
         self.assertTrue(page.loading_state.isHidden())
         self.assertTrue(window.busy_bar.isHidden())
         self.assertEqual(len(self.names(page)), 7)
-        self.assertEqual(window.store.active().name, "Trabalho")
+        self.assertEqual(window.store.active().name, "Work")
 
     def test_dashboard_shows_placeholders_while_loading(self):
         window = self.open_window(load=False, page="dashboard")
@@ -261,7 +261,7 @@ class ApplyOperationTests(OperationCase):
         with ask(False):
             self.card(window.pages["profiles"], "Gaming").apply_button.click()
         self.assertEqual(len(self.executor.queue), 0)
-        self.assertEqual(window.store.active().name, "Trabalho")
+        self.assertEqual(window.store.active().name, "Work")
 
     def test_confirming_shows_progress_then_marks_the_profile_active(self):
         window = self.open_window()
@@ -271,7 +271,7 @@ class ApplyOperationTests(OperationCase):
         self.assertTrue(confirm.call_args.kwargs["destructive"])
         self.flush()
         self.assertEqual(self.card(page, "Gaming").busy_label.text(), "Aplicando…")
-        self.assertEqual(window.store.active().name, "Trabalho", "not yet")
+        self.assertEqual(window.store.active().name, "Work", "not yet")
         self.run_all()
         self.assertEqual(window.store.active().name, "Gaming")
         self.assertEqual(window.controller.active_name, "Gaming")
@@ -283,10 +283,10 @@ class ApplyOperationTests(OperationCase):
     def test_the_dashboard_follows_the_active_profile(self):
         window = self.open_window(page="dashboard")
         with ask(True):
-            window.controller.apply("Noturno", confirmed=True)
+            window.controller.apply("Night", confirmed=True)
         self.run_all()
         stats = window.pages["dashboard"].stats
-        self.assertEqual(stats["active"].value_label.text(), "Noturno")
+        self.assertEqual(stats["active"].value_label.text(), "Night")
 
     def test_a_failure_keeps_the_previous_active_profile(self):
         window = self.open_window()
@@ -295,7 +295,7 @@ class ApplyOperationTests(OperationCase):
             self.card(window.pages["profiles"], "Gaming").apply_button.click()
         self.run_all()
         self.assertEqual(window.toasts.kinds()[-1], "error")
-        self.assertEqual(window.store.active().name, "Trabalho")
+        self.assertEqual(window.store.active().name, "Work")
         self.assertFalse(self.outcomes[-1].ok)
         self.assertTrue(window.pages["profiles"].new_button.isEnabled())
 
@@ -339,7 +339,7 @@ class RemoveOperationTests(OperationCase):
     def test_removing_the_active_profile_clears_the_marker(self):
         window = self.open_window()
         with ask(True):
-            self.card(window.pages["profiles"], "Trabalho").remove_action.trigger()
+            self.card(window.pages["profiles"], "Work").remove_action.trigger()
         self.run_all()
         self.assertIsNone(window.store.active())
         self.assertEqual(window.controller.active_name, "")

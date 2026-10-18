@@ -697,7 +697,7 @@ class FakeBackend(ProfileBackend):
             active: Name reported by :attr:`initial_active`; by default the
                 active fictitious profile (the first one), ``None`` for none.
             archives: Paths of archives that "already exist" in the fictitious
-                file system (``~/Downloads/Minimalista.knsv`` by default).
+                file system (``~/Downloads/Minimalist.knsv`` by default).
         """
         self._lock = threading.Lock()
         self._initial = [
@@ -706,15 +706,13 @@ class FakeBackend(ProfileBackend):
         ]
         self._items: Dict[str, Profile] = {item.name: item for item in self._initial}
         self._latency = latency
-        self._active = (
-            Q.translate("mock_data", "Work") if active == DEMO_ACTIVE else active
-        )
+        self._active = "Work" if active == DEMO_ACTIVE else active
         self._failures: Dict[str, BaseException] = {}
         self.calls: List[Tuple[str, str]] = []
         self.blocked: set = set()
         self._copies: List[SnapshotInfo] = []
         self.archives = set(
-            ["~/Downloads/Minimalista.knsv"] if archives is None else archives
+            ["~/Downloads/Minimalist.knsv"] if archives is None else archives
         )
         self._sandbox: Optional[ConfigService] = None
         self._other: Optional[Dict[str, Any]] = None
