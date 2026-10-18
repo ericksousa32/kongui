@@ -175,9 +175,51 @@ python3 -m unittest tests.test_config_editor tests.test_gui_config -v
 * Comments on their own lines (between groups or items) stay where they are; a
   comment written on the same line as a removed item disappears with it. If the
   edit is too exotic, the regeneration path loses the comments (and warns).
-* Backups are not removed automatically (they are small files).
+* Backups (`conf.yaml.bak-*`) are not removed automatically and there is no delete
+  button or count limit: project decision, remove them by hand if you want to (they
+  are small files). Pruning would remove the oldest one first, which holds the
+  original text.
 * The digest comparison and the write of `conf.yaml` happen under the cross-process
   lock ([`CONCURRENCY.md`](CONCURRENCY.md)); other programs that do not use the lock
   can still change the file, and that is only detected at write time.
 * A group's source folder is validated, but the content of the items is not
   checked on disk (Konsave silently ignores what does not exist).
+* A file in YAML *flow* style (for example `save: {a: {...}}`) is regenerated from
+  its data, which loses the comments; the interface asks for explicit confirmation
+  first. Project decision: it stays like this.
+
+See also [`LIMITATIONS.md`](LIMITATIONS.md).
+
+## 7. Choosing what a profile includes
+
+KonGUI has no "what to include" step when saving a profile (project decision; the
+check boxes of the demo mode are fictitious). The choice is made in this editor, with
+Konsave's own rules from §1:
+
+| I want to… | Do this | Takes effect |
+|---|---|---|
+| include one more file or folder | in the group of `save:` whose `location` contains it, add its name to `entries` (page *Edit .YAML*, or the form) | on the **next** *Save profile* |
+| include a whole new place (for example a program's folder) | add a group under `save:` with a `location` (absolute, placeholders allowed) and its `entries` | next *Save profile* |
+| leave something out | remove the item or group from `save:` | next *Save profile* |
+| carry something only in the `.knsv` (for example complete icon packs) | put it under `export:` | when **exporting**; it is read from the live system at that moment and never stored in the profile |
+
+What happens, and what to expect:
+
+1. Saving a profile copies the `save` groups of the **global** `conf.yaml` into the
+   profile and stores that `conf.yaml` with it. A profile saved earlier is not
+   changed by later edits (§1).
+2. Applying uses the profile's own `conf.yaml`, so what is applied is what the
+   profile held when saved.
+3. The *sections* on the cards (`INTEGRATION.md` §11) are the `save` groups of the
+   profile's `conf.yaml` that actually hold files: a quick way to see the result.
+   A group whose files do not exist stays out of the list (for example `autostart`
+   in the default file).
+4. Exporting puts the **global** `conf.yaml` in the `.knsv` but takes `save/` from the
+   profile and `export/` from the live system through the profile's file. If you
+   edited the global file after saving the profile, the archive contradicts itself;
+   KonGUI warns (`+` / `-` / `~` lines) and does not rewrite it (project decision).
+   To avoid it, edit the file **before** saving the profile, or save the profile
+   again (*Save profile* → overwrite) before exporting.
+5. The editor validates before writing, shows problems with line and column and
+   keeps a backup, so a wrong edit can be undone from *Backups…*.
+

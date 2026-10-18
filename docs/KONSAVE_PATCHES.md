@@ -7,7 +7,8 @@ incorporated without guesswork: redo the changes below, run the verification lis
 
 **Baseline of the changes:** Konsave with `konsave/__main__.py` as in commit
 `5179e0f` of this repository (before any lock change).
-Every changed line in an original file carries the marker `KONGUI-PATCH(lock)`; to
+Every changed line in an original file carries the marker `KONGUI-PATCH(lock)` (or
+`KONGUI-PATCH(rename)`, §3.5); to
 find them all: `grep -rn "KONGUI-PATCH" konsave/` (the one-line change in
 `setup.py` carries no marker; see §1).
 
@@ -17,10 +18,12 @@ find them all: `grep -rn "KONGUI-PATCH" konsave/` (the one-line change in
 |---|---|---|---|
 | `konsave/lock.py` | **new** (standard library only) | ~420 lines | mechanism of the cross-process lock (`fcntl.flock`) |
 | `konsave/__main__.py` | changed | +56 / −8 lines | the CLI now runs every command under the lock |
+| `konsave/__init__.py` | changed | +6 lines | the package is distributed as `kongui`, so the version lookup by the name `konsave` finds nothing (§3.5) |
 | `setup.py` | changed | 1 line | `python_requires` from `>=3.6` to `>=3.9` |
 
-No other file in `konsave/` was touched (`funcs.py`, `consts.py`, `parse.py`,
-`conf_*.yaml` and `__init__.py` are identical to the original). The behavior of the
+The rest of `setup.py` (name `kongui`, author, URLs, classifiers) is KonGUI's own
+metadata. No other file in `konsave/` was touched (`funcs.py`, `consts.py`,
+`parse.py` and `conf_*.yaml` are identical to the original). The behavior of the
 commands does not change when nobody else is using Konsave; the only visible
 differences are in §4.
 
@@ -106,6 +109,36 @@ not exist" with the list read before the wait. Covered by
 > **When adapting:** if the original starts computing the list some other way, keep
 > the rule: **read it after obtaining the lock**.
 
+### 3.5 `konsave/__init__.py` (marker `KONGUI-PATCH(rename)`)
+
+The original reads its version with `distribution("konsave").version` and
+`konsave.consts` imports it unconditionally. KonGUI's package is called `kongui`, so
+after installing it that lookup raised `PackageNotFoundError`, `__version__` was
+never defined and **the `konsave` command failed at start** with
+`ImportError: cannot import name '__version__' from 'konsave'` (reproduced with a
+wheel in a clean virtual environment before the change).
+
+```diff
+ except PackageNotFoundError:
+     # Package is not installed
+-    pass
++    # KONGUI-PATCH(rename): ...
++    try:
++        distribution("kongui")
++        __version__ = "2.2.0+kongui"
++    except PackageNotFoundError:
++        pass
+```
+
+Behavior: an installed `konsave` distribution (the original) still wins; with
+`kongui` installed the version is `2.2.0+kongui`, which `konsave -v` prints and the
+*About* page shows as the Konsave version; an uninstalled checkout is left exactly as
+before (no `__version__`; KonGUI's engine loader supplies a placeholder). Covered by
+`tests.test_packaging` (`BundledEngineVersionTests`).
+
+> **When adapting:** keep the lookup of the `kongui` distribution, and update the
+> version string to the Konsave release the code was taken from.
+
 ## 4. Visible behavior differences in the CLI
 
 | Situation | Original | With the patch |
@@ -117,6 +150,7 @@ not exist" with the list read before the wait. Covered by
 | Ctrl+C while waiting | — | status 130, nothing changed |
 | `KONSAVE_LOCK_TIMEOUT` variable | — | seconds to wait (`0` = do not wait; negative or `inf` = no limit; default 30) |
 | Konsave folder | — | now contains `.kongui.lock` (empty/small file, never deleted) |
+| `konsave -v` when installed as `kongui` | would fail to start (no version) | prints `Konsave: 2.2.0+kongui` |
 
 ## 5. How to adapt to a new Konsave release
 
@@ -126,7 +160,7 @@ not exist" with the list read before the wait. Covered by
    where they were). If `__main__.py` changed a lot, do it by concept: *one command
    = one lock; the profile list is read after the lock*.
 4. In `setup.py`, keep `python_requires=">=3.9"` (or whatever the new Konsave
-   requires).
+   requires). In `konsave/__init__.py` keep the `KONGUI-PATCH(rename)` block (§3.5).
 5. Check that `konsave/funcs.py`/`consts.py` still have the same functions that
    `kongui/core/engine.py` uses (`docs/INTEGRATION.md` §2). KonGUI's lock does
    **not** depend on `__main__`: it wraps the calls in `kongui/core/` (see
@@ -141,4 +175,5 @@ not exist" with the list read before the wait. Covered by
 
 | KonGUI version | Change |
 |---|---|
-| this stage | cross-process lock (`lock.py`, `__main__.py`, `setup.py`) |
+| earlier stage | cross-process lock (`lock.py`, `__main__.py`, `setup.py`) |
+| pre-release preparation | package renamed to `kongui`: version lookup in `konsave/__init__.py` (§3.5) |

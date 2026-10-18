@@ -268,8 +268,12 @@ before `apply`/`import` (requirement RN-01) has existed since §9.
 * Validation on a real Fedora KDE (Plasma 6) session, **in progress**: value of
   `XDG_CURRENT_DESKTOP` in the session, Plasma 6 file paths, overwriting by a
   running Plasma, SELinux and Flatpak ("to investigate" items of the audit).
-* Decision on the name/distribution of the `kongui` package and of `deploy.yml`
-  (currently publishes to PyPI on `v*` tags).
+* `deploy.yml` still publishes to PyPI on any `v*` tag; it has to be changed or
+  disabled before the first tag. (The package name is decided: `kongui`; see
+  [`LIMITATIONS.md`](LIMITATIONS.md) §5.)
+* Pruning of safety copies and of `conf.yaml` backups, a limit on their number, and
+  rewriting the `conf.yaml` stored in a `.knsv`: decided **not** to do (see
+  [`LIMITATIONS.md`](LIMITATIONS.md) §2).
 
 ### Limitations of the original engine that the layer does **not** fix
 
@@ -322,7 +326,9 @@ before `apply`/`import` (requirement RN-01) has existed since §9.
   `UNDO_PREFIX`). If that copy fails, nothing is restored.
 * **Does not:** undo the profile created by an `import` (it stays in the list);
   protect against changes made by another program during the operation; limit the
-  total size (see §8). Nothing is deleted by itself: use `delete_backup`.
+  total size (see §8). Nothing is deleted by itself: use `delete_backup`. There is
+  **no limit on the number of copies and no automatic pruning** (project decision):
+  pruning would delete first the oldest copy, which holds the original state.
 
 ## 10. Limits and free space on import and export (P-3)
 
@@ -366,7 +372,26 @@ Tests: `tests.test_transfer_limits` lowers the constants with `mock.patch` and
 simulates a full disk by replacing `shutil.disk_usage` or making a write raise
 `ENOSPC`; the real disk is never filled.
 
-Limits of this protection: see `GUI_SERVICES.md` §6.
+**What these limits are not.** They stop a damaged or hostile archive and an obviously
+full disk; they are not a policy and not a guarantee (project decision: they stay
+fixed constants, not settings):
+
+* the free-space check is an estimate and is **not atomic** with the operation:
+  another program can fill the disk between the check and the copy (a real `ENOSPC`
+  is then reported and cleaned up);
+* the decompression pass reads the archive once more before importing, which costs
+  time on large archives;
+* the `export` section is read from the live system, so its size can change between
+  the estimate and the copy;
+* the safety copy of §9 has no size limit (these limits apply to the archive);
+* the `.knsv` is neither signed nor encrypted and its `conf.yaml` decides where files
+  go (KonGUI only accepts destinations inside the home): import only archives you
+  trust;
+* the original engine is not interrupted or made atomic: an import that fails
+  halfway is undone by this layer, not by the engine.
+
+The same list, with the other decisions, is in [`LIMITATIONS.md`](LIMITATIONS.md) §3;
+see also `GUI_SERVICES.md` §6.
 
 ## 11. Profile description and sections (B-2)
 
@@ -378,6 +403,6 @@ Konsave stores neither; KonGUI adds them **without changing the engine or the `.
   * `replace` swaps the whole folder, so it carries the description over *before* the swap; if that fails nothing changes and the previous profile stays.
   * `import_profile` removes any such file that came inside the archive: Konsave copies everything under `save/` into the profile, so an archive could plant one. An imported profile always starts without a description (if the removal fails, a warning says so).
 * **Sections**: not stored. They are the `save` groups of the profile's own `conf.yaml` that hold at least one file (a group with no files, such as `autostart` in the default configuration, is left out; a group name that could point outside the profile, or a linked folder, is ignored). The `export` groups are not sections of a profile: they are read from the live system at export time and never stored in it. The interface shows friendly, translated names only for the groups of the default configuration (`configs`, `app_layouts`, `autostart`); any other group keeps its own name.
-* **What to include**: choosing what a profile contains is **not** offered. It stays manual, through the `conf.yaml` editor.
+* **What to include**: choosing what a profile contains is **not** offered. It stays manual, through the `conf.yaml` editor; the steps are in [`GUI_CONFIG.md`](GUI_CONFIG.md) §7.
 
 Tests: `tests.test_profile_details` (service: persistence, isolation, renaming, import, removal, failures, compatibility with the exported archive) and `tests.test_gui_details` (dialog, card, warnings, plain text, friendly names), always in temporary homes.

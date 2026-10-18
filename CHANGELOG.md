@@ -11,8 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - (KonGUI) Protections for `.knsv` import and export: size (512 MiB), real decompressed size (2 GiB), entry count (10,000), free-space check before import and export, clear messages for corrupted archives and full disks. The format and the engine are unchanged. See `docs/INTEGRATION.md` §10
 - (KonGUI) Profile description (a small file inside the profile folder, not part of the `.knsv`) and sections read from each profile's `conf.yaml`, with friendly names for the default groups and an *Edit details…* action. See `docs/INTEGRATION.md` §11
 - (KonGUI) Interface screenshots (demo mode, Fedora 44) in `screenshots/`, shown in the README
+- (KonGUI) `docs/LIMITATIONS.md`: one document with the open requirements, the decisions of the project owner and the known limits (including those of the import and export protections); README section on choosing what a profile includes (manual, through *Edit .YAML*); `docs/GUI_CONFIG.md` §7
+- (KonGUI) `tests/test_packaging.py`: package name and metadata, no `setuptools` at runtime, version of the bundled engine
 
 ### Changed
+- (KonGUI) The distribution is now called `kongui` (it was `Konsave`); author, URL and project links in `setup.py` point to this repository and credit Konsave. The `konsave` and `kongui` commands are both still installed
+- (KonGUI patch) `konsave/__init__.py`: when the package is installed as `kongui`, `konsave.__version__` is `2.2.0+kongui` instead of missing (without it the `konsave` command failed to start). See `docs/KONSAVE_PATCHES.md` §3.5
+- (KonGUI) `setuptools` removed from `requirements.txt`: nothing imports it at runtime (checked by `tests.test_packaging` and by running the suite with it made unimportable); it stays a build tool
 - (KonGUI) The fictitious data of `--demo` mode (profile names, descriptions, areas, activity) is now always English and no longer part of the translation catalogs; the interface stays translated
 - (KonGUI) The interface texts are now written in English in the code and translated to Portuguese through `kongui/gui/translations`; `Makefile` has a `translations` target
 - (KonGUI patch) `python_requires` is now `>=3.9`

@@ -4,7 +4,7 @@
 A graphical interface for managing KDE Plasma configuration profiles, built as an independent fork of <a href="https://github.com/Prayag2/konsave">Konsave</a>.
 </p>
 
-> **Status: early development (`0.1.0.dev0`).** KonGUI is not packaged or released yet, and testing on a live Plasma session is in progress. It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
+> **Status: early development (`0.1.0.dev0`).** KonGUI is not released yet (no tag, no installable package or AppImage), and testing on a live Plasma session is in progress. Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
 
 ## Overview
 
@@ -45,6 +45,16 @@ Everything below is covered by the automated test suite (run in temporary home d
 - **Demo mode:** `--demo` runs the interface on fictitious in-memory data.
 - **Safety:** KonGUI refuses to run as root, and profile or archive names are validated before anything reaches the original code.
 
+### Choosing what a profile includes
+
+KonGUI does not ask this when you save a profile; it stays manual, in *Edit .YAML*, as in Konsave:
+
+1. Open *Edit .YAML*. The groups under `save:` are what every new profile contains; the groups under `export:` only travel in the `.knsv`.
+2. Add, edit or remove groups (a `location` and the `entries` inside it) and save. The file is validated first and the previous version is kept as a backup.
+3. Save the profile. It gets a copy of `save` as it is *at that moment*; profiles saved earlier keep what they had. The cards show the sections each profile holds.
+
+Before exporting, make sure the global `conf.yaml` and the profile's agree: Konsave writes the global one into the `.knsv`, and KonGUI warns when they differ but does not rewrite the archive. More detail in [`docs/GUI_CONFIG.md`](docs/GUI_CONFIG.md) §7.
+
 ### In progress
 
 - Testing on a real Fedora KDE / Plasma session (applying profiles, Wayland, SELinux, Flatpak). Results will be recorded in [`docs/FINAL_AUDIT.md`](docs/FINAL_AUDIT.md).
@@ -52,7 +62,18 @@ Everything below is covered by the automated test suite (run in temporary home d
 ### Planned
 
 - Progress reporting and cancelling of long operations that have already started. The original engine cannot be interrupted today.
-- Packaging and distribution. No installable package or AppImage exists yet.
+- A first tagged release. The package is now called `kongui`, but no tag, wheel or AppImage has been published yet; the release workflow in `.github/workflows/deploy.yml` still has to be changed before the first tag.
+
+### Known limitations
+
+The complete list, with the decisions behind it, is in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). The main ones:
+
+- Not validated yet in a real Plasma session (applying, Wayland, SELinux, Flatpak).
+- Import and export limits are fixed constants and estimates, not guarantees; the `.knsv` is not signed.
+- The `conf.yaml` stored in a `.knsv` is the global one (a Konsave behaviour); KonGUI warns when it differs from the profile's and does not rewrite it.
+- Safety copies and `conf.yaml` backups are never removed automatically and have no count limit.
+- A `conf.yaml` written in YAML flow style is rewritten without its comments (after you confirm).
+- Starting `kongui` without PySide6 installed shows a plain `ImportError`; install the `gui` extra.
 
 The detailed status of each requirement is in [`docs/FINAL_AUDIT.md`](docs/FINAL_AUDIT.md).
 
@@ -60,7 +81,7 @@ The detailed status of each requirement is in [`docs/FINAL_AUDIT.md`](docs/FINAL
 
 - Python 3.9 or newer (`python_requires` in `setup.py`)
 - [PySide6](https://doc.qt.io/qtforpython-6/) (Qt for Python) 6.8 or newer, for the interface (optional `gui` extra)
-- [PyYAML](https://pyyaml.org/), as in Konsave, and `setuptools` (both listed in `requirements.txt`)
+- [PyYAML](https://pyyaml.org/), as in Konsave (the only runtime requirement in `requirements.txt`; `setuptools` is needed to build the package, not to run it)
 - Standard library only for the locking mechanism (`fcntl.flock`)
 - Development: `unittest`, [black](https://github.com/psf/black), [pylint](https://pylint.org/)
 
@@ -76,7 +97,7 @@ python3 -m venv .venv
 pip install -e ".[gui]"
 ```
 
-Use a virtual environment: the package is still called `Konsave` in `setup.py` and installs the `konsave` and `kongui` commands, so it would replace an existing Konsave installation. The version is taken from the git history (`setuptools_scm`), so install from a clone, not from a source archive without `.git`.
+Use a virtual environment: the package is called `kongui` and installs the `kongui` command plus the bundled `konsave` command, and both come with a Python package named `konsave`, so it would replace an existing Konsave installation. The version is taken from the git history (`setuptools_scm`), so install from a clone, not from a source archive without `.git`.
 
 Linux only. The install and launch commands above were checked with Python 3.13 in a fresh virtual environment (Qt offscreen), installing from a local clone of this repository.
 
@@ -172,10 +193,11 @@ Known limits: the fictitious data of `--demo` (profile names, descriptions and a
 No dates are promised. In rough order of priority:
 
 1. Finish the real Fedora KDE (Plasma) session testing that is in progress, and fix what it reveals.
-2. Import and export limits (size, "zip bomb", free disk space).
-3. A first tagged release with a defined package name and distribution channel.
-4. AppImage packaging, only after a working, tested build exists.
-5. Progress and cancellation for operations already running, if the engine allows it.
+2. A first tagged pre-release (alpha) on GitHub, after the release workflow is changed (the package name `kongui` is already defined).
+3. AppImage packaging, only after a working, tested build exists.
+4. Progress and cancellation for operations already running, if the engine allows it.
+
+Done so far: safety copies, cross-process lock, import and export limits, profile descriptions and sections.
 
 ## Compatibility
 
@@ -184,7 +206,7 @@ KonGUI uses the same profile folder and `.knsv` format as the Konsave code bundl
 ## Documentation
 
 Technical documentation is in [`docs/`](docs/):
-[integration layer](docs/INTEGRATION.md), [services used by the interface](docs/GUI_SERVICES.md), [`conf.yaml` editor](docs/GUI_CONFIG.md), [interface prototype](docs/GUI_PROTOTYPE.md), [concurrency](docs/CONCURRENCY.md), [changes to Konsave](docs/KONSAVE_PATCHES.md) and the [final audit](docs/FINAL_AUDIT.md).
+[integration layer](docs/INTEGRATION.md), [services used by the interface](docs/GUI_SERVICES.md), [`conf.yaml` editor](docs/GUI_CONFIG.md), [interface prototype](docs/GUI_PROTOTYPE.md), [concurrency](docs/CONCURRENCY.md), [changes to Konsave](docs/KONSAVE_PATCHES.md), [limitations and decisions](docs/LIMITATIONS.md) and the [final audit](docs/FINAL_AUDIT.md).
 
 ## Original project and credits
 
