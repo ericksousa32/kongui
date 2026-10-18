@@ -9,6 +9,7 @@ core and Konsave in English are mapped to full translatable sentences here.
 
 from __future__ import annotations
 
+import errno
 import re
 from typing import Optional, Tuple
 
@@ -20,11 +21,13 @@ from kongui.core import (
     KEPT_PREFIX,
     UNDO_PREFIX,
     ArchiveExistsError,
+    ArchiveLimitError,
     BackupNotFoundError,
     ConfigConflictError,
     ConfigMissingError,
     ConfigValidationError,
     ConfirmationRequiredError,
+    InsufficientSpaceError,
     KonGuiError,
     LockBusyError,
     LockCancelledError,
@@ -41,6 +44,7 @@ from kongui.core import (
     SnapshotNotFoundError,
     ValidationError,
 )
+from kongui.gui.formatting import format_size
 
 #: Failure headline of each operation when a profile name is known
 #: (``{name}`` is the profile name).
@@ -290,7 +294,37 @@ def describe_result(result: OperationResult) -> Tuple[str, ...]:
     lines = [result.message] if result.message else []
     lines += [line for line in result.errors if line not in lines]
     lines += [describe_note(line) for line in result.warnings]
-    return _limit(lines)
+    reason = _failure_reason(" ".join(lines))
+    return _limit(([reason] if reason else []) + lines)
+
+
+def _no_space_text() -> str:
+    """The explanation of a full disk."""
+    return Q.translate(
+        "messages",
+        "The disk ran out of free space during the operation. Free some space "
+        "and try again.",
+    )
+
+
+def _failure_reason(text: str) -> Optional[str]:
+    """Explains, in plain words, the engine failures that users can fix.
+
+    Args:
+        text: The English failure text of an operation (message and errors).
+
+    Returns:
+        Optional[str]: The explanation, or ``None`` when the failure is unknown.
+    """
+    if "[Errno 28]" in text or "No space left on device" in text:
+        return _no_space_text()
+    if "BadZipFile" in text or "Bad CRC-32" in text:
+        return Q.translate(
+            "messages",
+            "The file is corrupted: its contents could not be read to the end. "
+            "Download or export it again.",
+        )
+    return None
 
 
 #: Fragments of ``ValidationError`` messages (English, from the services) and
@@ -301,6 +335,14 @@ _VALIDATION_TEXTS = (
     (
         "must be a '*",
         QT_TRANSLATE_NOOP("messages", "Choose a file with the .knsv extension."),
+    ),
+    (
+        "corrupted archive",
+        QT_TRANSLATE_NOOP(
+            "messages",
+            "The file is corrupted: its contents could not be read to the end. "
+            "Download or export it again.",
+        ),
     ),
     (
         "not a readable archive",
@@ -530,6 +572,8 @@ def _translate_validation(text: str) -> str:
 def _describe_os_error(error: OSError) -> Tuple[str, ...]:
     """Explains a file-system error (permissions, missing file…)."""
     where = f" ({error.filename})" if error.filename else ""
+    if error.errno == errno.ENOSPC:
+        return (_no_space_text(),)
     if isinstance(error, PermissionError):
         return (
             Q.translate(
@@ -559,6 +603,30 @@ def _describe_os_error(error: OSError) -> Tuple[str, ...]:
             where=where, reason=error.strerror or error
         ),
     )
+
+
+def _describe_limit(error: ArchiveLimitError) -> str:
+    """Explains which import limit a file went over."""
+    if error.kind == "size":
+        return Q.translate(
+            "messages",
+            "The file is too large to import ({size}; the limit is {limit}). "
+            "Check that it is a profile exported by KonGUI or Konsave.",
+        ).format(
+            size=format_size((error.actual or 0) / 1048576),
+            limit=format_size(error.limit / 1048576),
+        )
+    if error.kind == "entries":
+        return Q.translate(
+            "messages",
+            "The file has too many items ({count}; the limit is {limit}). "
+            "Check that it is a profile exported by KonGUI or Konsave.",
+        ).format(count=error.actual, limit=error.limit)
+    return Q.translate(
+        "messages",
+        "Decompressed, the file would use more than {limit}, which is above the "
+        "safety limit, so it was not imported. It may not be a profile.",
+    ).format(limit=format_size(error.limit / 1048576))
 
 
 def describe_error(  # pylint: disable=too-many-return-statements
@@ -692,6 +760,21 @@ def describe_error(  # pylint: disable=too-many-return-statements
                 "messages", "That backup no longer exists. The list was refreshed."
             ),
         )
+    if isinstance(error, InsufficientSpaceError):
+        return (
+            Q.translate(
+                "messages",
+                "Not enough free disk space in {folder}: about {needed} are "
+                "needed and {available} are free. Free some space and try "
+                "again. Nothing was changed.",
+            ).format(
+                folder=error.folder,
+                needed=format_size(error.needed / 1048576),
+                available=format_size(error.available / 1048576),
+            ),
+        )
+    if isinstance(error, ArchiveLimitError):
+        return (_describe_limit(error),)
     if isinstance(error, OperationFailedError):
         return describe_result(error.result)
     if isinstance(error, ValidationError):

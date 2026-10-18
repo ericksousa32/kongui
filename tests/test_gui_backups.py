@@ -43,7 +43,7 @@ class DemoSafetyCopyTests(WindowCase):
         return window, page, dialog
 
     def make_copies(self, window):
-        window.controller.apply("Trabalho", confirmed=True)
+        window.controller.apply("Work", confirmed=True)
         self.run_all()
         window.controller.apply("Gaming", confirmed=True)
         self.run_all()
@@ -149,7 +149,7 @@ class DemoSafetyCopyTests(WindowCase):
         dialog.reject()
         self.flush()
         self.assertIsNone(page._copies_dialog)
-        window.controller.apply("Trabalho", confirmed=True)
+        window.controller.apply("Work", confirmed=True)
         self.run_all()  # must not touch the closed dialog
 
     def test_the_settings_button_opens_the_dialog(self):

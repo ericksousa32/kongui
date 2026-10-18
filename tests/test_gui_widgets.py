@@ -385,7 +385,7 @@ class ToastTests(GuiTestCase):
 class DialogTests(GuiTestCase):
     """Profile and confirmation dialogs."""
 
-    def dialog(self, existing=("Trabalho",)):
+    def dialog(self, existing=("Work",)):
         from kongui.gui.mock_data import sections
         from kongui.gui.widgets.dialogs import ProfileDialog
 
@@ -417,7 +417,7 @@ class DialogTests(GuiTestCase):
             " x",
             "x ",
             "x.knsv",
-            "Trabalho",
+            "Work",
             "x" * 201,
         ):
             with self.subTest(name=bad):
@@ -429,7 +429,7 @@ class DialogTests(GuiTestCase):
 
     def test_duplicate_has_its_own_message(self):
         dialog = self.dialog()
-        dialog.name_edit.setText("Trabalho")
+        dialog.name_edit.setText("Work")
         self.assertEqual(
             dialog.validation_error(), "Já existe um perfil com esse nome."
         )

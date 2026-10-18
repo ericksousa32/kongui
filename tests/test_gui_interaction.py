@@ -26,7 +26,7 @@ class DashboardTests(GuiTestCase):
         window = self.make_window()
         stats = window.pages["dashboard"].stats
         self.assertEqual(stats["count"].value_label.text(), "7")
-        self.assertEqual(stats["active"].value_label.text(), "Trabalho")
+        self.assertEqual(stats["active"].value_label.text(), "Work")
         self.assertEqual(stats["size"].value_label.text(), "228,6 MB")
         self.assertEqual(stats["recent"].value_label.text(), "há 2 dias")
 
@@ -35,7 +35,7 @@ class DashboardTests(GuiTestCase):
         stats = window.pages["dashboard"].stats
         window.controller.apply("Gaming", confirmed=True)
         self.assertEqual(stats["active"].value_label.text(), "Gaming")
-        self.backend_do(window, "remove", "Retrô", confirmed=True)
+        self.backend_do(window, "remove", "Retro", confirmed=True)
         self.assertEqual(stats["count"].value_label.text(), "6")
 
     def test_empty_store_shows_empty_states(self):
@@ -110,13 +110,13 @@ class ProfilesPageTests(GuiTestCase):
         self.assertEqual(
             self.names(page),
             [
-                "Apresentação",
                 "Gaming",
-                "Minimalista",
-                "Noturno",
-                "Retrô",
+                "Minimalist",
+                "Night",
+                "Presentation",
+                "Retro",
                 "Tablet",
-                "Trabalho",
+                "Work",
             ],
         )
         self.assertEqual(page.count_label.text(), "7 perfis")
@@ -124,8 +124,8 @@ class ProfilesPageTests(GuiTestCase):
     def test_only_the_active_profile_is_marked(self):
         _, page = self.page()
         marked = [card.profile_name for card in page.cards() if card.property("active")]
-        self.assertEqual(marked, ["Trabalho"])
-        active = next(card for card in page.cards() if card.profile_name == "Trabalho")
+        self.assertEqual(marked, ["Work"])
+        active = next(card for card in page.cards() if card.profile_name == "Work")
         self.assertEqual(active.badge.text(), "Ativo")
         self.assertFalse(active.apply_button.isEnabled())
         self.assertEqual(active.apply_button.text(), "Em uso")
@@ -133,10 +133,10 @@ class ProfilesPageTests(GuiTestCase):
     def test_search_by_name_description_and_section(self):
         _, page = self.page()
         cases = {
-            "minim": ["Minimalista"],
-            "MINIMA": ["Minimalista"],
-            "projetor": ["Apresentação"],
-            "konsole": ["Retrô", "Tablet"],
+            "minim": ["Minimalist"],
+            "MINIMA": ["Minimalist"],
+            "projector": ["Presentation"],
+            "konsole": ["Retro", "Tablet"],
             "  gaming  ": ["Gaming"],
         }
         for query, expected in cases.items():
@@ -168,10 +168,10 @@ class ProfilesPageTests(GuiTestCase):
         _, page = self.page()
         page.sort_combo.setCurrentIndex(page.sort_combo.findData("recent"))
         self.flush()
-        self.assertEqual(self.names(page)[:3], ["Trabalho", "Minimalista", "Gaming"])
+        self.assertEqual(self.names(page)[:3], ["Work", "Minimalist", "Gaming"])
         page.sort_combo.setCurrentIndex(page.sort_combo.findData("size"))
         self.flush()
-        self.assertEqual(self.names(page)[:3], ["Retrô", "Trabalho", "Gaming"])
+        self.assertEqual(self.names(page)[:3], ["Retro", "Work", "Gaming"])
 
     def test_filter_and_sort_function_is_pure(self):
         from kongui.gui.mock_data import demo_profiles
@@ -224,7 +224,7 @@ class ProfilesPageTests(GuiTestCase):
         card = next(c for c in page.cards() if c.profile_name == "Gaming")
         with ask(False):
             card.apply_button.click()
-        self.assertEqual(window.context.store.active().name, "Trabalho")
+        self.assertEqual(window.context.store.active().name, "Work")
         self.assertEqual(window.toasts.titles(), [])
 
     def test_remove_needs_confirmation_and_is_destructive(self):
@@ -253,10 +253,10 @@ class ProfilesPageTests(GuiTestCase):
 
     def test_export_button_opens_the_export_form(self):
         window, page = self.page()
-        card = next(c for c in page.cards() if c.profile_name == "Noturno")
+        card = next(c for c in page.cards() if c.profile_name == "Night")
         card.export_button.click()
         self.assertEqual(window.current_key, "transfer")
-        self.assertEqual(window.pages["transfer"].export_combo.currentData(), "Noturno")
+        self.assertEqual(window.pages["transfer"].export_combo.currentData(), "Night")
 
     def test_empty_store_shows_the_empty_state(self):
         window, page = self.page()
@@ -350,7 +350,7 @@ class SettingsPageTests(GuiTestCase):
         self.assertEqual(window.context.store.names(), [])
         page.reset_button.click()
         self.assertEqual(len(window.context.store.names()), 7)
-        self.assertEqual(window.context.store.active().name, "Trabalho")
+        self.assertEqual(window.context.store.active().name, "Work")
 
 
 class AboutPageTests(GuiTestCase):

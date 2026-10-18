@@ -16,6 +16,7 @@ import shutil
 import tempfile
 import time
 import zipfile
+import zlib
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
@@ -26,6 +27,7 @@ from kongui.core.config import ConfigService
 from kongui.core.engine import EngineCall, KonsaveEngine
 from kongui.core.errors import (
     ArchiveExistsError,
+    ArchiveLimitError,
     ConfigMissingError,
     ConfigValidationError,
     ConfirmationRequiredError,
@@ -43,12 +45,20 @@ from kongui.core.results import (
 )
 from kongui.core.snapshot import KEPT_PREFIX, SnapshotInfo, SnapshotService
 from kongui.core.safety import (
+    MAX_ARCHIVE_BYTES,
+    MAX_ARCHIVE_ENTRIES,
+    MAX_EXTRACTED_BYTES,
     RESERVED_PREFIX,
+    require_free_space,
+    tree_size,
     validate_archive_name,
     validate_profile_name,
 )
 
 ON_CONFLICT_CHOICES = ("error", "unique", "overwrite")
+
+#: Bytes read at a time while counting what an archive decompresses to.
+_COUNT_CHUNK = 1 << 20
 
 #: Start of the warning ``export`` adds when the ``conf.yaml`` that goes into
 #: the ``.knsv`` is not the one the profile was saved with.
@@ -489,6 +499,13 @@ class ProfileService:
         if not report.ok:
             raise ConfigValidationError("the profile configuration is invalid", report)
         base, force = self._resolve_export_target(folder, base, on_conflict)
+        # The original copies the data next to the archive and zips the copy,
+        # so about twice the data must fit in the destination.
+        require_free_space(
+            folder,
+            2 * self._export_size(info.path, (report.resolved or {}).get("export", {})),
+            "the export",
+        )
         names = self._engine.profile_names()
         differences = self._conf_differences(info.path / "conf.yaml")
         call = self._engine.call(
@@ -552,6 +569,10 @@ class ProfileService:
             raise ValidationError(
                 f"stale import folder found, remove it first: {staging}"
             )
+        extracted = self._measure_extracted(path)
+        # The original extracts into its temp folder, then copies the profile
+        # and the export section: about twice the extracted size, in total.
+        require_free_space(self._engine.konsave_dir, 2 * extracted, "the import")
         target = self._engine.profiles_dir / name
         snapshot = self._snapshots.create(
             "import",
@@ -644,6 +665,17 @@ class ProfileService:
         if not path.name.endswith(suffix) or path.name == suffix:
             raise ValidationError(f"archive must be a '*{suffix}' file")
         name = validate_profile_name(path.name[: -len(suffix)])
+        try:
+            size = path.stat().st_size
+        except OSError as error:
+            raise ValidationError(f"not a readable archive: {error}") from error
+        if size > MAX_ARCHIVE_BYTES:
+            raise ArchiveLimitError(
+                f"archive too large: {size} bytes (limit {MAX_ARCHIVE_BYTES})",
+                "size",
+                MAX_ARCHIVE_BYTES,
+                size,
+            )
         report = self._read_archive_config(path)
         if not report.ok or report.resolved is None:
             raise ConfigValidationError("the archive configuration is invalid", report)
@@ -1012,6 +1044,14 @@ class ProfileService:
         try:
             with zipfile.ZipFile(archive) as handle:
                 members = handle.namelist()
+                if len(members) > MAX_ARCHIVE_ENTRIES:
+                    raise ArchiveLimitError(
+                        f"archive has too many entries: {len(members)} "
+                        f"(limit {MAX_ARCHIVE_ENTRIES})",
+                        "entries",
+                        MAX_ARCHIVE_ENTRIES,
+                        len(members),
+                    )
                 for member in members:
                     parts = PurePosixPath(member).parts
                     if (
@@ -1037,6 +1077,68 @@ class ProfileService:
             candidate = Path(folder) / "conf.yaml"
             candidate.write_bytes(data)
             return self._config.validate(candidate)
+
+    @staticmethod
+    def _measure_extracted(archive: Path) -> int:
+        """Counts the bytes an archive really decompresses to, writing nothing.
+
+        Every member is read to its end, so the count does not depend on the
+        sizes declared in the zip headers, reading stops at the first chunk that
+        passes the limit, and a damaged member (bad checksum, broken data) is
+        found before anything is imported.
+
+        Args:
+            archive: Path of the ``.knsv`` (already checked by the caller).
+
+        Returns:
+            int: Total decompressed bytes.
+
+        Raises:
+            ArchiveLimitError: If the total passes ``MAX_EXTRACTED_BYTES``.
+            ValidationError: If the archive is unreadable or corrupted.
+        """
+        total = 0
+        try:
+            with zipfile.ZipFile(archive) as handle:
+                for member in handle.infolist():
+                    if member.is_dir():
+                        continue
+                    with handle.open(member) as stream:
+                        while True:
+                            chunk = stream.read(_COUNT_CHUNK)
+                            if not chunk:
+                                break
+                            total += len(chunk)
+                            if total > MAX_EXTRACTED_BYTES:
+                                raise ArchiveLimitError(
+                                    "archive expands to more than "
+                                    f"{MAX_EXTRACTED_BYTES} bytes",
+                                    "extracted",
+                                    MAX_EXTRACTED_BYTES,
+                                )
+        except (zipfile.BadZipFile, zlib.error, EOFError) as error:
+            raise ValidationError(f"corrupted archive: {error}") from error
+        except (OSError, RuntimeError, NotImplementedError) as error:
+            raise ValidationError(f"not a readable archive: {error}") from error
+        return total
+
+    @staticmethod
+    def _export_size(profile: Path, resolved_export: Mapping[str, Any]) -> int:
+        """Estimates the bytes an export copies: the profile and its export entries.
+
+        Args:
+            profile: Profile folder.
+            resolved_export: The ``export`` part of the resolved configuration.
+
+        Returns:
+            int: Bytes (an estimate; unreadable files count as zero).
+        """
+        total = tree_size(profile)
+        for data in resolved_export.values():
+            location = Path(os.path.normpath(data["location"]))
+            for entry in data.get("entries") or ():
+                total += tree_size(location / entry)
+        return total
 
     @staticmethod
     def _remove_created(path: Path) -> str:

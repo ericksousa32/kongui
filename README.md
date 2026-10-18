@@ -21,9 +21,11 @@ What it aims to solve:
 
 ## Screenshots
 
-<!-- No screenshots are published yet. Add real captures of the interface here (for example under docs/images/) once available. -->
+![Dashboard](./screenshots/Captura_de_tela_20261018_124635.png)
 
-Not available yet. You can preview the interface without touching any real data using the demo mode described in [Running](#running).
+The screenshots were taken in demo mode, so every profile shown is fictitious. View more in [screenshots](./screenshots/).
+
+You can preview the interface without touching any real data using the demo mode described in [Running](#running).
 
 ## Features
 
@@ -33,6 +35,7 @@ Everything below is covered by the automated test suite (run in temporary home d
 
 - **Profiles:** list, save, overwrite, apply, remove, and remove all. Destructive actions require confirmation.
 - **Import / export:** `.knsv` archives. When the destination file already exists, the interface asks what to do instead of overwriting silently.
+- **Import / export protections:** a `.knsv` above 512 MiB, with more than 10,000 entries or that really expands to more than 2 GiB is refused before anything is written; corrupted or unsafe archives get a clear message; free disk space is checked before import and export; a failed export keeps the previous one and leaves no temporary files. The limits are fixed constants (see [`docs/INTEGRATION.md`](docs/INTEGRATION.md) §10).
 - **Safety copies:** the files that would be replaced are copied before a profile is applied or imported. Copies can be listed, restored and deleted from *Settings*; nothing is deleted automatically.
 - **`conf.yaml` editor:** edit the `save` and `export` sections or the YAML text, with validation (problems reported with line and column), automatic backups of the previous file, and restore.
 - **Cross-process lock:** operations use a `flock` lock on `~/.config/konsave/.kongui.lock`. If another Konsave operation is running, KonGUI shows that it is waiting, stays responsive, and lets you cancel the wait. The bundled `konsave` command waits too (see [Command line](#command-line-bundled-konsave)). Programs that do not use the lock, such as Plasma itself or a text editor, are not covered.
@@ -47,7 +50,6 @@ Everything below is covered by the automated test suite (run in temporary home d
 
 ### Planned
 
-- Limits and checks for archives on import and export (maximum size, "zip bomb" protection, free disk space).
 - Progress reporting and cancelling of long operations that have already started. The original engine cannot be interrupted today.
 - Packaging and distribution. No installable package or AppImage exists yet.
 - Profile descriptions and sections: Konsave does not store them, so they only exist in demo mode.
@@ -163,7 +165,7 @@ The interface is written in English and translated to Brazilian Portuguese with 
 2. Otherwise the system locale: exactly `pt_BR` selects Portuguese, anything else selects English. This detection is never saved, so a later change of the system language is followed until you choose a language yourself.
 3. A text with no translation is shown in English.
 
-Known limits: the demonstration profiles of `--demo` keep the language they were created in until you use *Restore fictitious profiles*; notices already on screen and entries already in the activity list keep the language they were written in; and messages that come from the bundled Konsave code are translated by matching their English text, so a message that Konsave later rewords may appear in English. Details are in [`docs/GUI_PROTOTYPE.md`](docs/GUI_PROTOTYPE.md#8-language-i18n).
+Known limits: the fictitious data of `--demo` (profile names, descriptions and activity) is always in English, while the interface around it is translated; notices already on screen and entries already in the activity list keep the language they were written in; and messages that come from the bundled Konsave code are translated by matching their English text, so a message that Konsave later rewords may appear in English. Details are in [`docs/GUI_PROTOTYPE.md`](docs/GUI_PROTOTYPE.md#8-language-i18n).
 
 ## Roadmap
 

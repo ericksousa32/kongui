@@ -490,7 +490,7 @@
     <name>FakeBackend</name>
     <message>
         <source>No description.</source>
-        <extracomment>Seconds a call waits for the simulated other operation.</extracomment>
+        <extracomment>Export conflict policies (see ``ProfileService.export``): refuse, pick a free name, or replace an existing ``.knsv`` file. ``FakeBackend`` argument meaning &quot;the active fictitious profile&quot;. Seconds a call waits for the simulated other operation.</extracomment>
         <translation>No description.</translation>
     </message>
     <message>
@@ -1832,6 +1832,14 @@
         <translation>The archive has folders that its conf.yaml does not list: {groups}. They will be ignored when applying the profile.</translation>
     </message>
     <message>
+        <source>The disk ran out of free space during the operation. Free some space and try again.</source>
+        <translation>The disk ran out of free space during the operation. Free some space and try again.</translation>
+    </message>
+    <message>
+        <source>The file is corrupted: its contents could not be read to the end. Download or export it again.</source>
+        <translation>The file is corrupted: its contents could not be read to the end. Download or export it again.</translation>
+    </message>
+    <message>
         <source>The file was not found.</source>
         <extracomment>Fragments of ``ValidationError`` messages (English, from the services) and the English source of their text. The first match wins; unknown messages are shown as they are.</extracomment>
         <translation>The file was not found.</translation>
@@ -2018,6 +2026,18 @@
         <translation>File error{where}: {reason}</translation>
     </message>
     <message>
+        <source>The file is too large to import ({size}; the limit is {limit}). Check that it is a profile exported by KonGUI or Konsave.</source>
+        <translation>The file is too large to import ({size}; the limit is {limit}). Check that it is a profile exported by KonGUI or Konsave.</translation>
+    </message>
+    <message>
+        <source>The file has too many items ({count}; the limit is {limit}). Check that it is a profile exported by KonGUI or Konsave.</source>
+        <translation>The file has too many items ({count}; the limit is {limit}). Check that it is a profile exported by KonGUI or Konsave.</translation>
+    </message>
+    <message>
+        <source>Decompressed, the file would use more than {limit}, which is above the safety limit, so it was not imported. It may not be a profile.</source>
+        <translation>Decompressed, the file would use more than {limit}, which is above the safety limit, so it was not imported. It may not be a profile.</translation>
+    </message>
+    <message>
         <source>KonGUI must not be run as root. Open it as your own user.</source>
         <translation>KonGUI must not be run as root. Open it as your own user.</translation>
     </message>
@@ -2082,124 +2102,12 @@
         <translation>That backup no longer exists. The list was refreshed.</translation>
     </message>
     <message>
+        <source>Not enough free disk space in {folder}: about {needed} are needed and {available} are free. Free some space and try again. Nothing was changed.</source>
+        <translation>Not enough free disk space in {folder}: about {needed} are needed and {available} are free. Free some space and try again. Nothing was changed.</translation>
+    </message>
+    <message>
         <source>Unexpected error ({type}): {error}</source>
         <translation>Unexpected error ({type}): {error}</translation>
-    </message>
-</context>
-<context>
-    <name>mock_data</name>
-    <message>
-        <source>Work</source>
-        <extracomment>Export conflict policies (see ``ProfileService.export``): refuse, pick a free name, or replace an existing ``.knsv`` file. ``FakeBackend`` argument meaning &quot;the active fictitious profile&quot;.</extracomment>
-        <translation>Work</translation>
-    </message>
-    <message>
-        <source>Plasma (panels and widgets)</source>
-        <translation>Plasma (panels and widgets)</translation>
-    </message>
-    <message>
-        <source>Keyboard shortcuts</source>
-        <translation>Keyboard shortcuts</translation>
-    </message>
-    <message>
-        <source>Icons and cursors</source>
-        <translation>Icons and cursors</translation>
-    </message>
-    <message>
-        <source>Application themes</source>
-        <translation>Application themes</translation>
-    </message>
-    <message>
-        <source>Fonts</source>
-        <translation>Fonts</translation>
-    </message>
-    <message>
-        <source>Wallpaper</source>
-        <translation>Wallpaper</translation>
-    </message>
-    <message>
-        <source>Konsole and Dolphin</source>
-        <translation>Konsole and Dolphin</translation>
-    </message>
-    <message>
-        <source>Single panel, dark theme and shortcuts for side-by-side windows.</source>
-        <translation>Single panel, dark theme and shortcuts for side-by-side windows.</translation>
-    </message>
-    <message>
-        <source>Minimalist</source>
-        <translation>Minimalist</translation>
-    </message>
-    <message>
-        <source>No widgets, monochrome icons and a plain wallpaper.</source>
-        <translation>No widgets, monochrome icons and a plain wallpaper.</translation>
-    </message>
-    <message>
-        <source>Gaming</source>
-        <translation>Gaming</translation>
-    </message>
-    <message>
-        <source>Effects turned off and a floating panel.</source>
-        <translation>Effects turned off and a floating panel.</translation>
-    </message>
-    <message>
-        <source>Presentation</source>
-        <translation>Presentation</translation>
-    </message>
-    <message>
-        <source>Large fonts and high contrast for a projector.</source>
-        <translation>Large fonts and high contrast for a projector.</translation>
-    </message>
-    <message>
-        <source>Retro</source>
-        <translation>Retro</translation>
-    </message>
-    <message>
-        <source>Classic look with a bottom taskbar.</source>
-        <translation>Classic look with a bottom taskbar.</translation>
-    </message>
-    <message>
-        <source>Night</source>
-        <translation>Night</translation>
-    </message>
-    <message>
-        <source>Warm colors and reduced brightness.</source>
-        <translation>Warm colors and reduced brightness.</translation>
-    </message>
-    <message>
-        <source>Tablet</source>
-        <translation>Tablet</translation>
-    </message>
-    <message>
-        <source>Larger touch targets and a side panel.</source>
-        <translation>Larger touch targets and a side panel.</translation>
-    </message>
-    <message>
-        <source>Profile “{name}” applied</source>
-        <translation>Profile “{name}” applied</translation>
-    </message>
-    <message>
-        <source>Profile “{name}” updated</source>
-        <translation>Profile “{name}” updated</translation>
-    </message>
-    <message>
-        <source>“{name}” exported to {folder}</source>
-        <translation>“{name}” exported to {folder}</translation>
-    </message>
-    <message>
-        <source>“{name}” imported from {file}</source>
-        <translation>“{name}” imported from {file}</translation>
-    </message>
-    <message>
-        <source>Profile “{name}” created</source>
-        <translation>Profile “{name}” created</translation>
-    </message>
-    <message>
-        <source>Profile “{name}” removed</source>
-        <translation>Profile “{name}” removed</translation>
-    </message>
-    <message>
-        <source>Test</source>
-        <translation>Test</translation>
     </message>
 </context>
 <context>
