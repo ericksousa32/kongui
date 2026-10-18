@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import os
+import shutil
+from pathlib import Path
 from typing import Callable, Optional
 
-from kongui.core.errors import RunningAsRootError, ValidationError
+from kongui.core.errors import (
+    InsufficientSpaceError,
+    RunningAsRootError,
+    ValidationError,
+)
 
 KNSV_SUFFIX = ".knsv"
 #: Longest name accepted, in UTF-8 *bytes*. Linux limits a file name to 255
@@ -16,6 +22,17 @@ MAX_NAME_BYTES = 200
 #: ``ProfileService.replace``. ``list_profiles`` hides them, so a profile with
 #: such a name would be saved but never shown (and could not be removed).
 RESERVED_PREFIX = ".kongui-"
+
+#: Import limits for a ``.knsv`` (protection against huge or "zip bomb" files).
+#: They are initial values, not a guarantee that every legitimate profile fits:
+#: change them here if a real profile needs more.
+MAX_ARCHIVE_BYTES = 512 * 1024**2
+#: Bytes actually produced by decompressing every member (counted, not read from
+#: the zip headers, which a hostile file can falsify).
+MAX_EXTRACTED_BYTES = 2 * 1024**3
+MAX_ARCHIVE_ENTRIES = 10_000
+#: Free space that must remain on top of the estimate (the estimate is rough).
+DISK_MARGIN_BYTES = 64 * 1024**2
 
 EuidProvider = Callable[[], Optional[int]]
 
@@ -149,3 +166,61 @@ def validate_archive_name(name: object) -> str:
             f"archive name must not include the '{KNSV_SUFFIX}' or '.zip' extension"
         )
     return value
+
+
+def tree_size(path: Path) -> int:
+    """Adds up the sizes of the files under a path, without following links.
+
+    Unreadable entries count as zero: the result is only an estimate.
+
+    Args:
+        path: File or folder.
+
+    Returns:
+        int: Bytes.
+    """
+    total = 0
+    pending = [str(path)]
+    while pending:
+        current = pending.pop()
+        try:
+            info = os.lstat(current)
+            if not os.path.isdir(current) or os.path.islink(current):
+                total += info.st_size
+                continue
+            with os.scandir(current) as entries:
+                pending.extend(entry.path for entry in entries)
+        except OSError:
+            continue
+    return total
+
+
+def require_free_space(folder: Path, needed: int, what: str) -> None:
+    """Refuses to start when the file system of ``folder`` clearly lacks room.
+
+    This is an estimate before the work, not a guarantee: a real "no space"
+    error during the operation is still handled by the caller. When the free
+    space cannot be read, the operation is allowed to go on.
+
+    Args:
+        folder: An existing folder on the file system that will receive data.
+        needed: Estimated bytes the operation will write.
+        what: Short English name of the operation, for the message.
+
+    Raises:
+        InsufficientSpaceError: If less than ``needed`` plus the safety margin
+            is free.
+    """
+    try:
+        available = shutil.disk_usage(folder).free
+    except OSError:
+        return
+    required = needed + DISK_MARGIN_BYTES
+    if available < required:
+        raise InsufficientSpaceError(
+            f"not enough free space for {what} in {folder}: "
+            f"about {required} bytes needed, {available} free",
+            str(folder),
+            required,
+            available,
+        )

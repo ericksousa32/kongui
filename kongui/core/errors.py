@@ -30,6 +30,58 @@ class ValidationError(KonGuiError):
     """Raised when an argument or a file is invalid."""
 
 
+class ArchiveLimitError(ValidationError):
+    """Raised when a ``.knsv`` is larger than the import limits allow.
+
+    Attributes:
+        kind: ``"size"`` (the file), ``"extracted"`` (bytes after decompressing)
+            or ``"entries"`` (number of members).
+        limit: The limit that was exceeded (bytes, or a count for ``"entries"``).
+        actual: The measured value, or ``None`` when counting stopped at the
+            limit (``"extracted"``).
+    """
+
+    def __init__(
+        self, message: str, kind: str, limit: int, actual: Optional[int] = None
+    ) -> None:
+        """Creates the error.
+
+        Args:
+            message: Human readable summary.
+            kind: Which limit was exceeded.
+            limit: The limit.
+            actual: The measured value, if known.
+        """
+        super().__init__(message)
+        self.kind = kind
+        self.limit = limit
+        self.actual = actual
+
+
+class InsufficientSpaceError(KonGuiError):
+    """Raised before an import or export when the disk clearly lacks room.
+
+    Attributes:
+        folder: Folder whose file system was checked.
+        needed: Estimated bytes needed (including the safety margin).
+        available: Free bytes found.
+    """
+
+    def __init__(self, message: str, folder: str, needed: int, available: int) -> None:
+        """Creates the error.
+
+        Args:
+            message: Human readable summary.
+            folder: Folder whose file system was checked.
+            needed: Estimated bytes needed.
+            available: Free bytes found.
+        """
+        super().__init__(message)
+        self.folder = folder
+        self.needed = needed
+        self.available = available
+
+
 class ConfigValidationError(ValidationError):
     """Raised when a ``conf.yaml`` (or an operation derived from it) is unsafe.
 

@@ -136,6 +136,15 @@ unique name is `name_fDD-MM-YYYY:HH-MM-SS`; the core's is `name-2`.
   imported from there; the copy is deleted at the end, even on error, and the
   original is not touched. It is not a new format.
 
+### Limits and free space
+
+Before the engine is called, an import refuses a file above 512 MiB, an archive with
+more than 10,000 entries or one that really expands to more than 2 GiB (counted
+while decompressing, stopping at the limit), and tells a corrupted archive from a
+foreign file. Import and export also check free space (`shutil.disk_usage`, with a
+64 MiB margin) and stop with nothing changed. A failed export never replaces the
+previous one. Details and constants: [`INTEGRATION.md`](INTEGRATION.md) §10.
+
 ### Errors
 
 Permission denied, a missing file or folder and other `OSError`s become messages in
@@ -168,6 +177,12 @@ CLI.
   asks only for the name and the cards show no description.
 * No cancellation or partial progress; only "busy". Exporting or importing a large
   profile can take long and blocks other operations.
+* The limits and the free-space estimates are simple constants and approximations
+  (the check and the real operation are not atomic: another program can still fill
+  the disk in between; a real `ENOSPC` is then reported and cleaned up). The
+  decompression pass reads the archive once more before importing, which costs time
+  for large archives. The export section is read from the live system, so its size
+  can change between the estimate and the copy.
 * The `.knsv` is neither signed nor encrypted, and its `conf.yaml` decides where
   the files go: the GUI only accepts destinations inside the home, but import only
   archives from trusted sources.

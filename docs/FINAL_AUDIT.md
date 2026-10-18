@@ -1,8 +1,9 @@
 # KonGUI final audit
 
-**Verdict: the project is NOT complete.** Mandatory requirements are still pending
-(see §4: P-3). P-1 (RN-01, safety copy before apply/import) was implemented and
-tested after the first report. Everything that was provably broken and within reach
+**Verdict: the project is NOT complete.** The mandatory requirements P-1 (RN-01,
+safety copy before apply/import), P-2 (lock) and P-3 (basic limits and free-space
+checks on import/export) are implemented and tested; what remains is blocked or
+depends on a real Plasma session (§3.5, §4). Everything that was provably broken and within reach
 was fixed; what depends on testing in a real Plasma session is marked as in
 progress or blocked.
 
@@ -129,22 +130,29 @@ window exists are English only.
 | Id | Requirement | Status | Reason |
 |---|---|---|---|
 | P-2 | Cross-process lock (two KonGUI, or KonGUI + `konsave`) | Tested (mechanism, CLI, services and wait/cancel interface) | `fcntl.flock` on `~/.config/konsave/.kongui.lock`; `tests.test_locking`, `tests.test_gui_lock_wait`; see `CONCURRENCY.md` and `KONSAVE_PATCHES.md`. B-1 below no longer applies to the minimal changes authorized only for the lock |
-| P-3 | Limits for zip bombs, total size and disk space on import/export | **Pending** | there is no size/space check |
+| P-3 | Limits for zip bombs, total size and disk space on import/export | Tested (basic protection) | 512 MiB file, 2 GiB really decompressed (stops at the limit), 10,000 entries, free-space check before import and export, friendly messages, failed export keeps the previous one; `tests.test_transfer_limits`; see `INTEGRATION.md` §10. Limits are fixed constants and estimates, not guarantees (see §4) |
 | B-1 | Progress and cancellation of operations | Blocked | the engine cannot be interrupted, and `konsave/` is only changed for the lock; today there is only "busy" |
 | B-2 | Profile description and sections | Blocked | Konsave does not store these data |
 | B-3 | Validation in a real Plasma session (actually applying, Wayland/drag-and-drop, SELinux, Flatpak) | **In progress** | the project owner is testing in a real Plasma session; results are not recorded here yet |
 
 ## 4. Why it is not complete
 
-P-3 (size, zip-bomb and disk-space limits) is a data-loss/availability risk that the
-GUI does not mitigate and it remains pending; P-2 (cross-process lock, with wait and
-cancel in the interface) was implemented and tested. While P-3 exists, the project
-is not declared complete. B-1 and B-2 do not prevent use, but they limit what can
-be claimed, and B-3 (real-session testing) is still in progress.
+P-2 (cross-process lock, with wait and cancel in the interface) and P-3 (basic
+limits and free-space checks, `INTEGRATION.md` §10) were implemented and tested. The
+project is still not declared complete: B-1 and B-2 do not prevent use, but they
+limit what can be claimed, and B-3 (real-session testing) is still in progress.
+
+Limits of P-3: the limits are constants, not a policy; the free-space check is an
+estimate and is not atomic with the operation (another program can fill the disk
+in between; a real `ENOSPC` is then reported and cleaned up); the decompression
+pass reads the archive once more before importing; the export section is read from
+the live system, so its size can change between the estimate and the copy; the
+original engine is not interrupted or made atomic, so an import that fails halfway
+is still undone by the layer, not by the engine.
 
 Limits of P-1, already documented: the copy of an `import` does not undo the
 imported profile; restoring does not protect against programs that do not use the
-lock (external tools, see `CONCURRENCY.md` §5); the copy has no size limit (P-3).
+lock (external tools, see `CONCURRENCY.md` §5); the copy has no size limit (the P-3 limits apply to the archive, not to the safety copy).
 
 ## 5. Decisions and open points for the project owner
 
@@ -165,14 +173,14 @@ lock (external tools, see `CONCURRENCY.md` §5); the copy has no size limit (P-3
 
 ## 6. Test results
 
-Measured on 2026-10-17 at commit `6a13ea2` (branch `dev`), Python 3.13, Qt offscreen,
+Measured on 2026-10-18 on branch `feat/transfer-limits` (uncommitted work on top of `dev`), Python 3.13, Qt offscreen,
 as an unprivileged user with a temporary `$HOME`:
 
-* 825 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes).
+* 855 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes).
 * Coverage of `kongui/` with `coverage run --branch --source=kongui`: **96%**
-  (6559 statements, 208 not run; 1558 branches, 122 partly covered). `konsave/` was
+  (6665 statements, 212 not run; 1594 branches, 123 partly covered). `konsave/` was
   not measured. The lowest modules: `gui/__main__.py` 0% (three lines, only the
-  `python -m kongui.gui` entry), `core/yamlmap.py` 87%, `gui/messages.py` 87%,
+  `python -m kongui.gui` entry), `core/yamlmap.py` 87%, `gui/messages.py` 88%,
   `gui/widgets/dropzone.py` 88%, `gui/widgets/confedit.py` 90%, `gui/backend.py` 90%.
 * `pylint kongui`: 10.00/10; `black --check`: clean.
 * Packaging: `python -m build --wheel` works in a clean virtual environment. With the

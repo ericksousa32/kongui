@@ -258,8 +258,8 @@ before `apply`/`import` (requirement RN-01) has existed since §9.
 
 * Progress and cancellation of operations already running: the engine has no
   progress callbacks and cannot be interrupted; calls are serialized and blocking.
-* Size limits, free-disk-space checks and "zip bomb" protection in
-  `export`/`import`.
+* Configurable limits: the limits of §10 are constants in `kongui/core/safety.py`,
+  not a policy system.
 * Nothing regarding the lock: it and the waiting interface are described in
   [`CONCURRENCY.md`](CONCURRENCY.md).
 * `XDG_CONFIG_HOME` support (the original hardcodes `~/.config`).
@@ -321,3 +321,47 @@ before `apply`/`import` (requirement RN-01) has existed since §9.
 * **Does not:** undo the profile created by an `import` (it stays in the list);
   protect against changes made by another program during the operation; limit the
   total size (see §8). Nothing is deleted by itself: use `delete_backup`.
+
+## 10. Limits and free space on import and export (P-3)
+
+Basic protections implemented in `ProfileService`, **before** the original engine
+writes anything. The `.knsv` format and the engine are unchanged.
+
+| Constant (`kongui/core/safety.py`) | Value | Effect |
+|---|---|---|
+| `MAX_ARCHIVE_BYTES` | 512 MiB | a compressed file above it is refused (`ArchiveLimitError`, kind `size`) |
+| `MAX_EXTRACTED_BYTES` | 2 GiB | limit for the bytes **actually decompressed** (kind `extracted`) |
+| `MAX_ARCHIVE_ENTRIES` | 10,000 | maximum number of entries (kind `entries`) |
+| `DISK_MARGIN_BYTES` | 64 MiB | safety margin added to every free-space estimate |
+
+* **Import**: `_check_archive` refuses the file by size; `_read_archive_config`
+  refuses it by entry count; absolute paths, `..`, backslashes and NUL in member names were already
+  refused (`unsafe path`). `_measure_extracted` then decompresses every member in
+  1 MiB pieces to nowhere, counts the bytes really produced (the sizes declared in
+  the headers are not trusted) and **stops at the first piece that passes the
+  limit**. The same pass reads every member to the end, so a damaged archive
+  (`BadZipFile`, bad CRC, truncated data) is found here and reported as
+  `corrupted archive`, before the safety copy and before the engine is called.
+  Extraction itself still happens only in the engine's staging folder
+  (`~/.config/konsave/temp/<name>`), which is removed on failure.
+* **Free space**: `require_free_space` uses `shutil.disk_usage`. Import needs
+  `2 × extracted bytes + margin` in the Konsave folder (staging plus the profile);
+  export needs `2 × (profile + export section read from the live system) + margin`
+  in the destination folder (the folder tree plus the zip). Failure raises
+  `InsufficientSpaceError` and **nothing is changed**. If the disk cannot be queried
+  the check is skipped.
+* **A real "no space left" error** during the engine call (`ENOSPC`) is swallowed by
+  the original exception handler and only appears as log text; the layer already
+  detected the failure through its post-conditions, and the message layer
+  recognises the text and explains it in plain words. Leftovers are removed as before.
+* **Export** keeps the original flow (option A of the audit): the engine assembles
+  the files in a staging folder next to the destination, makes the zip and moves it
+  over the final name only at the end. If it fails, the previous valid export stays
+  and no temporary folder or `.zip` remains (`tests.test_transfer_limits`). The
+  overwrite confirmation (`on_conflict`) is unchanged.
+
+Tests: `tests.test_transfer_limits` lowers the constants with `mock.patch` and
+simulates a full disk by replacing `shutil.disk_usage` or making a write raise
+`ENOSPC`; the real disk is never filled.
+
+Limits of this protection: see `GUI_SERVICES.md` §6.
