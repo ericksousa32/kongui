@@ -1832,6 +1832,14 @@
         <translation>The archive has folders that its conf.yaml does not list: {groups}. They will be ignored when applying the profile.</translation>
     </message>
     <message>
+        <source>The disk ran out of free space during the operation. Free some space and try again.</source>
+        <translation>The disk ran out of free space during the operation. Free some space and try again.</translation>
+    </message>
+    <message>
+        <source>The file is corrupted: its contents could not be read to the end. Download or export it again.</source>
+        <translation>The file is corrupted: its contents could not be read to the end. Download or export it again.</translation>
+    </message>
+    <message>
         <source>The file was not found.</source>
         <extracomment>Fragments of ``ValidationError`` messages (English, from the services) and the English source of their text. The first match wins; unknown messages are shown as they are.</extracomment>
         <translation>The file was not found.</translation>
@@ -2018,6 +2026,18 @@
         <translation>File error{where}: {reason}</translation>
     </message>
     <message>
+        <source>The file is too large to import ({size}; the limit is {limit}). Check that it is a profile exported by KonGUI or Konsave.</source>
+        <translation>The file is too large to import ({size}; the limit is {limit}). Check that it is a profile exported by KonGUI or Konsave.</translation>
+    </message>
+    <message>
+        <source>The file has too many items ({count}; the limit is {limit}). Check that it is a profile exported by KonGUI or Konsave.</source>
+        <translation>The file has too many items ({count}; the limit is {limit}). Check that it is a profile exported by KonGUI or Konsave.</translation>
+    </message>
+    <message>
+        <source>Decompressed, the file would use more than {limit}, which is above the safety limit, so it was not imported. It may not be a profile.</source>
+        <translation>Decompressed, the file would use more than {limit}, which is above the safety limit, so it was not imported. It may not be a profile.</translation>
+    </message>
+    <message>
         <source>KonGUI must not be run as root. Open it as your own user.</source>
         <translation>KonGUI must not be run as root. Open it as your own user.</translation>
     </message>
@@ -2080,6 +2100,10 @@
     <message>
         <source>That backup no longer exists. The list was refreshed.</source>
         <translation>That backup no longer exists. The list was refreshed.</translation>
+    </message>
+    <message>
+        <source>Not enough free disk space in {folder}: about {needed} are needed and {available} are free. Free some space and try again. Nothing was changed.</source>
+        <translation>Not enough free disk space in {folder}: about {needed} are needed and {available} are free. Free some space and try again. Nothing was changed.</translation>
     </message>
     <message>
         <source>Unexpected error ({type}): {error}</source>
