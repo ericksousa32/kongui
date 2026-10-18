@@ -21,9 +21,11 @@ What it aims to solve:
 
 ## Screenshots
 
-<!-- No screenshots are published yet. Add real captures of the interface here (for example under docs/images/) once available. -->
+![Dashboard](./screenshots/Captura_de_tela_20261018_124635.png)
 
-Not available yet. You can preview the interface without touching any real data using the demo mode described in [Running](#running).
+View more in [screenshots](./screenshots/).
+
+You can preview the interface without touching any real data using the demo mode described in [Running](#running).
 
 ## Features
 
