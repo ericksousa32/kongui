@@ -1,11 +1,14 @@
 # KonGUI final audit
 
-**Verdict: the project is NOT complete.** The mandatory requirements P-1 (RN-01,
-safety copy before apply/import), P-2 (lock) and P-3 (basic limits and free-space
-checks on import/export) are implemented and tested; what remains is blocked or
-depends on a real Plasma session (§3.5, §4). Everything that was provably broken and within reach
-was fixed; what depends on testing in a real Plasma session is marked as in
-progress or blocked.
+**Verdict: the project is NOT complete, but it is ready to be prepared for an alpha
+pre-release.** The mandatory requirements P-1 (RN-01, safety copy before
+apply/import), P-2 (lock) and P-3 (basic limits and free-space checks on
+import/export) are implemented and tested, and so are the profile descriptions and
+sections (B-2). What remains open is B-3 (validation in a real Plasma session, in
+progress) and B-1 (progress and cancellation, blocked by the engine) (§3.5, §4).
+Everything that was provably broken and within reach was fixed. The owner's
+decisions on the open points of the earlier audit are in §5, and all the limits,
+decisions and open items are collected in [`LIMITATIONS.md`](LIMITATIONS.md).
 
 Note on interface texts: the interface is available in English and Brazilian
 Portuguese. Labels and messages are quoted in this document as they appear in the
@@ -29,7 +32,8 @@ Portuguese interface, with an English gloss in parentheses where needed.
 * Tests of this audit: `tests.test_gui_audit`, `tests.test_core_audit` (plus
   `tests.test_safety` and `tests.test_gui_dialogs`, extended). P-1 has its own:
   `tests.test_snapshot` and `tests.test_gui_backups`. The interface language has
-  `tests.test_i18n`.
+  `tests.test_i18n`. The package name, its dependencies and the version of the bundled
+  engine have `tests.test_packaging`.
 
 ## 2. Fixed findings
 
@@ -85,7 +89,7 @@ not exist and is a requirement; **Blocked** = depends on something out of reach;
 | *Flow* style ⇒ rewrite without comments, only with explicit "yes" | Tested | `tests.test_gui_audit` (ConfigPageFailurePathTests) |
 | Writing while busy / without validating writes nothing | Tested | same |
 | Placeholders (`$HOME`, `$XDG_*`…) interpreted like the original | Tested | `tests.test_config_service` (PlaceholderValidationTests) |
-| Pruning of old backups | Pending (not mandatory) | backups grow without limit |
+| Pruning of old backups | Decided: not done | project decision (2026-10-18): `conf.yaml.bak-*` files are never removed automatically and have no count limit; see `LIMITATIONS.md` §2 |
 
 ### 3.3 Safety, concurrency and files
 
@@ -104,7 +108,9 @@ not exist and is a requirement; **Blocked** = depends on something out of reach;
 | RN-01: list/delete copies in the interface; buttons locked during an operation; nothing is deleted by itself | Tested | `tests.test_gui_backups` (DemoSafetyCopyTests) |
 | Import → export preserves the profile (real Plasma 6 archive) | Tested | identical, except `conf.yaml` (A-4/§5) |
 | `.knsv` exchanged with the original `konsave` in both directions | Tested | CliCompatibilityTests |
-| Unused dependencies | Tested | A-10; `setuptools` still declared at runtime (see §5) |
+| Unused dependencies | Tested | A-10; `setuptools` is no longer declared at runtime: nothing imports it and the whole suite passes with it made unimportable (§5, `tests.test_packaging`) |
+| Distribution called `kongui`, with the author, URL and links of this repository; both commands installed; the `konsave` command still starts | Tested | `tests.test_packaging`; a wheel built in a clean virtual environment and installed there printed `Konsave: 2.2.0+kongui` for `konsave -v` (patch `KONGUI-PATCH(rename)`, `KONSAVE_PATCHES.md` §3.5) |
+| Choosing what a profile includes | Decided: manual | done in *Edit .YAML*, steps in `GUI_CONFIG.md` §7 and the README; not offered when saving |
 
 ### 3.4 Interface language
 
@@ -134,6 +140,7 @@ window exists are English only.
 | P-3 | Limits for zip bombs, total size and disk space on import/export | Tested (basic protection) | 512 MiB file, 2 GiB really decompressed (stops at the limit), 10,000 entries, free-space check before import and export, friendly messages, failed export keeps the previous one; `tests.test_transfer_limits`; see `INTEGRATION.md` §10. Limits are fixed constants and estimates, not guarantees (see §4) |
 | B-1 | Progress and cancellation of operations | Blocked | the engine cannot be interrupted, and `konsave/` is only changed for the lock; today there is only "busy" |
 | B-2 | Profile description and sections | Tested (description and read-only sections) | the description is a small file inside the profile folder and the sections come from the profile's `conf.yaml` (`INTEGRATION.md` §11; `tests.test_profile_details`, `tests.test_gui_details`). The description does not travel in the `.knsv`; choosing what to include when saving is not offered (manual, through *Edit .YAML*) |
+| R-1 | First tag / pre-release | **Not started, on purpose** | decided to prepare first (this stage). Before the first tag: change or disable `.github/workflows/deploy.yml` (publishes to PyPI on any `v*` tag), tie the version shown in the interface to the package version (§5, item 9) and record the B-3 report |
 | B-3 | Validation in a real Plasma session (actually applying, Wayland/drag-and-drop, SELinux, Flatpak) | **In progress** | the project owner is testing in a real Plasma session; results are not recorded here yet. The screenshots in `screenshots/` (Fedora 44, Qt 6.12, demo mode) show that the interface renders there, but they do not validate applying profiles, Wayland, SELinux or Flatpak |
 
 ## 4. Why it is not complete
@@ -144,7 +151,8 @@ project is still not declared complete: B-1 does not prevent use, but it limits
 what can be claimed, and B-3 (real-session testing) is still in progress. B-2 was
 resolved in part (description and read-only sections, `INTEGRATION.md` §11); what
 remains of it is by design: the description does not travel in the `.knsv`, and
-choosing what a profile contains stays manual in the `conf.yaml` editor.
+choosing what a profile contains stays manual in the `conf.yaml` editor (steps in
+`GUI_CONFIG.md` §7).
 
 Limits of P-3: the limits are constants, not a policy; the free-space check is an
 estimate and is not atomic with the operation (another program can fill the disk
@@ -158,36 +166,58 @@ Limits of P-1, already documented: the copy of an `import` does not undo the
 imported profile; restoring does not protect against programs that do not use the
 lock (external tools, see `CONCURRENCY.md` §5); the copy has no size limit (the P-3 limits apply to the archive, not to the safety copy).
 
-## 5. Decisions and open points for the project owner
+## 5. Decisions of the project owner and open points
+
+Decisions given on 2026-10-18 for the points left open by the earlier audit (each
+one is written down in [`LIMITATIONS.md`](LIMITATIONS.md)):
 
 1. **`conf.yaml` inside the `.knsv`**: Konsave writes the global `conf.yaml` but
-   assembles `save/`/`export/` from the profile's. The GUI **warns** (A-4) but does
-   not rewrite the archive's. Decide whether it should rewrite it.
-2. **RN-01** (P-1): implemented with the scope "only the files the operation
-   overwrites", in `~/.config/konsave/kongui-backups/`, without automatic retention
-   (pruning would delete precisely the oldest copy, the one that holds the original
-   state). Confirm whether this is what is wanted or whether there should be a
-   limit on the number of copies.
-3. `setuptools` is declared as a runtime dependency without proven need; left as
-   is because it is outside the evidence of this audit.
-4. The `kongui` command without PySide6 installed shows a raw `ImportError`.
-5. `conf.yaml` backups are never pruned.
-6. A *flow*-style `conf.yaml` falls back to a rewrite that loses comments (with
-   explicit confirmation).
+   assembles `save/`/`export/` from the profile's. Decision: **it is not rewritten**.
+   The GUI keeps warning (A-4).
+2. **RN-01 safety copies**: scope "only the files the operation overwrites", in
+   `~/.config/konsave/kongui-backups/`. Decision: **no limit on the number of copies
+   and no automatic pruning** (pruning would delete precisely the oldest copy, which
+   holds the original state).
+3. **`setuptools` as a runtime dependency**: **it was not real, and the declaration was
+   removed** from `requirements.txt`. Evidence: no module of `kongui/` or `konsave/`
+   imports `setuptools`, `pkg_resources` or `distutils` (`tests.test_packaging` reads
+   the syntax tree of every file); the whole suite (912 tests at that point) passed
+   with those three names made unimportable by a `sitecustomize` import hook; the
+   only use is `setup.py`, which is build time (the release workflow installs it).
+4. **Missing PySide6**: the `kongui` command still shows a raw `ImportError`. Left as
+   it is for now.
+5. **`conf.yaml` backups** are never pruned. Decision: no pruning.
+6. **A *flow*-style `conf.yaml`** falls back to a rewrite that loses comments (with
+   explicit confirmation). Left as it is.
+7. **P-3 limits**: left as fixed constants; their limits are now spelled out in
+   [`LIMITATIONS.md`](LIMITATIONS.md) §3 and `INTEGRATION.md` §10.
+8. **Package name and metadata**: the distribution is now `kongui`, with the author,
+   URL and project links of this repository (and credit to Konsave). This broke the
+   bundled `konsave` command (its version lookup is by distribution name), which was
+   reproduced with a wheel and fixed with the patch `KONGUI-PATCH(rename)`
+   (`KONSAVE_PATCHES.md` §3.5). **Please confirm this one-patch exception** to the
+   rule of changing `konsave/` only for the lock.
+9. **Open, needs a decision before the first tag:** `kongui.__version__`
+   (`0.1.0.dev0`, shown in the interface) is a constant, while the package version
+   comes from `setuptools_scm` (git tags); `.github/workflows/deploy.yml` publishes
+   to PyPI on any `v*` tag; `pip install kongui` does not install PySide6 (extra
+   `gui`).
 
 ## 6. Test results
 
-Measured on 2026-10-18 on branch `feat/profile-details` (uncommitted work on top of `dev` at `4ae5f57`), Python 3.13, Qt offscreen,
+Measured on 2026-10-18 on branch `chore/release-prep` (uncommitted work on top of `dev` at `df8e07c`, which already contains the profile descriptions and sections), Python 3.13, Qt offscreen,
 as an unprivileged user with a temporary `$HOME`:
 
-* 912 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes).
+* 920 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes, **run in the foreground**: started as a background job, the shell makes the child processes ignore Ctrl+C and `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails with `-9` instead of `130`; the same test passes alone and in the foreground).
+* The same suite also passed (912 tests, before `tests.test_packaging` existed) with `setuptools`, `pkg_resources` and `distutils` made unimportable (§5, item 3).
 * Coverage of `kongui/` with `coverage run --branch --source=kongui`: **96%**
   (6930 statements, 224 not run; 1664 branches, 127 partly covered). `konsave/` was
   not measured. The lowest modules: `gui/__main__.py` 0% (three lines, only the
   `python -m kongui.gui` entry), `core/yamlmap.py` 87%, `gui/messages.py` 88%,
   `gui/widgets/dropzone.py` 88%, `gui/widgets/confedit.py` 90%, `gui/backend.py` 90%.
-* `pylint kongui`: 10.00/10; `black --check`: clean.
-* Packaging: `python -m build --wheel` works in a clean virtual environment. With the
+* `pylint kongui`: 10.00/10; `black --check kongui tests konsave setup.py`: clean.
+* Packaging: `python -m build --wheel --no-isolation`, in a virtual environment with `setuptools` 75 or newer, built `kongui-0.1.dev43+g…-py3-none-any.whl` (2026-10-18): metadata `Name: kongui`, the new author, URLs and classifiers, `Requires-Dist: PyYaml>=5.4.1` only (PySide6 in the `gui` extra), both console scripts, no `tests/`. Installed there, `konsave -v` prints `Konsave: 2.2.0+kongui` and `ServiceBackend.engine_version`, which the *About* page shows, returns `2.2.0+kongui`. The version of the wheel comes from git (no tag exists yet).
+* Earlier note on packaging: `python -m build --wheel` works in a clean virtual environment. With the
   distribution's own `setuptools` (Debian 68.1.2), `pip wheel .` fails with
   `AttributeError: install_layout`; this comes from that setuptools and the legacy
   `setup.py` path, not from the project's code.

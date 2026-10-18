@@ -12,7 +12,7 @@ def _read_desc() -> str:
     Returns:
         str: Contents of README.md file.
     """
-    with open("README.md", "r") as desc:
+    with open("README.md", "r", encoding="utf-8") as desc:
         return desc.read()
 
 
@@ -25,7 +25,7 @@ def _read_reqs(path: Path) -> List[str]:
     Returns:
         :type: list of str: List of dependency identifiers.
     """
-    with open(path, "r") as file:
+    with open(path, "r", encoding="utf-8") as file:
         return file.readlines()
 
 
@@ -34,15 +34,21 @@ _REQUIREMENTS: List[str] = _read_reqs(Path("requirements.txt"))
 _REQUIREMENTS_DEV: List[str] = _read_reqs(Path("requirements_dev.txt"))
 
 setup(
-    name="Konsave",
+    name="kongui",
     use_scm_version=True,
     setup_requires=["setuptools_scm"],
-    author="Prayag Jain",
-    author_email="prayagjain2@gmail.com",
-    description="A program that lets you save your Plasma configuration in an instant!",
+    author="KonGUI contributors (Konsave by Prayag Jain)",
+    description="A graphical interface for managing KDE Plasma configuration profiles, "
+    "built on a fork of Konsave.",
     long_description=_read_desc(),
     long_description_content_type="text/markdown",
-    url="https://www.github.com/prayag2/konsave/",
+    url="https://github.com/ericksousa32/kongui",
+    project_urls={
+        "Source": "https://github.com/ericksousa32/kongui",
+        "Issues": "https://github.com/ericksousa32/kongui/issues",
+        "Upstream (Konsave)": "https://github.com/Prayag2/konsave",
+    },
+    license="GPL-3.0-or-later",
     packages=find_packages(exclude=["tests", "tests.*"]),
     package_data={
         "config": ["conf.yaml"],
@@ -55,10 +61,12 @@ setup(
     extras_require={"dev": _REQUIREMENTS_DEV, "gui": ["PySide6>=6.8"]},
     classifiers=[
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
-        "Operating System :: POSIX",
+        "Development Status :: 3 - Alpha",
+        "Operating System :: POSIX :: Linux",
+        "Environment :: X11 Applications :: Qt",
         "Environment :: Console",
         "Intended Audience :: End Users/Desktop",
-        "Programming Language :: Python",
+        "Programming Language :: Python :: 3",
     ],
     entry_points={
         "console_scripts": [

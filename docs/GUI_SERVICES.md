@@ -187,10 +187,15 @@ CLI.
   folder is removed or replaced by something that does not copy it.
 * The sections shown on a card are the `save` groups of the profile's `conf.yaml`
   that hold files. Choosing what to include when saving is not offered: edit the
-  `conf.yaml` (*Edit .YAML*) instead. In demo mode the save dialog still shows the
+  `conf.yaml` (*Edit .YAML*) instead; the steps are in
+  [`GUI_CONFIG.md`](GUI_CONFIG.md) §7. In demo mode the save dialog still shows the
   fictitious check boxes.
 * No cancellation or partial progress; only "busy". Exporting or importing a large
   profile can take long and blocks other operations.
+* The complete list of limitations and the decisions behind them is in
+  [`LIMITATIONS.md`](LIMITATIONS.md).
+* Safety copies are never deleted automatically and their number is not limited
+  (project decision; delete them in *Settings → Safety copies → Manage…*).
 * The limits and the free-space estimates are simple constants and approximations
   (the check and the real operation are not atomic: another program can still fill
   the disk in between; a real `ENOSPC` is then reported and cleaned up). The
