@@ -73,7 +73,7 @@ class StartupTests(GuiTestCase):
     def test_data_is_fictitious_and_deterministic_in_size(self):
         window = self.make_window()
         self.assertEqual(len(window.context.store.names()), 7)
-        self.assertEqual(window.context.store.active().name, "Trabalho")
+        self.assertEqual(window.context.store.active().name, "Work")
         self.assertEqual(len(window.context.activity.entries()), 6)
 
     def test_every_icon_renders(self):

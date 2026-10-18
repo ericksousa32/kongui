@@ -525,15 +525,22 @@ class LaterComponentsTests(WindowCase):
         self.assertIn("Aplicar", texts)
         self.assertNotIn("Apply", texts)
 
-    def test_demo_data_is_made_in_the_language_in_use(self):
+    def test_demo_data_is_always_english(self):
         from kongui.gui.backend import FakeBackend
+        from kongui.gui.mock_data import demo_activity, sections
 
-        english = [profile.name for profile in FakeBackend().list_profiles()]
-        self.assertIn("Work", english)
+        def snapshot():
+            profiles = FakeBackend().list_profiles()
+            return (
+                [(p.name, p.description, tuple(p.sections)) for p in profiles],
+                list(sections()),
+                [entry.text for entry in demo_activity()],
+            )
+
+        english = snapshot()
+        self.assertIn("Work", [name for name, _, _ in english[0]])
         pin_language(self, "pt_BR")
-        portuguese = [profile.name for profile in FakeBackend().list_profiles()]
-        self.assertEqual(len(portuguese), len(english))
-        self.assertIn("Trabalho", portuguese)
+        self.assertEqual(snapshot(), english)
 
 
 @unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
@@ -910,8 +917,8 @@ class WholeInterfaceTests(WindowCase):
     def demo_data(self, window):
         """Texts that are data of the fictitious profiles, not interface text.
 
-        They are written in the language in use when the data is made and are
-        not rewritten by a later switch (documented in docs/GUI_PROTOTYPE.md).
+        They are always English, whatever the interface language (documented in
+        docs/GUI_PROTOTYPE.md).
         """
         from kongui.gui.mock_data import sections
 

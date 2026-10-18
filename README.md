@@ -163,7 +163,7 @@ The interface is written in English and translated to Brazilian Portuguese with 
 2. Otherwise the system locale: exactly `pt_BR` selects Portuguese, anything else selects English. This detection is never saved, so a later change of the system language is followed until you choose a language yourself.
 3. A text with no translation is shown in English.
 
-Known limits: the demonstration profiles of `--demo` keep the language they were created in until you use *Restore fictitious profiles*; notices already on screen and entries already in the activity list keep the language they were written in; and messages that come from the bundled Konsave code are translated by matching their English text, so a message that Konsave later rewords may appear in English. Details are in [`docs/GUI_PROTOTYPE.md`](docs/GUI_PROTOTYPE.md#8-language-i18n).
+Known limits: the fictitious data of `--demo` (profile names, descriptions and activity) is always in English, while the interface around it is translated; notices already on screen and entries already in the activity list keep the language they were written in; and messages that come from the bundled Konsave code are translated by matching their English text, so a message that Konsave later rewords may appear in English. Details are in [`docs/GUI_PROTOTYPE.md`](docs/GUI_PROTOTYPE.md#8-language-i18n).
 
 ## Roadmap
 

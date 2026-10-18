@@ -110,7 +110,7 @@ If PySide6 is not installed, they are skipped.
 Manual visual check: open the program, switch between the three themes, resize the
 window down to the minimum and use **Configurações → Esvaziar perfis** (Settings →
 Empty profiles) to see the empty states. For the existing-file notice, export the
-profile "Minimalista" without checking "Substituir" (Replace).
+profile "Minimalist" without checking "Substituir" (Replace).
 
 ## 6. What `--demo` mode simulates
 
@@ -119,7 +119,7 @@ profile "Minimalista" without checking "Substituir" (Replace).
   alterado no sistema." (Simulation: nothing was changed in the system).
 * The rules are the real ones: conflict policy, invalid names and confirmations.
   Import never opens the file (only its name and, if it exists, its size).
-* The file `~/Downloads/Minimalista.knsv` "already exists", to show the conflict.
+* The file `~/Downloads/Minimalist.knsv` "already exists", to show the conflict.
 
 ## 7. Limitations and next steps
 
@@ -190,9 +190,10 @@ came, with a generic prefix.
 
 * Notices already on screen and entries already in the activity list keep the language
   they were written in; the next ones use the new language.
-* The fictitious `--demo` profiles (names, descriptions, sections, activity) are data
-  created in the language in use at that moment; they are recreated in the new
-  language by *Restore fictitious profiles* or on the next start.
+* The fictitious `--demo` data (profile names, descriptions, areas and activity
+  entries, `kongui/gui/mock_data.py`) is always in English, whatever the interface
+  language: it is sample content, not interface text, and has no translation. The
+  interface around it (buttons, notices, dialogs) is translated as usual.
 * Brazilian Portuguese counts 0 as singular, as Qt / CLDR do ("0 perfil").
 * A Konsave message that is reworded in a future release may show in English until
   its pattern in `messages.py` is adapted (see `KONSAVE_PATCHES.md`).

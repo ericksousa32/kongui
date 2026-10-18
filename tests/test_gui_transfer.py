@@ -75,15 +75,15 @@ class ExportFormTests(ExportCase):
     def test_defaults(self):
         _, page = self.open_transfer()
         self.assertEqual(page.export_combo.count(), 7)
-        self.assertEqual(page.export_combo.currentData(), "Trabalho")
-        self.assertEqual(page.filename_edit.text(), "Trabalho")
-        self.assertEqual(page.export_target(), "~/Downloads/Trabalho.knsv")
+        self.assertEqual(page.export_combo.currentData(), "Work")
+        self.assertEqual(page.filename_edit.text(), "Work")
+        self.assertEqual(page.export_target(), "~/Downloads/Work.knsv")
         # no selector: an existing file always means "ask what to do"
         self.assertFalse(hasattr(page, "conflict_combo"))
         texts = [label.text() for label in page.findChildren(Label)]
         self.assertNotIn("Se o arquivo já existir", texts)
         self.assertTrue(page.export_button.isEnabled())
-        self.assertIn("~/Downloads/Trabalho.knsv", page.preview_label.text())
+        self.assertIn("~/Downloads/Work.knsv", page.preview_label.text())
 
     def test_changing_the_profile_suggests_the_file_name(self):
         _, page = self.open_transfer()
@@ -125,17 +125,17 @@ class ExportFormTests(ExportCase):
     def test_the_profile_list_follows_the_store(self):
         window, page = self.open_transfer()
         page.select_profile("Gaming")
-        self.backend_do(window, "remove", "Retrô", confirmed=True)
+        self.backend_do(window, "remove", "Retro", confirmed=True)
         self.run_all()
         self.assertEqual(page.export_combo.count(), 6)
         self.assertEqual(page.export_combo.currentData(), "Gaming")
 
     def test_the_card_button_opens_the_form_with_the_profile(self):
         window = self.open_window(page="profiles")
-        card = self.card(window.pages["profiles"], "Noturno")
+        card = self.card(window.pages["profiles"], "Night")
         card.export_button.click()
         self.assertEqual(window.current_key, "transfer")
-        self.assertEqual(window.pages["transfer"].export_combo.currentData(), "Noturno")
+        self.assertEqual(window.pages["transfer"].export_combo.currentData(), "Night")
 
 
 class ExportRunTests(ExportCase):
@@ -145,7 +145,7 @@ class ExportRunTests(ExportCase):
         window, page = self.open_transfer()
         self.spy_export()
         self.export(page, directory="~/Backups", name="cópia")
-        self.assertEqual(window.controller.current, ("export", "Trabalho"))
+        self.assertEqual(window.controller.current, ("export", "Work"))
         self.assertFalse(page.export_button.isEnabled(), "locked while running")
         self.assertFalse(page.export_progress.isHidden())
         self.assertFalse(window.busy_bar.isHidden())
@@ -158,7 +158,7 @@ class ExportRunTests(ExportCase):
         )
         entry = window.context.activity.entries()[0]
         self.assertEqual(entry.kind, "export")
-        self.assertEqual(self.exported(), [("Trabalho", "~/Backups", "cópia", "error")])
+        self.assertEqual(self.exported(), [("Work", "~/Backups", "cópia", "error")])
         self.assertIn("~/Backups/cópia.knsv", self.backend.archives)
 
     def test_the_arguments_follow_the_original_options(self):
@@ -188,7 +188,7 @@ class ExportRunTests(ExportCase):
         self.run_all()
         self.assertEqual(
             [c for c in self.backend.calls if c[0] == "export"],
-            [("export", "Trabalho")],
+            [("export", "Work")],
         )
 
     def test_a_service_error_is_shown_and_stays(self):
@@ -248,7 +248,7 @@ class ExportConflictTests(ExportCase):
         super().setUp()
         self.window, self.page = self.open_transfer()
         self.spy_export()
-        self.page.select_profile("Minimalista")  # "~/Downloads/Minimalista.knsv" exists
+        self.page.select_profile("Minimalist")  # "~/Downloads/Minimalist.knsv" exists
 
     def run_export(self, *_ignored):
         started = self.export(self.page)
@@ -259,7 +259,7 @@ class ExportConflictTests(ExportCase):
         with conflict("cancel") as dialog, confirm(True) as sure:
             self.assertFalse(self.run_export("ask"))
         self.assertTrue(dialog.call_args.kwargs["allow_replace"])
-        self.assertIn("Minimalista-2.knsv", dialog.call_args.args[2])
+        self.assertIn("Minimalist-2.knsv", dialog.call_args.args[2])
         sure.assert_not_called()
         self.assertEqual(self.exported(), [])
         self.assertEqual(len(self.backend.archives), 1)
@@ -268,9 +268,9 @@ class ExportConflictTests(ExportCase):
         with conflict("unique"):
             self.assertTrue(self.run_export("ask"))
         self.assertEqual(self.exported()[-1][3], "unique")
-        self.assertIn("~/Downloads/Minimalista-2.knsv", self.backend.archives)
+        self.assertIn("~/Downloads/Minimalist-2.knsv", self.backend.archives)
         self.assertIn(
-            "Minimalista-2.knsv", self.window.toasts._toasts[-1].accessibleName()
+            "Minimalist-2.knsv", self.window.toasts._toasts[-1].accessibleName()
         )
 
     def test_ask_then_replace(self):
@@ -297,11 +297,11 @@ class ExportConflictTests(ExportCase):
 
     def test_the_backend_refuses_to_replace_without_the_policy(self):
         with self.assertRaises(ArchiveExistsError):
-            self.backend.export_profile("Minimalista", "~/Downloads", None, "error")
+            self.backend.export_profile("Minimalist", "~/Downloads", None, "error")
 
     def test_a_folder_in_the_way_only_allows_a_unique_name(self):
-        self.backend.archives.discard("~/Downloads/Minimalista.knsv")
-        self.backend.blocked.add("~/Downloads/Minimalista.knsv")
+        self.backend.archives.discard("~/Downloads/Minimalist.knsv")
+        self.backend.blocked.add("~/Downloads/Minimalist.knsv")
         with conflict("cancel") as dialog:
             self.assertFalse(self.run_export("ask"))
         self.assertFalse(dialog.call_args.kwargs["allow_replace"])
@@ -519,7 +519,7 @@ class ImportRunTests(ImportCase):
         with confirm(True):
             page.start_import()
         self.run_all()
-        self.assertEqual(window.store.active().name, "Trabalho")
+        self.assertEqual(window.store.active().name, "Work")
         self.assertNotIn(("apply", "Escuro"), self.backend.calls)
 
     def test_a_failed_apply_keeps_the_import_and_warns(self):
@@ -530,7 +530,7 @@ class ImportRunTests(ImportCase):
             page.start_import()
         self.run_all()
         self.assertIn("Escuro", window.store.names())
-        self.assertEqual(window.store.active().name, "Trabalho")
+        self.assertEqual(window.store.active().name, "Work")
         self.assertTrue(self.outcomes[-1].ok)
         self.assertTrue(
             any("não foi aplicado" in line for line in self.outcomes[-1].details)
