@@ -17,6 +17,9 @@ from PySide6.QtCore import QCoreApplication as Q
 from PySide6.QtCore import QT_TRANSLATE_NOOP
 
 from kongui.core import (
+    DESCRIPTION_NOT_REMOVED,
+    DESCRIPTION_NOT_SAVED,
+    MAX_DESCRIPTION_CHARS,
     CONF_DIFFERS_PREFIX,
     KEPT_PREFIX,
     UNDO_PREFIX,
@@ -56,6 +59,9 @@ FAILURE_TITLES_WITH_NAME = {
     "duplicate": QT_TRANSLATE_NOOP("messages", "Could not duplicate profile “{name}”"),
     "import": QT_TRANSLATE_NOOP("messages", "Could not import profile “{name}”"),
     "export": QT_TRANSLATE_NOOP("messages", "Could not export profile “{name}”"),
+    "set_description": QT_TRANSLATE_NOOP(
+        "messages", "Could not update the details of “{name}”"
+    ),
 }
 
 #: Failure headline of each operation (no profile name).
@@ -69,6 +75,9 @@ FAILURE_TITLES = {
     "duplicate": QT_TRANSLATE_NOOP("messages", "Could not duplicate the profile"),
     "import": QT_TRANSLATE_NOOP("messages", "Could not import the profile"),
     "export": QT_TRANSLATE_NOOP("messages", "Could not export the profile"),
+    "set_description": QT_TRANSLATE_NOOP(
+        "messages", "Could not update the profile details"
+    ),
     "reset": QT_TRANSLATE_NOOP("messages", "Could not restore the data"),
     "save_config": QT_TRANSLATE_NOOP("messages", "Could not save conf.yaml"),
     "restore_config": QT_TRANSLATE_NOOP(
@@ -90,6 +99,7 @@ SUCCESS = {
     "duplicate": QT_TRANSLATE_NOOP("messages", "Profile “{name}” duplicated"),
     "import": QT_TRANSLATE_NOOP("messages", "Profile “{name}” imported"),
     "export": QT_TRANSLATE_NOOP("messages", "Profile “{name}” exported"),
+    "set_description": QT_TRANSLATE_NOOP("messages", "Details of “{name}” updated"),
     "reset": QT_TRANSLATE_NOOP("messages", "Fictitious profiles restored"),
     "save_config": QT_TRANSLATE_NOOP("messages", "conf.yaml saved"),
     "restore_config": QT_TRANSLATE_NOOP("messages", "conf.yaml backup restored"),
@@ -127,6 +137,52 @@ def success_title(operation: str, name: str) -> str:
         "messages", "Operation completed"
     )
     return Q.translate("messages", source).format(name=name)
+
+
+def partial_title(operation: str, name: str) -> str:
+    """Returns the headline of an operation that worked only in part.
+
+    Args:
+        operation: Operation key.
+        name: Profile name.
+
+    Returns:
+        str: For example ``Profile “Work” saved, but not its description``.
+    """
+    del operation  # only saving can end this way for now
+    return Q.translate(
+        "messages", "Profile “{name}” saved, but not its description"
+    ).format(name=name)
+
+
+def is_partial(result: Optional[OperationResult]) -> bool:
+    """Tells whether a successful result carries a "description not saved" note."""
+    return result is not None and any(
+        line.startswith(DESCRIPTION_NOT_SAVED) for line in result.warnings
+    )
+
+
+#: Friendly names of the ``save`` groups of the default Konsave configuration.
+#: Any other group keeps its own name (it is whatever the user wrote).
+SECTION_LABELS = {
+    "configs": QT_TRANSLATE_NOOP("messages", "Desktop settings"),
+    "app_layouts": QT_TRANSLATE_NOOP("messages", "App layouts"),
+    "autostart": QT_TRANSLATE_NOOP("messages", "Startup apps"),
+}
+
+
+def section_label(name: str) -> str:
+    """Returns the name shown for a profile section (a ``save`` group).
+
+    Args:
+        name: Group name as written in ``conf.yaml``.
+
+    Returns:
+        str: The friendly name in the interface language for the groups of the
+        default configuration, otherwise ``name`` unchanged.
+    """
+    source = SECTION_LABELS.get(name)
+    return Q.translate("messages", source) if source else name
 
 
 def _limit(lines, count: int = 4) -> Tuple[str, ...]:
@@ -234,6 +290,23 @@ def describe_note(line: str) -> str:
     )
 
 
+def _describe_description_warning(line: str) -> Optional[str]:
+    """Translates the warnings about the description file, or returns ``None``."""
+    if line.startswith(DESCRIPTION_NOT_SAVED):
+        return Q.translate(
+            "messages",
+            "The profile was saved, but its description could not be written: "
+            "{reason}",
+        ).format(reason=line[len(DESCRIPTION_NOT_SAVED) :])
+    if line.startswith(DESCRIPTION_NOT_REMOVED):
+        return Q.translate(
+            "messages",
+            "The description that came inside the archive could not be removed: "
+            "{reason}",
+        ).format(reason=line[len(DESCRIPTION_NOT_REMOVED) :])
+    return None
+
+
 def describe_warning(line: str) -> str:
     """Translates a non-blocking warning of the services.
 
@@ -265,6 +338,9 @@ def describe_warning(line: str) -> str:
         return Q.translate(
             "messages", "The state before the restore was stored in {id}."
         ).format(id=match.group(1))
+    described = _describe_description_warning(line)
+    if described:
+        return described
     match = _NO_DATA_FOLDER.match(line)
     if match:
         return Q.translate(
@@ -318,6 +394,12 @@ def _failure_reason(text: str) -> Optional[str]:
     """
     if "[Errno 28]" in text or "No space left on device" in text:
         return _no_space_text()
+    if "description could not be carried over" in text:
+        return Q.translate(
+            "messages",
+            "The profile was not replaced because its description could not be "
+            "copied to the new version. The previous profile is intact.",
+        )
     if "BadZipFile" in text or "Bad CRC-32" in text:
         return Q.translate(
             "messages",
@@ -382,6 +464,12 @@ _VALIDATION_TEXTS = (
     (
         "output folder is not writable",
         QT_TRANSLATE_NOOP("messages", "No write permission in the destination folder."),
+    ),
+    (
+        "description too long",
+        QT_TRANSLATE_NOOP(
+            "messages", "The description is too long (at most {limit} characters)."
+        ),
     ),
     (
         "stale import folder",
@@ -565,6 +653,8 @@ def _translate_validation(text: str) -> str:
                 return Q.translate("messages", "{text} Folder: {path}").format(
                     text=translation, path=text.rsplit(": ", 1)[-1]
                 )
+            if fragment == "description too long":
+                return translation.format(limit=MAX_DESCRIPTION_CHARS)
             return translation
     return Q.translate("messages", "Invalid input: {text}").format(text=text)
 

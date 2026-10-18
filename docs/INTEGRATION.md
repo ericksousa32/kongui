@@ -153,7 +153,9 @@ The `conf.yaml` editor (form model and comment-preserving text editing) lives in
 | Method | Delegates to | Notes |
 |---|---|---|
 | `list_profiles()`, `get_profile(name)` | disk read | Fresh list; ignores stray files; `has_config` marks a complete profile |
-| `save(name, *, overwrite=False)` | `save_profile` | `overwrite` **merges** into the existing profile (see §8). To really replace, use `replace` |
+| `save(name, *, overwrite=False, description=None)` | `save_profile` | `overwrite` **merges** into the existing profile (see §8). To really replace, use `replace`. `description` is kept in a small file next to the profile (§11); if only that write fails the result is still `ok` and carries a warning starting with `DESCRIPTION_NOT_SAVED` |
+| `profile_details(names)` | (disk read) | Description and sections of some profiles (§11), read separately from `list_profiles` so the operations do not parse every `conf.yaml`; never raises for one bad profile |
+| `set_description(name, description)` | (small file) | Sets, changes or clears the description (§11); writes nothing else |
 | `replace(name, *, confirmed)` | `save_profile` (temporary name) | Real replacement: saves the current configuration to `.kongui-new-…`, swaps with `rename` and deletes the old one; if anything fails, the old profile stays (or returns) in place. Does not change Konsave's code. The temporaries never appear in `list_profiles` |
 | `apply(name, *, confirmed, allow_outside_home=False)` | `apply_profile` | Before writing, copies the files it will overwrite (safety copy, §9); if the copy fails, **nothing is applied** (`SnapshotError`). Folders are merged |
 | `remove(name, *, confirmed)` | `remove_profile` | Irreversible |
@@ -365,3 +367,17 @@ simulates a full disk by replacing `shutil.disk_usage` or making a write raise
 `ENOSPC`; the real disk is never filled.
 
 Limits of this protection: see `GUI_SERVICES.md` §6.
+
+## 11. Profile description and sections (B-2)
+
+Konsave stores neither; KonGUI adds them **without changing the engine or the `.knsv` format**.
+
+* **Description**: `<profile>/.kongui-profile.json`, JSON `{"version": 1, "description": "…"}`, at most 500 characters (`MAX_DESCRIPTION_CHARS`) and 16 KiB. Living inside the profile folder it is deleted with the profile, survives `apply`, `save(overwrite=True)` and a folder renamed outside the program, and cannot be attached to another profile by name. Konsave does not export it, so **it does not travel in the `.knsv`**.
+  * Writing is atomic (temporary file, then rename; nothing is left behind on failure) and keeps the folder's modification time, so editing a text does not make the profile look "updated".
+  * Reading never raises: a missing, oversized, non-regular (link), malformed, non-object or other-version file simply means "no description"; an over-long stored text is cut. Text is cleaned (control characters and text-direction overrides removed) and the interface shows it as plain text, never as markup.
+  * `replace` swaps the whole folder, so it carries the description over *before* the swap; if that fails nothing changes and the previous profile stays.
+  * `import_profile` removes any such file that came inside the archive: Konsave copies everything under `save/` into the profile, so an archive could plant one. An imported profile always starts without a description (if the removal fails, a warning says so).
+* **Sections**: not stored. They are the `save` groups of the profile's own `conf.yaml` that hold at least one file (a group with no files, such as `autostart` in the default configuration, is left out; a group name that could point outside the profile, or a linked folder, is ignored). The `export` groups are not sections of a profile: they are read from the live system at export time and never stored in it. The interface shows friendly, translated names only for the groups of the default configuration (`configs`, `app_layouts`, `autostart`); any other group keeps its own name.
+* **What to include**: choosing what a profile contains is **not** offered. It stays manual, through the `conf.yaml` editor.
+
+Tests: `tests.test_profile_details` (service: persistence, isolation, renaming, import, removal, failures, compatibility with the exported archive) and `tests.test_gui_details` (dialog, card, warnings, plain text, friendly names), always in temporary homes.

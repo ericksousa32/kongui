@@ -46,7 +46,7 @@ from kongui.core import (
     SnapshotNotFoundError,
     ValidationError,
 )
-from kongui.core import KEPT_PREFIX
+from kongui.core import KEPT_PREFIX, ProfileDetails, clean_description
 from kongui.core.engine import FALLBACK_VERSION
 from kongui.core.safety import validate_archive_name, validate_profile_name
 from kongui.gui.mock_data import demo_profiles
@@ -280,6 +280,15 @@ class ProfileBackend(ABC):  # pylint: disable=too-many-public-methods
         """
         raise NotImplementedOperationError("duplicate is not available")
 
+    def set_description(self, name: str, description: str) -> OperationResult:
+        """Sets, changes or clears the description of a profile.
+
+        Raises:
+            NotImplementedOperationError: If the backend keeps no descriptions.
+        """
+        del name, description
+        raise NotImplementedOperationError("set_description is not available")
+
     def inspect_archive(self, path: str) -> ArchiveInfo:
         """Checks a ``.knsv`` file and describes it, writing nothing.
 
@@ -443,7 +452,7 @@ class ServiceBackend(ProfileBackend):
     """Real operations, through :class:`~kongui.core.ProfileService`."""
 
     capabilities = Capabilities(
-        duplicate=False, transfer=True, descriptions=False, sections=False, demo=False
+        duplicate=False, transfer=True, descriptions=True, sections=False, demo=False
     )
 
     def __init__(self, service: ProfileService) -> None:
@@ -497,17 +506,30 @@ class ServiceBackend(ProfileBackend):
         return self._service.config
 
     def list_profiles(self) -> List[Profile]:
-        """Lists profiles. Konsave stores no description or section list."""
+        """Lists profiles with the description and sections KonGUI can read.
+
+        Konsave stores neither: the description is a small file inside the
+        profile folder and the sections are the ``save`` groups of the
+        profile's own ``conf.yaml`` that hold files (raw group names; the
+        interface chooses the words, see ``messages.section_label``).
+        """
+        infos = self._service.list_profiles()
+        details = self._service.profile_details([info.name for info in infos])
         result = []
-        for info in self._service.list_profiles():
+        for info in infos:
             modified = (
                 datetime.fromtimestamp(info.modified)
                 if info.modified is not None
                 else datetime.fromtimestamp(0)
             )
+            found = details.get(info.name, ProfileDetails())
             result.append(
                 Profile(
-                    info.name, "", (), round(folder_size_mb(info.path), 1), modified
+                    info.name,
+                    found.description,
+                    found.sections,
+                    round(folder_size_mb(info.path), 1),
+                    modified,
                 )
             )
         return result
@@ -517,11 +539,16 @@ class ServiceBackend(ProfileBackend):
     ) -> OperationResult:
         """Saves the current configuration; creates the default ``conf.yaml`` first.
 
-        ``description`` and ``sections`` are ignored: Konsave cannot store them.
+        The description is kept with the profile; ``sections`` is ignored (what
+        a profile contains is decided by the ``conf.yaml``, see the editor).
         """
-        del description, sections
+        del sections
         self._service.config.ensure_default_config()
-        return self._service.save(name)
+        return self._service.save(name, description=description)
+
+    def set_description(self, name: str, description: str) -> OperationResult:
+        """Sets, changes or clears the description of a profile."""
+        return self._service.set_description(name, description)
 
     def overwrite(self, name: str, *, confirmed: bool = False) -> OperationResult:
         """Replaces the profile (a real replacement, see ``ProfileService.replace``)."""
@@ -667,7 +694,7 @@ class ServiceBackend(ProfileBackend):
 DEMO_ACTIVE = ""
 
 
-class FakeBackend(ProfileBackend):
+class FakeBackend(ProfileBackend):  # pylint: disable=too-many-public-methods
     """In-memory profiles for demo mode and tests.
 
     It mirrors the real rules (exists / not found / confirmation) so the
@@ -833,6 +860,17 @@ class FakeBackend(ProfileBackend):
                 datetime.now(),
             )
         return self._ok("save", f"profile '{name}' saved")
+
+    def set_description(self, name: str, description: str) -> OperationResult:
+        """Changes the description of a fictitious profile."""
+        self._enter("set_description", name)
+        text = clean_description(description)
+        with self._lock:
+            old = self._items.get(name)
+            if old is None:
+                raise ProfileNotFoundError(f"profile not found: {name}")
+            self._items[name] = replace(old, description=text)
+        return self._ok("set_description", f"description of '{name}' updated")
 
     def overwrite(self, name: str, *, confirmed: bool = False) -> OperationResult:
         """Refreshes the modification time and size of an existing profile."""

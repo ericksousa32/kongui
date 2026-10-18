@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from kongui.gui import icons
 from kongui.gui.formatting import format_date, format_relative, format_size
 from kongui.gui.i18n import Text, resolve_text
+from kongui.gui.messages import section_label
 from kongui.gui.state import ActivityEntry, Profile
 from kongui.gui.theme import get_theme
 from kongui.gui.widgets.common import Badge, Button, Card, IconTile, Label
@@ -78,6 +79,7 @@ class ProfileCard(Card):
     apply_requested = Signal(str)
     export_requested = Signal(str)
     duplicate_requested = Signal(str)
+    details_requested = Signal(str)
     overwrite_requested = Signal(str)
     remove_requested = Signal(str)
 
@@ -88,6 +90,7 @@ class ProfileCard(Card):
         list_mode: bool = False,
         can_export: bool = True,
         can_duplicate: bool = True,
+        can_edit_details: bool = False,
         locked: bool = False,
         busy_text: str = "",
     ) -> None:
@@ -98,6 +101,7 @@ class ProfileCard(Card):
             list_mode: Lay out as a wide row instead of a tall card.
             can_export: Show the export button.
             can_duplicate: Offer "Duplicate" in the menu.
+            can_edit_details: Offer "Edit details…" (the description) in the menu.
             locked: Disable every action (another operation is running).
             busy_text: If given, this card is the one being processed: the text
                 (for example ``"Applying…"``) and a progress bar are shown.
@@ -136,13 +140,17 @@ class ProfileCard(Card):
         info.addLayout(head)
         self.description_label: Optional[Label] = None
         if profile.description:
-            self.description_label = Label(profile.description, "muted", wrap=True)
+            self.description_label = Label(
+                profile.description, "muted", wrap=True, plain=True
+            )
             info.addWidget(self.description_label)
         if profile.sections:
             chips = QHBoxLayout()
             chips.setSpacing(6)
             for section in profile.sections[:MAX_CHIPS]:
-                chips.addWidget(Badge(section.split(" (", maxsplit=1)[0]))
+                chips.addWidget(
+                    Badge(section_label(section).split(" (", maxsplit=1)[0])
+                )
             extra = len(profile.sections) - MAX_CHIPS
             if extra > 0:
                 chips.addWidget(Badge(f"+{extra}"))
@@ -203,6 +211,12 @@ class ProfileCard(Card):
         self.overwrite_action.triggered.connect(
             lambda: self.overwrite_requested.emit(self.profile_name)
         )
+        self.details_action = None
+        if can_edit_details:
+            self.details_action = self.menu.addAction(self.tr("Edit details…"))
+            self.details_action.triggered.connect(
+                lambda: self.details_requested.emit(self.profile_name)
+            )
         self.duplicate_action = None
         if can_duplicate:
             self.duplicate_action = self.menu.addAction(self.tr("Duplicate"))

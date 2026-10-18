@@ -36,6 +36,7 @@ Everything below is covered by the automated test suite (run in temporary home d
 - **Profiles:** list, save, overwrite, apply, remove, and remove all. Destructive actions require confirmation.
 - **Import / export:** `.knsv` archives. When the destination file already exists, the interface asks what to do instead of overwriting silently.
 - **Import / export protections:** a `.knsv` above 512 MiB, with more than 10,000 entries or that really expands to more than 2 GiB is refused before anything is written; corrupted or unsafe archives get a clear message; free disk space is checked before import and export; a failed export keeps the previous one and leaves no temporary files. The limits are fixed constants (see [`docs/INTEGRATION.md`](docs/INTEGRATION.md) §10).
+- **Profile description and sections:** an optional description per profile (saved with it or edited later from the card menu), and the sections of each profile read from its own `conf.yaml`. The description is kept next to the profile, not inside the `.knsv`, so it does not travel when exporting. What a profile contains is still decided in the `conf.yaml` editor.
 - **Safety copies:** the files that would be replaced are copied before a profile is applied or imported. Copies can be listed, restored and deleted from *Settings*; nothing is deleted automatically.
 - **`conf.yaml` editor:** edit the `save` and `export` sections or the YAML text, with validation (problems reported with line and column), automatic backups of the previous file, and restore.
 - **Cross-process lock:** operations use a `flock` lock on `~/.config/konsave/.kongui.lock`. If another Konsave operation is running, KonGUI shows that it is waiting, stays responsive, and lets you cancel the wait. The bundled `konsave` command waits too (see [Command line](#command-line-bundled-konsave)). Programs that do not use the lock, such as Plasma itself or a text editor, are not covered.
@@ -52,7 +53,6 @@ Everything below is covered by the automated test suite (run in temporary home d
 
 - Progress reporting and cancelling of long operations that have already started. The original engine cannot be interrupted today.
 - Packaging and distribution. No installable package or AppImage exists yet.
-- Profile descriptions and sections: Konsave does not store them, so they only exist in demo mode.
 
 The detailed status of each requirement is in [`docs/FINAL_AUDIT.md`](docs/FINAL_AUDIT.md).
 

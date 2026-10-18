@@ -457,6 +457,25 @@
     </message>
 </context>
 <context>
+    <name>DetailsDialog</name>
+    <message>
+        <source>Edit details</source>
+        <translation>Editar detalhes</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Salvar</translation>
+    </message>
+    <message>
+        <source>Description</source>
+        <translation>Descrição</translation>
+    </message>
+    <message>
+        <source>Profile description</source>
+        <translation>Descrição do perfil</translation>
+    </message>
+</context>
+<context>
     <name>DropZone</name>
     <message>
         <source>Area to drop a .knsv file</source>
@@ -784,6 +803,10 @@
         <translation>Sobrescrever com a configuração atual…</translation>
     </message>
     <message>
+        <source>Edit details…</source>
+        <translation>Editar detalhes…</translation>
+    </message>
+    <message>
         <source>Duplicate</source>
         <translation>Duplicar</translation>
     </message>
@@ -845,6 +868,10 @@
     <message>
         <source>Choose at least one section.</source>
         <translation>Escolha ao menos uma seção.</translation>
+    </message>
+    <message>
+        <source>The description is too long (at most {limit} characters).</source>
+        <translation>A descrição é longa demais (no máximo {limit} caracteres).</translation>
     </message>
 </context>
 <context>
@@ -937,6 +964,10 @@
     <message>
         <source>Overwriting…</source>
         <translation>Sobrescrevendo…</translation>
+    </message>
+    <message>
+        <source>Saving details…</source>
+        <translation>Salvando detalhes…</translation>
     </message>
     <message>
         <source>Removing…</source>
@@ -1654,6 +1685,10 @@
         <translation>Não foi possível exportar o perfil “{name}”</translation>
     </message>
     <message>
+        <source>Could not update the details of “{name}”</source>
+        <translation>Não foi possível atualizar os detalhes de “{name}”</translation>
+    </message>
+    <message>
         <source>Could not list the profiles</source>
         <extracomment>Failure headline of each operation (no profile name).</extracomment>
         <translation>Não foi possível listar os perfis</translation>
@@ -1689,6 +1724,10 @@
     <message>
         <source>Could not export the profile</source>
         <translation>Não foi possível exportar o perfil</translation>
+    </message>
+    <message>
+        <source>Could not update the profile details</source>
+        <translation>Não foi possível atualizar os detalhes do perfil</translation>
     </message>
     <message>
         <source>Could not restore the data</source>
@@ -1744,6 +1783,10 @@
         <translation>Perfil “{name}” exportado</translation>
     </message>
     <message>
+        <source>Details of “{name}” updated</source>
+        <translation>Detalhes de “{name}” atualizados</translation>
+    </message>
+    <message>
         <source>Fictitious profiles restored</source>
         <translation>Perfis fictícios restaurados</translation>
     </message>
@@ -1775,6 +1818,23 @@
     <message>
         <source>Operation completed</source>
         <translation>Operação concluída</translation>
+    </message>
+    <message>
+        <source>Profile “{name}” saved, but not its description</source>
+        <translation>Perfil “{name}” salvo, mas sem a descrição</translation>
+    </message>
+    <message>
+        <source>Desktop settings</source>
+        <extracomment>Friendly names of the ``save`` groups of the default Konsave configuration. Any other group keeps its own name (it is whatever the user wrote).</extracomment>
+        <translation>Configurações da área de trabalho</translation>
+    </message>
+    <message>
+        <source>App layouts</source>
+        <translation>Layouts de aplicativos</translation>
+    </message>
+    <message>
+        <source>Startup apps</source>
+        <translation>Aplicativos de inicialização</translation>
     </message>
     <message numerus="yes">
         <source>… and %n more.</source>
@@ -1812,6 +1872,14 @@
         <translation>Aviso: {text}</translation>
     </message>
     <message>
+        <source>The profile was saved, but its description could not be written: {reason}</source>
+        <translation>O perfil foi salvo, mas não foi possível gravar a descrição: {reason}</translation>
+    </message>
+    <message>
+        <source>The description that came inside the archive could not be removed: {reason}</source>
+        <translation>Não foi possível remover a descrição que veio dentro do arquivo: {reason}</translation>
+    </message>
+    <message>
         <source>The .knsv carries Konsave&apos;s current conf.yaml, which differs from the conf.yaml stored in this profile. Groups: {found} (+ only in the current one, − only in the profile, ~ changed). On another computer, a new group prevents applying the profile and a group that disappeared is ignored without warning.</source>
         <translation>O .knsv leva o conf.yaml atual do Konsave, que é diferente do conf.yaml guardado neste perfil. Grupos: {found} (+ só no atual, − só no perfil, ~ alterado). Em outro computador, um grupo novo impede aplicar o perfil e um grupo que sumiu é ignorado sem aviso.</translation>
     </message>
@@ -1834,6 +1902,10 @@
     <message>
         <source>The disk ran out of free space during the operation. Free some space and try again.</source>
         <translation>O disco ficou sem espaço livre durante a operação. Libere espaço e tente novamente.</translation>
+    </message>
+    <message>
+        <source>The profile was not replaced because its description could not be copied to the new version. The previous profile is intact.</source>
+        <translation>O perfil não foi substituído porque não foi possível copiar a descrição para a nova versão. O perfil anterior está intacto.</translation>
     </message>
     <message>
         <source>The file is corrupted: its contents could not be read to the end. Download or export it again.</source>
@@ -1875,6 +1947,10 @@
     <message>
         <source>No write permission in the destination folder.</source>
         <translation>Sem permissão de escrita na pasta de destino.</translation>
+    </message>
+    <message>
+        <source>The description is too long (at most {limit} characters).</source>
+        <translation>A descrição é longa demais (no máximo {limit} caracteres).</translation>
     </message>
     <message>
         <source>There is an old, abandoned import folder; remove it first.</source>

@@ -18,7 +18,7 @@ from kongui.gui.context import AppContext
 from kongui.gui.controller import Outcome
 from kongui.gui.formatting import format_datetime
 from kongui.gui.mock_data import sections as demo_sections
-from kongui.gui.widgets.dialogs import ConfirmDialog, ProfileDialog
+from kongui.gui.widgets.dialogs import ConfirmDialog, DetailsDialog, ProfileDialog
 
 
 def simulated_note() -> str:
@@ -35,6 +35,7 @@ def wipe_word() -> str:
 
 _ACTIVITY_KIND = {
     "save": "save",
+    "set_description": "save",
     "overwrite": "save",
     "duplicate": "save",
     "apply": "apply",
@@ -108,11 +109,34 @@ class ProfileActions(QObject):
             self.ctx.store.names(),
             demo_sections(),
             ask_details=caps.descriptions,
+            ask_sections=caps.sections,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return False
         name, description, chosen = dialog.values()
         return self._dispatched(self.ctx.controller.save(name, description, chosen))
+
+    def edit_details(self, parent: QWidget, name: str) -> bool:
+        """Asks for a new description of a profile and saves it.
+
+        Cancelling the dialog changes nothing.
+
+        Args:
+            parent: Window used as dialog parent.
+            name: Existing profile.
+
+        Returns:
+            bool: Whether an operation was started.
+        """
+        current = self.ctx.store.get(name)
+        dialog = DetailsDialog(
+            parent, name, current.description if current is not None else ""
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+        return self._dispatched(
+            self.ctx.controller.set_description(name, dialog.value())
+        )
 
     def overwrite(self, parent: QWidget, name: str) -> bool:
         """Replaces a profile with the current configuration, after confirmation.
@@ -323,7 +347,9 @@ class OutcomeNotifier(QObject):
         text = "\n".join(details)
         if outcome.ok:
             kind = (
-                "warning" if outcome.operation in ("remove", "wipe_all") else "success"
+                "warning"
+                if outcome.warning or outcome.operation in ("remove", "wipe_all")
+                else "success"
             )
             self.ctx.toasts.show_message(kind, outcome.title, text)
             activity = _ACTIVITY_KIND.get(outcome.operation)

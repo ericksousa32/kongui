@@ -59,13 +59,16 @@ class Outcome:
 
     Attributes:
         operation: ``list``, ``save``, ``overwrite``, ``apply``, ``remove``,
-            ``wipe_all``, ``duplicate``, ``import`` or ``reset``.
+            ``wipe_all``, ``duplicate``, ``set_description``, ``import`` or ``reset``.
         name: Profile concerned, or ``""``.
         ok: Whether the operation succeeded.
         title: Headline for a notification.
         details: Extra lines (engine errors, hints).
         result: The service result, when there was one.
         error: The exception, when the service raised one.
+        warning: The operation worked, but only in part (for example the
+            profile was saved and its description was not); it is shown as a
+            warning, not as a plain success.
     """
 
     operation: str
@@ -75,6 +78,7 @@ class Outcome:
     details: Tuple[str, ...] = ()
     result: Optional[OperationResult] = None
     error: Optional[BaseException] = None
+    warning: bool = False
 
 
 @dataclass(frozen=True)
@@ -304,6 +308,22 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         """
         self._need(confirmed, "wipe_all")
         return self._run("wipe_all", "", lambda: self._backend.wipe_all(confirmed=True))
+
+    def set_description(self, name: str, description: str) -> bool:
+        """Sets, changes or clears the description of a profile.
+
+        Args:
+            name: Existing profile.
+            description: New text; empty clears it.
+
+        Returns:
+            bool: ``False`` if another operation is running.
+        """
+        return self._run(
+            "set_description",
+            name,
+            lambda: self._backend.set_description(name, description),
+        )
 
     def duplicate(self, name: str) -> bool:
         """Duplicates a profile (backends with ``capabilities.duplicate`` only).
@@ -728,13 +748,19 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
                     "The profile list could not be refreshed: {reason}",
                 ).format(reason=" ".join(messages.describe_error(list_error)))
             )
+        partial = messages.is_partial(result)
         return Outcome(
             operation,
             name,
             True,
-            messages.success_title(operation, name),
+            (
+                messages.partial_title(operation, name)
+                if partial
+                else messages.success_title(operation, name)
+            ),
             tuple(details),
             result=result,
+            warning=partial,
         )
 
 

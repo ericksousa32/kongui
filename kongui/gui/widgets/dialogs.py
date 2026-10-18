@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Collection, List, Optional, Sequence, Tuple
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from kongui.core import MAX_DESCRIPTION_CHARS
 from kongui.gui.formatting import format_datetime, format_kib
 from kongui.gui.validation import group_name_problem, profile_name_problem
 from kongui.gui.widgets.common import Button, Label, repolish
@@ -224,6 +225,7 @@ class ProfileDialog(BaseDialog):
         title: str = "",
         confirm_text: str = "",
         ask_details: bool = True,
+        ask_sections: Optional[bool] = None,
     ) -> None:
         """Creates the dialog.
 
@@ -233,8 +235,11 @@ class ProfileDialog(BaseDialog):
             sections: Section names offered as check boxes (all start checked).
             title: Heading; defaults to "Save current profile".
             confirm_text: Label of the confirm button; defaults to "Save".
-            ask_details: Show the description and the section check boxes. Off
-                when the backend cannot store them (only the name is asked).
+            ask_details: Show the description box. Off when the backend cannot
+                store descriptions.
+            ask_sections: Show the section check boxes. ``None`` (the default)
+                follows ``ask_details``; real backends cannot choose what a
+                profile contains, so they pass ``False``.
         """
         super().__init__(
             parent,
@@ -257,6 +262,8 @@ class ProfileDialog(BaseDialog):
         if ask_details:
             self.body.addWidget(Label(self.tr("Description (optional)"), "muted"))
             self.body.addWidget(self.description_edit)
+            self.description_edit.textChanged.connect(self._update)
+        if ask_details if ask_sections is None else ask_sections:
             self.body.addWidget(Label(self.tr("What to include"), "muted"))
             for section in sections:
                 check = QCheckBox(section)
@@ -273,6 +280,8 @@ class ProfileDialog(BaseDialog):
         problem = profile_name_problem(self.name_edit.text(), self._existing)
         if problem:
             return problem
+        if description_problem(self.description_edit.toPlainText()):
+            return description_problem(self.description_edit.toPlainText())
         if self._no_section_chosen():
             return self.tr("Choose at least one section.")
         return None
@@ -288,7 +297,16 @@ class ProfileDialog(BaseDialog):
         error = self.validation_error()
         typed = bool(self.name_edit.text())
         # Do not scold before the user typed anything.
-        shown = error if error and (typed or self._no_section_chosen()) else ""
+        shown = (
+            error
+            if error
+            and (
+                typed
+                or self._no_section_chosen()
+                or description_problem(self.description_edit.toPlainText())
+            )
+            else ""
+        )
         self.error_label.setText(shown)
         self.error_label.setVisible(bool(shown))
         self.name_edit.setProperty("invalid", bool(error and typed))
@@ -319,6 +337,69 @@ class ProfileDialog(BaseDialog):
             event.ignore()
             return
         super().keyPressEvent(event)
+
+
+def description_problem(text: str) -> Optional[str]:
+    """Returns what is wrong with a profile description, or ``None``.
+
+    Args:
+        text: The text typed by the user.
+
+    Returns:
+        Optional[str]: A sentence in the interface language when the text is
+        longer than :data:`~kongui.core.MAX_DESCRIPTION_CHARS` characters.
+    """
+    if len(text.strip()) > MAX_DESCRIPTION_CHARS:
+        return QCoreApplication.translate(
+            "ProfileDialog",
+            "The description is too long (at most {limit} characters).",
+        ).format(limit=MAX_DESCRIPTION_CHARS)
+    return None
+
+
+class DetailsDialog(BaseDialog):
+    """Edits the description of an existing profile."""
+
+    def __init__(
+        self, parent: Optional[QWidget], profile_name: str, description: str = ""
+    ) -> None:
+        """Creates the dialog.
+
+        Args:
+            parent: Parent window.
+            profile_name: Profile being edited (shown, not editable).
+            description: Current description.
+        """
+        super().__init__(
+            parent,
+            self.tr("Edit details"),
+            self.tr("Save"),
+            "primary",
+        )
+        self.profile_name = profile_name
+        self.body.addWidget(Label(profile_name, "h2"))
+        self.body.addWidget(Label(self.tr("Description"), "muted"))
+        self.description_edit = QPlainTextEdit()
+        self.description_edit.setFixedHeight(96)
+        self.description_edit.setAccessibleName(self.tr("Profile description"))
+        self.description_edit.setPlainText(description)
+        self.body.addWidget(self.description_edit)
+        self.error_label = Label("", "danger", wrap=True)
+        self.body.addWidget(self.error_label)
+        self.description_edit.textChanged.connect(self._update)
+        self._update()
+        self.description_edit.setFocus()
+
+    def _update(self) -> None:
+        """Refreshes the error text and the save button."""
+        problem = description_problem(self.description_edit.toPlainText())
+        self.error_label.setText(problem or "")
+        self.error_label.setVisible(bool(problem))
+        self.confirm_button.setEnabled(problem is None)
+
+    def value(self) -> str:
+        """Returns the text the user typed (surrounding blanks removed)."""
+        return self.description_edit.toPlainText().strip()
 
 
 class ChoiceDialog(BaseDialog):
