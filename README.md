@@ -23,7 +23,7 @@ What it aims to solve:
 
 ![Dashboard](./screenshots/Captura_de_tela_20261018_124635.png)
 
-View more in [screenshots](./screenshots/).
+The screenshots were taken in demo mode, so every profile shown is fictitious. View more in [screenshots](./screenshots/).
 
 You can preview the interface without touching any real data using the demo mode described in [Running](#running).
 

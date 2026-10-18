@@ -133,7 +133,7 @@ window exists are English only.
 | P-3 | Limits for zip bombs, total size and disk space on import/export | Tested (basic protection) | 512 MiB file, 2 GiB really decompressed (stops at the limit), 10,000 entries, free-space check before import and export, friendly messages, failed export keeps the previous one; `tests.test_transfer_limits`; see `INTEGRATION.md` §10. Limits are fixed constants and estimates, not guarantees (see §4) |
 | B-1 | Progress and cancellation of operations | Blocked | the engine cannot be interrupted, and `konsave/` is only changed for the lock; today there is only "busy" |
 | B-2 | Profile description and sections | Blocked | Konsave does not store these data |
-| B-3 | Validation in a real Plasma session (actually applying, Wayland/drag-and-drop, SELinux, Flatpak) | **In progress** | the project owner is testing in a real Plasma session; results are not recorded here yet |
+| B-3 | Validation in a real Plasma session (actually applying, Wayland/drag-and-drop, SELinux, Flatpak) | **In progress** | the project owner is testing in a real Plasma session; results are not recorded here yet. The screenshots in `screenshots/` (Fedora 44, Qt 6.12, demo mode) show that the interface renders there, but they do not validate applying profiles, Wayland, SELinux or Flatpak |
 
 ## 4. Why it is not complete
 
@@ -173,12 +173,12 @@ lock (external tools, see `CONCURRENCY.md` §5); the copy has no size limit (the
 
 ## 6. Test results
 
-Measured on 2026-10-18 on branch `feat/transfer-limits` (uncommitted work on top of `dev`), Python 3.13, Qt offscreen,
+Measured on 2026-10-18 at commit `e9bf257` (branch `dev`, with the transfer limits and the English-only demo data merged), Python 3.13, Qt offscreen,
 as an unprivileged user with a temporary `$HOME`:
 
 * 855 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes).
 * Coverage of `kongui/` with `coverage run --branch --source=kongui`: **96%**
-  (6665 statements, 212 not run; 1594 branches, 123 partly covered). `konsave/` was
+  (6663 statements, 212 not run; 1594 branches, 123 partly covered). `konsave/` was
   not measured. The lowest modules: `gui/__main__.py` 0% (three lines, only the
   `python -m kongui.gui` entry), `core/yamlmap.py` 87%, `gui/messages.py` 88%,
   `gui/widgets/dropzone.py` 88%, `gui/widgets/confedit.py` 90%, `gui/backend.py` 90%.
