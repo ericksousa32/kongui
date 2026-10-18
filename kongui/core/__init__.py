@@ -15,6 +15,7 @@ from kongui.core.confedit import (
 from kongui.core.engine import EngineCall, KonsaveEngine
 from kongui.core.errors import (
     ArchiveExistsError,
+    ArchiveLimitError,
     BackupNotFoundError,
     CliExecutionError,
     ConfigConflictError,
@@ -22,6 +23,7 @@ from kongui.core.errors import (
     ConfigValidationError,
     ConfirmationRequiredError,
     EngineLoadError,
+    InsufficientSpaceError,
     KonGuiError,
     NotImplementedOperationError,
     OperationFailedError,
@@ -82,6 +84,8 @@ __all__ = [
     "SnapshotNotFoundError",
     "SnapshotService",
     "ArchiveExistsError",
+    "ArchiveLimitError",
+    "InsufficientSpaceError",
     "ArchiveInspection",
     "BackupInfo",
     "BackupNotFoundError",
