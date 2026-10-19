@@ -1320,12 +1320,12 @@
         <translation>Protótipo</translation>
     </message>
     <message>
-        <source>v{version} · fictitious data</source>
-        <translation>v{version} · dados fictícios</translation>
+        <source>{version} · fictitious data</source>
+        <translation>{version} · dados fictícios</translation>
     </message>
     <message>
-        <source>v{version} · real profiles</source>
-        <translation>v{version} · perfis reais</translation>
+        <source>{version} · real profiles</source>
+        <translation>{version} · perfis reais</translation>
     </message>
     <message>
         <source>Switch between light and dark theme</source>

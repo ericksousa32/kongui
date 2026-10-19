@@ -13,8 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - (KonGUI) Interface screenshots (demo mode, Fedora 44) in `screenshots/`, shown in the README
 - (KonGUI) `docs/LIMITATIONS.md`: one document with the open requirements, the decisions of the project owner and the known limits (including those of the import and export protections); README section on choosing what a profile includes (manual, through *Edit .YAML*); `docs/GUI_CONFIG.md` §7
 - (KonGUI) `tests/test_packaging.py`: package name and metadata, no `setuptools` at runtime, version of the bundled engine
+- (KonGUI) `docs/RELEASING.md` and `tests/test_version.py`: how the version is defined (git tag), what it looks like between tags, and the release steps
 
 ### Changed
+- (KonGUI) `kongui.__version__` is no longer a constant (`0.1.0.dev0`): it is the version of the installed package, taken from the git tag by `setuptools_scm`. A checkout that was never installed reports `0+unknown`, shown as `dev`. The badge in *About* and the sidebar caption show the short form (no commit part); *About → KonGUI version* shows the whole version. The sidebar caption texts changed (`{version} · real profiles`, `{version} · fictitious data`)
 - (KonGUI) The distribution is now called `kongui` (it was `Konsave`); author, URL and project links in `setup.py` point to this repository and credit Konsave. The `konsave` and `kongui` commands are both still installed
 - (KonGUI patch) `konsave/__init__.py`: when the package is installed as `kongui`, `konsave.__version__` is `2.2.0+kongui` instead of missing (without it the `konsave` command failed to start). See `docs/KONSAVE_PATCHES.md` §3.5
 - (KonGUI) `setuptools` removed from `requirements.txt`: nothing imports it at runtime (checked by `tests.test_packaging` and by running the suite with it made unimportable); it stays a build tool

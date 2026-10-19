@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kongui import __version__
+import kongui
 from kongui.gui import i18n, icons
 from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.theme import get_theme
@@ -89,8 +89,8 @@ class Sidebar(QFrame):
             )
             stack.addWidget(
                 Label(
-                    lambda: self.tr("v{version} · fictitious data").format(
-                        version=__version__
+                    lambda: self.tr("{version} · fictitious data").format(
+                        version=kongui.version_label()
                     ),
                     "caption",
                 )
@@ -98,8 +98,8 @@ class Sidebar(QFrame):
         else:
             stack.addWidget(
                 Label(
-                    lambda: self.tr("v{version} · real profiles").format(
-                        version=__version__
+                    lambda: self.tr("{version} · real profiles").format(
+                        version=kongui.version_label()
                     ),
                     "caption",
                 )

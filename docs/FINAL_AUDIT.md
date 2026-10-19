@@ -33,7 +33,8 @@ Portuguese interface, with an English gloss in parentheses where needed.
   `tests.test_safety` and `tests.test_gui_dialogs`, extended). P-1 has its own:
   `tests.test_snapshot` and `tests.test_gui_backups`. The interface language has
   `tests.test_i18n`. The package name, its dependencies and the version of the bundled
-  engine have `tests.test_packaging`.
+  engine have `tests.test_packaging`; the version shown by the interface, and how it
+  follows the package, have `tests.test_version`.
 
 ## 2. Fixed findings
 
@@ -110,6 +111,7 @@ not exist and is a requirement; **Blocked** = depends on something out of reach;
 | `.knsv` exchanged with the original `konsave` in both directions | Tested | CliCompatibilityTests |
 | Unused dependencies | Tested | A-10; `setuptools` is no longer declared at runtime: nothing imports it and the whole suite passes with it made unimportable (§5, `tests.test_packaging`) |
 | Distribution called `kongui`, with the author, URL and links of this repository; both commands installed; the `konsave` command still starts | Tested | `tests.test_packaging`; a wheel built in a clean virtual environment and installed there printed `Konsave: 2.2.0+kongui` for `konsave -v` (patch `KONGUI-PATCH(rename)`, `KONSAVE_PATCHES.md` §3.5) |
+| The version in the interface is the version of the package, which comes from the git tag; unknown shows `dev` | Tested | `tests.test_version`; a wheel built from a local tag `v0.1.0a1` in a copy of the repository reported `0.1.0a1`, and one commit later `0.1.0a2.dev1+g…` (`RELEASING.md` §4) |
 | Choosing what a profile includes | Decided: manual | done in *Edit .YAML*, steps in `GUI_CONFIG.md` §7 and the README; not offered when saving |
 
 ### 3.4 Interface language
@@ -140,7 +142,7 @@ window exists are English only.
 | P-3 | Limits for zip bombs, total size and disk space on import/export | Tested (basic protection) | 512 MiB file, 2 GiB really decompressed (stops at the limit), 10,000 entries, free-space check before import and export, friendly messages, failed export keeps the previous one; `tests.test_transfer_limits`; see `INTEGRATION.md` §10. Limits are fixed constants and estimates, not guarantees (see §4) |
 | B-1 | Progress and cancellation of operations | Blocked | the engine cannot be interrupted, and `konsave/` is only changed for the lock; today there is only "busy" |
 | B-2 | Profile description and sections | Tested (description and read-only sections) | the description is a small file inside the profile folder and the sections come from the profile's `conf.yaml` (`INTEGRATION.md` §11; `tests.test_profile_details`, `tests.test_gui_details`). The description does not travel in the `.knsv`; choosing what to include when saving is not offered (manual, through *Edit .YAML*) |
-| R-1 | First tag / pre-release | **Not started, on purpose** | decided to prepare first (this stage). Before the first tag: change or disable `.github/workflows/deploy.yml` (publishes to PyPI on any `v*` tag), tie the version shown in the interface to the package version (§5, item 9) and record the B-3 report |
+| R-1 | First tag / pre-release | **Not started, on purpose** | decided to prepare first (this stage). Before the first tag: change or disable `.github/workflows/deploy.yml` (publishes to PyPI on any `v*` tag), record the B-3 report. The version shown in the interface is already tied to the package version, which comes from the tag (`RELEASING.md`) |
 | B-3 | Validation in a real Plasma session (actually applying, Wayland/drag-and-drop, SELinux, Flatpak) | **In progress** | the project owner is testing in a real Plasma session; results are not recorded here yet. The screenshots in `screenshots/` (Fedora 44, Qt 6.12, demo mode) show that the interface renders there, but they do not validate applying profiles, Wayland, SELinux or Flatpak |
 
 ## 4. Why it is not complete
@@ -195,23 +197,28 @@ one is written down in [`LIMITATIONS.md`](LIMITATIONS.md)):
    URL and project links of this repository (and credit to Konsave). This broke the
    bundled `konsave` command (its version lookup is by distribution name), which was
    reproduced with a wheel and fixed with the patch `KONGUI-PATCH(rename)`
-   (`KONSAVE_PATCHES.md` §3.5). **Please confirm this one-patch exception** to the
-   rule of changing `konsave/` only for the lock.
-9. **Open, needs a decision before the first tag:** `kongui.__version__`
-   (`0.1.0.dev0`, shown in the interface) is a constant, while the package version
-   comes from `setuptools_scm` (git tags); `.github/workflows/deploy.yml` publishes
-   to PyPI on any `v*` tag; `pip install kongui` does not install PySide6 (extra
-   `gui`).
+   (`KONSAVE_PATCHES.md` §3.5). The owner approved this exception to the rule of
+   changing `konsave/` only for the lock.
+9. **Version of the package and of the interface (decided, option A):**
+   `kongui.__version__` is no longer a constant; it reads the version of the
+   installed package, which `setuptools_scm` takes from the git tag, so the two can
+   not disagree. Unknown (uninstalled checkout) is shown as `dev`; the badge and the
+   sidebar show the short form. See [`RELEASING.md`](RELEASING.md) and
+   `tests.test_version`.
+10. **Still open before the first tag:** `.github/workflows/deploy.yml` publishes to
+    PyPI on any `v*` tag (and its checkout does not fetch the tags that
+    `setuptools_scm` needs); `pip install kongui` does not install PySide6 (extra
+    `gui`).
 
 ## 6. Test results
 
-Measured on 2026-10-18 on branch `chore/release-prep` (uncommitted work on top of `dev` at `df8e07c`, which already contains the profile descriptions and sections), Python 3.13, Qt offscreen,
+Measured on 2026-10-18 on branch `feat/version-from-package` (uncommitted work on top of `dev` at `46ddc7d`, which already contains the profile descriptions and sections and the package rename), Python 3.13, Qt offscreen,
 as an unprivileged user with a temporary `$HOME`:
 
-* 920 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes, **run in the foreground**: started as a background job, the shell makes the child processes ignore Ctrl+C and `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails with `-9` instead of `130`; the same test passes alone and in the foreground).
+* 937 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes, **run in the foreground**: started as a background job, the shell makes the child processes ignore Ctrl+C and `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails with `-9` instead of `130`; the same test passes alone and in the foreground). Over five full runs of this state, four passed and one coverage run reported a single failure whose name was not captured; the next runs (two plain, one with coverage, all logged) passed, so it was not reproduced and is not explained. If a test fails once, rerun it alone and in the foreground before treating it as a regression.
 * The same suite also passed (912 tests, before `tests.test_packaging` existed) with `setuptools`, `pkg_resources` and `distutils` made unimportable (§5, item 3).
 * Coverage of `kongui/` with `coverage run --branch --source=kongui`: **96%**
-  (6930 statements, 224 not run; 1664 branches, 127 partly covered). `konsave/` was
+  (6943 statements, 224 not run; 1666 branches, 127 partly covered). `konsave/` was
   not measured. The lowest modules: `gui/__main__.py` 0% (three lines, only the
   `python -m kongui.gui` entry), `core/yamlmap.py` 87%, `gui/messages.py` 88%,
   `gui/widgets/dropzone.py` 88%, `gui/widgets/confedit.py` 90%, `gui/backend.py` 90%.

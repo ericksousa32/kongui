@@ -4,7 +4,7 @@
 A graphical interface for managing KDE Plasma configuration profiles, built as an independent fork of <a href="https://github.com/Prayag2/konsave">Konsave</a>.
 </p>
 
-> **Status: early development (`0.1.0.dev0`).** KonGUI is not released yet (no tag, no installable package or AppImage), and testing on a live Plasma session is in progress. Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
+> **Status: early development.** KonGUI is not released yet (no tag, no installable package or AppImage), and testing on a live Plasma session is in progress. Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
 
 ## Overview
 
@@ -97,7 +97,7 @@ python3 -m venv .venv
 pip install -e ".[gui]"
 ```
 
-Use a virtual environment: the package is called `kongui` and installs the `kongui` command plus the bundled `konsave` command, and both come with a Python package named `konsave`, so it would replace an existing Konsave installation. The version is taken from the git history (`setuptools_scm`), so install from a clone, not from a source archive without `.git`.
+Use a virtual environment: the package is called `kongui` and installs the `kongui` command plus the bundled `konsave` command, and both come with a Python package named `konsave`, so it would replace an existing Konsave installation. The version is taken from the git tag (`setuptools_scm`) and the interface shows that same version (`dev` when the code runs from a clone that was never installed); see [`docs/RELEASING.md`](docs/RELEASING.md). Install from a clone, not from a source archive without `.git` (a release sdist is fine).
 
 Linux only. The install and launch commands above were checked with Python 3.13 in a fresh virtual environment (Qt offscreen), installing from a local clone of this repository.
 
@@ -206,7 +206,7 @@ KonGUI uses the same profile folder and `.knsv` format as the Konsave code bundl
 ## Documentation
 
 Technical documentation is in [`docs/`](docs/):
-[integration layer](docs/INTEGRATION.md), [services used by the interface](docs/GUI_SERVICES.md), [`conf.yaml` editor](docs/GUI_CONFIG.md), [interface prototype](docs/GUI_PROTOTYPE.md), [concurrency](docs/CONCURRENCY.md), [changes to Konsave](docs/KONSAVE_PATCHES.md), [limitations and decisions](docs/LIMITATIONS.md) and the [final audit](docs/FINAL_AUDIT.md).
+[integration layer](docs/INTEGRATION.md), [services used by the interface](docs/GUI_SERVICES.md), [`conf.yaml` editor](docs/GUI_CONFIG.md), [interface prototype](docs/GUI_PROTOTYPE.md), [concurrency](docs/CONCURRENCY.md), [changes to Konsave](docs/KONSAVE_PATCHES.md), [limitations and decisions](docs/LIMITATIONS.md), [versions and releases](docs/RELEASING.md) and the [final audit](docs/FINAL_AUDIT.md).
 
 ## Original project and credits
 
