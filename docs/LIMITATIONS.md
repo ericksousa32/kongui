@@ -4,7 +4,7 @@ One place for what KonGUI does **not** do, what was decided on purpose, and what
 still open. Details of each item are in the document linked next to it; the status
 of every requirement is in [`FINAL_AUDIT.md`](FINAL_AUDIT.md).
 
-Written on 2026-10-18, before the first tag or pre-release. Nothing here is a
+Written on 2026-10-18, before the first tag or pre-release (how versions and releases work: [`RELEASING.md`](RELEASING.md)). Nothing here is a
 promise of a future feature.
 
 ## 1. Required and still open
@@ -84,9 +84,15 @@ Before **exporting** a profile, make sure the global file and the profile's agre
   when `kongui` is installed. Without it the `konsave` command would fail to start.
   See [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md) §3.5.
 * `PySide6` is an extra (`pip install "kongui[gui]"`), not a plain requirement.
-* The version of the package comes from `setuptools_scm` (git tags); the version
-  shown in the *About* page is the constant `kongui.__version__`
-  (`0.1.0.dev0`). They are not tied together yet.
+* The version comes from the git tag only: `setuptools_scm` computes the package
+  version and `kongui.__version__` reads it from the installed package, so they can
+  not disagree ([`RELEASING.md`](RELEASING.md)). A checkout that was never installed
+  reports `0+unknown` and the interface shows `dev`; a build between two tags is a
+  `.devN` version. `setuptools_scm` is declared as a build requirement in
+  `pyproject.toml`. Building needs the git history and tags, an sdist, or an archive
+  made by `git archive` (GitHub's "Source code" files carry the version through
+  `.git_archival.txt`). A copy of the working tree made by hand, with no `.git`,
+  can not be built: use a clone or an sdist.
 * `.github/workflows/deploy.yml` still publishes to PyPI on any tag `v*`. It must be
   changed or disabled **before** the first tag.
 

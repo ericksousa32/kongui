@@ -10,7 +10,7 @@ from PySide6.QtCore import QT_TRANSLATE_NOOP, Qt, QUrl, qVersion
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
 
-from kongui import __version__
+import kongui
 from kongui.gui.context import AppContext
 from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.pages.base import Page
@@ -45,7 +45,7 @@ class AboutPage(Page):
         texts.setSpacing(2)
         heading = QHBoxLayout()
         heading.addWidget(Label("KonGUI", "title"))
-        heading.addWidget(Badge(f"v{__version__}", "accent"))
+        heading.addWidget(Badge(kongui.version_label(), "accent"))
         heading.addStretch(1)
         texts.addLayout(heading)
         texts.addWidget(
@@ -118,8 +118,11 @@ class AboutPage(Page):
     def _info_rows(self) -> List[Tuple[Text, Text]]:
         """The environment rows as ``(name, value)``; each may follow the language."""
         engine_version = self.ctx.backend.engine_version
+        # The whole version (with the commit of a build between two tags), or
+        # "dev" when running from a checkout that was never installed.
+        own_version = kongui.__version__ if kongui.short_version() else "dev"
         rows: List[Tuple[Text, Text]] = [
-            (lambda: self.tr("KonGUI version"), __version__),
+            (lambda: self.tr("KonGUI version"), own_version),
         ]
         if engine_version:
             rows.append((lambda: self.tr("Konsave version"), engine_version))

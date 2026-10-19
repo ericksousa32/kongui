@@ -1,10 +1,13 @@
 """Package metadata: name, dependencies and the version of the bundled engine."""
 
 import ast
+import importlib.util
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -41,6 +44,23 @@ class SetupMetadataTests(unittest.TestCase):
         self.assertIn("https://github.com/ericksousa32/kongui", self.setup)
         self.assertIn("https://github.com/Prayag2/konsave", self.setup)
         self.assertNotIn("prayagjain2@gmail.com", self.setup)
+
+    def test_the_build_requirements_are_declared_in_pyproject(self):
+        text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn("[build-system]", text)
+        self.assertRegex(text, r'"setuptools>=\d+"')
+        self.assertRegex(text, r'"setuptools_scm>=\d+"')
+        self.assertIn('build-backend = "setuptools.build_meta"', text)
+
+    def test_the_old_setup_requires_is_gone(self):
+        self.assertNotIn("setup_requires", self.setup)
+
+    def test_git_archive_carries_the_version(self):
+        archival = (ROOT / ".git_archival.txt").read_text(encoding="utf-8")
+        for key in ("node:", "node-date:", "describe-name:", "ref-names:"):
+            self.assertIn(key, archival)
+        attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        self.assertRegex(attributes, r"(?m)^\.git_archival\.txt\s+export-subst$")
 
     def test_both_commands_are_installed(self):
         self.assertIn("konsave = konsave.__main__:main", self.setup)
@@ -107,6 +127,99 @@ class BundledEngineVersionTests(unittest.TestCase):
 
     def test_an_uninstalled_checkout_is_left_as_before(self):
         self.assertEqual(self.version_with(), "None")
+
+
+def git(folder, *args):
+    """Runs git in ``folder`` with no user configuration; returns its output."""
+    env = dict(
+        os.environ,
+        HOME=str(folder),
+        GIT_CONFIG_GLOBAL=os.devnull,
+        GIT_CONFIG_SYSTEM=os.devnull,
+        GIT_AUTHOR_NAME="t",
+        GIT_AUTHOR_EMAIL="t@example.invalid",
+        GIT_COMMITTER_NAME="t",
+        GIT_COMMITTER_EMAIL="t@example.invalid",
+    )
+    return subprocess.run(
+        ["git", *args],
+        cwd=folder,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    ).stdout
+
+
+@unittest.skipUnless(shutil.which("git"), "git is not installed")
+@unittest.skipUnless(
+    importlib.util.find_spec("setuptools_scm"), "setuptools_scm is not installed"
+)
+class SourceArchiveTests(unittest.TestCase):
+    """A "Source code" archive (no ``.git``) must still know its version.
+
+    GitHub makes one for every tag. The test makes a repository holding the real
+    ``.git_archival.txt`` and ``.gitattributes``, archives it with ``git archive``
+    (what GitHub does) and asks ``setuptools_scm`` for the version of the result.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.base = Path(self._tmp.name)
+        self.repo = self.base / "repo"
+        self.repo.mkdir()
+        git(self.repo, "init", "-q")
+        for name in (".git_archival.txt", "pyproject.toml"):
+            shutil.copy(ROOT / name, self.repo / name)
+        shutil.copy(ROOT / ".gitattributes", self.repo / ".gitattributes")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "first")
+        git(self.repo, "tag", "-a", "v1.2.3", "-m", "release")
+
+    def version_of_archive(self, name):
+        """Archives ``HEAD``, unpacks it elsewhere and returns its version."""
+        archive = self.base / f"{name}.tar"
+        git(self.repo, "archive", "--format=tar", "-o", str(archive), "HEAD")
+        target = self.base / name
+        target.mkdir()
+        with tarfile.open(archive) as handle:
+            if hasattr(tarfile, "data_filter"):
+                handle.extractall(target, filter="data")
+            else:  # Python before the safe extraction filters
+                handle.extractall(target)
+        self.assertFalse((target / ".git").exists())
+        return subprocess.run(
+            [sys.executable, "-m", "setuptools_scm"],
+            cwd=target,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+    def test_the_archive_of_a_tag_has_the_version_of_the_tag(self):
+        result = self.version_of_archive("tagged")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "1.2.3")
+
+    def test_the_archive_of_a_later_commit_is_a_development_version(self):
+        (self.repo / "later.txt").write_text("x", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "later")
+        result = self.version_of_archive("later")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(result.stdout.strip(), r"^1\.2\.4\.dev1\+g[0-9a-f]+$")
+
+    def test_without_the_attribute_the_archive_has_no_version(self):
+        """The control: the file alone is not enough, ``export-subst`` fills it."""
+        (self.repo / ".gitattributes").unlink()
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "no attribute")
+        git(self.repo, "tag", "-a", "v1.2.4", "-m", "again")
+        result = self.version_of_archive("plain")
+        self.assertNotEqual(result.returncode, 0)
 
 
 if __name__ == "__main__":

@@ -35,8 +35,9 @@ _REQUIREMENTS_DEV: List[str] = _read_reqs(Path("requirements_dev.txt"))
 
 setup(
     name="kongui",
+    # The version comes from the git tag; setuptools_scm is a build requirement
+    # declared in pyproject.toml.
     use_scm_version=True,
-    setup_requires=["setuptools_scm"],
     author="KonGUI contributors (Konsave by Prayag Jain)",
     description="A graphical interface for managing KDE Plasma configuration profiles, "
     "built on a fork of Konsave.",
