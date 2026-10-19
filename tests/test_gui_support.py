@@ -45,6 +45,29 @@ class MessagesTests(unittest.TestCase):
             with self.subTest(error=type(error).__name__):
                 self.assertIn(fragment, " ".join(messages.describe_error(error)))
 
+    def test_a_refusal_added_after_validation_is_not_lost(self):
+        # Found by tests.test_gui_overview: the service refuses to apply (or to
+        # import) with an error that has no located problem, while the report
+        # only holds warnings; the notice used to have no reason at all.
+        from kongui.core import ConfigValidationError
+        from kongui.core.results import Problem, ValidationReport
+
+        warning = Problem("warning", "location-missing-dir", ("save", "a"), "w")
+        error_problem = Problem("error", "bad", ("save", "b"), "broken", label="save.b")
+        report = ValidationReport(warnings=("w",), problems=(warning,)).with_errors(
+            ["save.a: neither '/x' nor its parent exists"]
+        )
+        lines = messages.describe_error(ConfigValidationError("refused", report))
+        self.assertEqual(lines, ("save.a: neither '/x' nor its parent exists",))
+        report = ValidationReport(
+            errors=("save.b: broken", "save.c: outside"),
+            problems=(warning, error_problem),
+        )
+        lines = messages.describe_error(ConfigValidationError("refused", report))
+        self.assertEqual(len(lines), 2)  # the located one is not repeated
+        self.assertIn("broken", lines[0])
+        self.assertEqual(lines[1], "save.c: outside")
+
     def test_unknown_errors_show_their_type(self):
         text = " ".join(messages.describe_error(ZeroDivisionError("zero")))
         self.assertIn("ZeroDivisionError", text)

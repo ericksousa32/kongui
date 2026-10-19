@@ -779,11 +779,15 @@ def describe_error(  # pylint: disable=too-many-return-statements
     if isinstance(error, ConfigValidationError):
         report = error.report
         if report is not None and report.problems:
-            return _limit(
-                describe_problem(problem)
-                for problem in report.problems
-                if problem.is_error
-            )
+            located = [problem for problem in report.problems if problem.is_error]
+            known = {problem.text for problem in located}
+            # Errors added by the service after validating (a destination outside
+            # the home, a folder that does not exist) have no located problem;
+            # without them a refusal could be shown with no reason at all.
+            extra = [line for line in report.errors if line not in known]
+            lines = [describe_problem(problem) for problem in located] + extra
+            if lines:
+                return _limit(lines)
         lines = [str(error)]
         if report is not None:
             lines += list(report.errors)
