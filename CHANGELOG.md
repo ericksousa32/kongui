@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - (KonGUI) `docs/PLASMA_TEST_PLAN.md`: script and report template for the real Plasma session (B-3); README section *Installing the pre-release*; pre-release checklist in `docs/RELEASING.md` §6
 - (KonGUI) Issue templates for this repository (KonGUI version, Python and PySide6, Plasma, Wayland or X11, demo or real, safety copy), replacing the ones inherited from Konsave
 
+- (KonGUI) `tests/test_gui_overview.py`: four tests that chain every feature through the real interface and dialogs down to the real services in a temporary home (save, apply, safety copy restore, details, overwrite, export with conflict, remove, import by drag and drop, clear all, `conf.yaml` editor, the `kongui` command's assembly with its worker thread, preferences after a restart); `docs/TEST_OVERVIEW.md` maps each feature to its tests and records the review of the suite
+
 ### Changed
 - (KonGUI) The `gui` extra limits PySide6 to 6.8–6.9 on Python older than 3.12 (PySide6 6.10 and newer segfault or abort there); Python 3.12 or newer takes the newest PySide6. See `docs/LIMITATIONS.md` §5
 - (KonGUI) `Makefile`: `black` and `pylint` now cover `kongui`, `tests` and `tools` (they covered only `konsave`); new `smoke` and `dist` targets
@@ -34,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - (KonGUI patch) `python_requires` is now `>=3.9`
 - Reorganized CLI arguments into logical groups (Profile Management, Import & Export, Options, Miscellaneous) for better readability
 - Improved all help messages with clearer and more descriptive text
+
+### Fixed
+- (KonGUI) A refused apply or import could be reported with no reason: errors the service adds after validating the `conf.yaml` (a destination whose parent folder does not exist, a destination outside the home) were dropped from the notice when the file only had warnings. They are now listed. See `docs/TEST_OVERVIEW.md` §3
 
 ## [2.2.0] - 2023-01-31
 ### Added

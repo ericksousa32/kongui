@@ -193,6 +193,18 @@ class RealApplyTests(RealBackendCase):
         self.assertEqual((self.root / ".config/kdeglobals").read_text(), "kdeglobals-A")
         self.assertEqual(self.store.active().name, "work")
 
+    def test_a_refused_apply_says_why(self):
+        # Found by tests.test_gui_overview: the refusal reached the interface
+        # with an empty explanation.
+        self.controller.save("work")
+        conf = self.folder("work") / "conf.yaml"
+        conf.write_text(
+            conf.read_text().replace('"$HOME/.config"', '"$HOME/gone/deeper"')
+        )
+        self.controller.apply("work", confirmed=True)
+        self.assertFalse(self.last().ok)
+        self.assertIn("nor its parent exists", " ".join(self.last().details))
+
     def test_applying_a_missing_profile_is_an_error_and_changes_nothing(self):
         write(self.root / ".config/kdeglobals", "KEEP")
         self.controller.apply("ghost", confirmed=True)

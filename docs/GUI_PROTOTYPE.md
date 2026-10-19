@@ -91,6 +91,7 @@ If PySide6 is not installed, they are skipped.
 
 | Test module | Covers |
 |---|---|
+| `tests.test_gui_overview` | overview: every feature once, chained the way a user would, through the real interface and dialogs down to the real services in a temporary `$HOME` (see [`TEST_OVERVIEW.md`](TEST_OVERVIEW.md)) |
 | `tests.test_gui_startup` | opening, fixed structure, icons, preferences, `main` entry point, isolation from Konsave |
 | `tests.test_gui_navigation` | side bar, top bar, shortcuts, theme switch |
 | `tests.test_gui_widgets` | adaptive grid, notices, dialogs, drop area, theme, formatting |
