@@ -1,9 +1,9 @@
-.PHONY: help all setup dev-setup fmt clean distclean maintclean pyfmt black usort tests translations
+.PHONY: help all setup dev-setup fmt clean distclean maintclean pyfmt black usort tests smoke dist translations
 
 all: setup
 
 help:
-		@echo "konsave helper:"
+		@echo "KonGUI helper:"
 		@echo ""
 		@echo " - setup:        User-level setup"
 		@echo " - dev-setup:    Development setup"
@@ -11,6 +11,9 @@ help:
 		@echo " - clean:        Remove all pyc files"
 		@echo " - distclean:    Remove any eggs/builds"
 		@echo " - maintclean:   Remove virtual env and dist files"
+		@echo " - tests:        Run the whole test suite (needs: pip install -e \".[gui,dev]\")"
+		@echo " - smoke:        Quick check of a checkout (tools/smoke_test.py)"
+		@echo " - dist:         Build the sdist and the wheel (needs the git history and tags)"
 		@echo " - translations: Update the GUI .ts files and rebuild the .qm catalogs"
 		@echo ""
 
@@ -31,7 +34,7 @@ fmt: black pylint
 
 black:
 		@echo " * Running black"
-		@black --safe konsave
+		@black --safe konsave kongui tests tools
 
 
 # TODO: Consider adding this
@@ -41,7 +44,7 @@ black:
 
 pylint:
 		@echo " * Running pylint"
-		@pylint konsave
+		@pylint kongui
 
 clean:
 		@find . -name "*.pyc" -exec rm -f {} \;
@@ -60,6 +63,16 @@ maintclean: distclean
 
 tests:
 		python3 -m unittest discover -s tests -t . -v
+
+# Checks that the code starts: translations load and a window opens (offscreen).
+# --from-checkout skips the version checks, which need an installed package.
+smoke:
+		python3 tools/smoke_test.py --from-checkout
+
+# Same build as the release workflow (see docs/RELEASING.md).
+dist:
+		python3 -m pip install --upgrade build
+		python3 -m build
 
 # GUI texts: extract the strings from the code into the .ts files (keeping the
 # existing translations), then compile them. Translate any message left

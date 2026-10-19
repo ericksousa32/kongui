@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import os
 import shutil
 import tempfile
@@ -18,6 +19,33 @@ try:
     HAVE_QT = True
 except ImportError:  # pragma: no cover - depends on the machine
     HAVE_QT = False
+
+
+def _release_qt_objects() -> None:
+    """Deletes the leftover windows while the interpreter is still whole.
+
+    With PySide6 6.10 and newer on Python older than 3.12 the test process can abort
+    *after* every test passed (``free(): invalid size``, or ``bool_dealloc`` while the
+    interpreter shuts down): a bug of those PySide6 releases, which is why the ``gui``
+    extra limits PySide6 there (``docs/LIMITATIONS.md`` §5). Running the cleanup earlier,
+    from ``atexit``, reduces the chance of other crashes at that point but does not
+    cure that one.
+    """
+    import gc
+
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in app.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    app.processEvents()
+    gc.collect()
+    app.processEvents()
+
+
+if HAVE_QT:
+    atexit.register(_release_qt_objects)
 
 
 class ManualExecutor:

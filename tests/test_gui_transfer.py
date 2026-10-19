@@ -24,6 +24,7 @@ from kongui.gui.backend import ExportProbe, FakeBackend
 from kongui.gui.widgets.common import Label
 from kongui.gui.widgets.dialogs import ConfirmDialog, ConflictDialog
 from tests.gui_helpers import WindowCase
+from tests.helpers import no_logs
 
 
 def confirm(result):
@@ -213,7 +214,7 @@ class ExportRunTests(ExportCase):
         self.backend.fail_next(
             "export", PermissionError(13, "Permission denied", "/root/x")
         )
-        with self.assertNoLogs(level="ERROR"):
+        with no_logs(self, "ERROR"):
             self.export(page, name="x", directory="/root")
             self.run_all()
         text = window.toasts._toasts[-1].accessibleName()
@@ -381,7 +382,7 @@ class ImportFormTests(ImportCase):
     def test_a_permission_problem_is_not_logged_as_a_bug(self):
         _, page = self.open_transfer()
         self.backend.fail_next("inspect_archive", PermissionError(13, "denied", "/x"))
-        with self.assertNoLogs(level="ERROR"):
+        with no_logs(self, "ERROR"):
             self.choose(page, "/x/a.knsv")
 
     def test_a_stale_check_is_ignored(self):

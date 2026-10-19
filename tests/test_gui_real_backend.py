@@ -19,7 +19,7 @@ from kongui.gui.controller import LoadState, ProfileController
 from kongui.gui.state import AppSettings, ProfileStore
 from kongui.gui.tasks import InlineExecutor
 from tests.gui_helpers import GuiTestCase
-from tests.helpers import BASE_CONF, make_knsv, non_root, really_root, write
+from tests.helpers import BASE_CONF, make_knsv, no_logs, non_root, really_root, write
 
 
 def snapshot_dir(folder):
@@ -100,7 +100,7 @@ class RealListTests(RealBackendCase):
 
         self.service.list_profiles = boom
         try:
-            with self.assertNoLogs(level="ERROR"):
+            with no_logs(self, "ERROR"):
                 self.controller.refresh()
         finally:
             self.service.list_profiles = original

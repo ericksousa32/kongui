@@ -5,13 +5,13 @@ still open. Details of each item are in the document linked next to it; the stat
 of every requirement is in [`FINAL_AUDIT.md`](FINAL_AUDIT.md).
 
 Written on 2026-10-18, before the first tag or pre-release (how versions and releases work: [`RELEASING.md`](RELEASING.md)). Nothing here is a
-promise of a future feature.
+promise of a future feature. The release is **ready to be tagged** except for B-3 below.
 
 ## 1. Required and still open
 
 | Id | What is missing | Why | Where |
 |---|---|---|---|
-| B-3 | Validation in a real Fedora KDE / Plasma session: actually applying a profile, Wayland and drag-and-drop, SELinux, Flatpak, fractional scaling | being tested by the project owner; the result is not recorded yet. The automated tests never apply anything to a real session, and the screenshots only show that the interface renders | [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §3.5 and §7 |
+| B-3 | Validation in a real Fedora KDE / Plasma session: actually applying a profile, Wayland and drag-and-drop, SELinux, Flatpak, fractional scaling | being tested by the project owner; the result is not recorded yet. The automated tests never apply anything to a real session, and the screenshots only show that the interface renders. The script and the report template are in [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md) | [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §3.5 and §7 |
 | B-1 | Progress and cancellation of an operation that has already started | the original engine cannot be interrupted and `konsave/` is only changed for the lock and the package rename; the interface only shows "busy" (waiting for the lock *can* be cancelled) | [`INTEGRATION.md`](INTEGRATION.md) §8 |
 
 The other mandatory requirements are implemented and tested: safety copy before
@@ -83,7 +83,21 @@ Before **exporting** a profile, make sure the global file and the profile's agre
   makes it report `2.2.0+kongui` (the Konsave release this copy derives from)
   when `kongui` is installed. Without it the `konsave` command would fail to start.
   See [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md) §3.5.
-* `PySide6` is an extra (`pip install "kongui[gui]"`), not a plain requirement.
+* `PySide6` is an extra (`pip install "kongui[gui]"`), not a plain requirement. **On
+  Python older than 3.12 (3.9, 3.10, 3.11) the extra limits it to 6.8 and 6.9**
+  (`PySide6>=6.8,<6.10`). Evidence: on 3.9 with PySide6 6.10.3 the interpreter crashed
+  with a segmentation fault when opening *Settings → Safety copies → Manage…* (gdb: in
+  PySide6's own signal connection code, `PySide::qobjectConnectCallback`); on 3.11 with
+  6.10.3 the GUI tests segfaulted too, and with 6.12.0 every test passed but the test
+  process aborted while shutting down (`bool_dealloc: deallocating True or False`,
+  `free(): invalid size`; 3.10 the same); with 6.9.3 the whole suite passes and exits
+  normally on 3.9, 3.10 and 3.11 (6.8.3 on 3.9). These are bugs of the PySide6
+  releases, not found in KonGUI's code; Python 3.12 or newer (where `True`/`False`
+  are immortal objects) takes the newest PySide6 (6.12 was tested on 3.12, 3.13, 3.14).
+  `tests.test_packaging` checks that the limit is declared. If you install PySide6
+  by hand (not through the extra) on Python older than 3.12, use 6.9 or older.
+* Python versions: the suite was run on 3.9, 3.10, 3.11, 3.12, 3.13 and 3.14
+  ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
 * The version comes from the git tag only: `setuptools_scm` computes the package
   version and `kongui.__version__` reads it from the installed package, so they can
   not disagree ([`RELEASING.md`](RELEASING.md)). A checkout that was never installed
@@ -93,8 +107,17 @@ Before **exporting** a profile, make sure the global file and the profile's agre
   made by `git archive` (GitHub's "Source code" files carry the version through
   `.git_archival.txt`). A copy of the working tree made by hand, with no `.git`,
   can not be built: use a clone or an sdist.
-* `.github/workflows/deploy.yml` still publishes to PyPI on any tag `v*`. It must be
-  changed or disabled **before** the first tag.
+* **KonGUI is not published to PyPI.** The old `.github/workflows/deploy.yml` (any
+  `v*` tag → PyPI) was replaced by `.github/workflows/release.yml`, which builds the
+  wheel and the sdist, tests the wheel in a clean environment and creates a GitHub
+  *pre-release* with the files and `SHA256SUMS`. It was tested step by step on a
+  scratch repository but **never on real GitHub Actions**; see
+  [`RELEASING.md`](RELEASING.md) §5.
+* The build prints two warnings that do not fail it: the licence classifier is
+  deprecated in favour of an SPDX expression, and `kongui.gui.translations` is "absent
+  from `packages`" (it holds only the `.ts` and `.qm` files, which are included
+  through `package_data`; the wheel was checked to contain them).
+* There is no AppImage, no RPM and no Flatpak; the pre-release is a wheel and an sdist.
 
 ## 6. Inherited from Konsave (not fixed here)
 

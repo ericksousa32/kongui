@@ -15,7 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - (KonGUI) `tests/test_packaging.py`: package name and metadata, no `setuptools` at runtime, version of the bundled engine
 - (KonGUI) `docs/RELEASING.md` and `tests/test_version.py`: how the version is defined (git tag), what it looks like between tags, and the release steps
 
+- (KonGUI) Release workflow `.github/workflows/release.yml` (replaces `deploy.yml`, which published to PyPI): on a tag `v*` it checks that the tag is a PEP 440 version on `master`, builds the sdist and wheel, installs the wheel in a clean environment, runs `tools/smoke_test.py`, writes `SHA256SUMS` and creates a GitHub *pre-release* (for `a`, `b`, `rc`). `.github/release-notes.md` is the alpha warning. Not yet run on real GitHub Actions. See `docs/RELEASING.md` §5
+- (KonGUI) `tools/smoke_test.py` and `tests/test_smoke.py`: version, bundled `konsave` command, translation catalogs and main window of an installed build, and a normal exit of the process
+- (KonGUI) `docs/PLASMA_TEST_PLAN.md`: script and report template for the real Plasma session (B-3); README section *Installing the pre-release*; pre-release checklist in `docs/RELEASING.md` §6
+- (KonGUI) Issue templates for this repository (KonGUI version, Python and PySide6, Plasma, Wayland or X11, demo or real, safety copy), replacing the ones inherited from Konsave
+
 ### Changed
+- (KonGUI) The `gui` extra limits PySide6 to 6.8–6.9 on Python older than 3.12 (PySide6 6.10 and newer segfault or abort there); Python 3.12 or newer takes the newest PySide6. See `docs/LIMITATIONS.md` §5
+- (KonGUI) `Makefile`: `black` and `pylint` now cover `kongui`, `tests` and `tools` (they covered only `konsave`); new `smoke` and `dist` targets
+- (KonGUI) The test suite no longer needs Python 3.10's `assertNoLogs`, and the Qt windows are released before the interpreter shuts down
 - (KonGUI) `kongui.__version__` is no longer a constant (`0.1.0.dev0`): it is the version of the installed package, taken from the git tag by `setuptools_scm`. A checkout that was never installed reports `0+unknown`, shown as `dev`. The badge in *About* and the sidebar caption show the short form (no commit part); *About → KonGUI version* shows the whole version. The sidebar caption texts changed (`{version} · real profiles`, `{version} · fictitious data`)
 - (KonGUI) `setuptools_scm` is declared as a build requirement in a new `pyproject.toml` (`[build-system]`) instead of `setup_requires`; `.git_archival.txt` and `.gitattributes` let a `git archive` (GitHub's "Source code" files of a tag) be built without `.git` and still get the version of the tag. `requirements_dev.txt` lists `setuptools_scm`. See `docs/RELEASING.md` §4
 - (KonGUI) The distribution is now called `kongui` (it was `Konsave`); author, URL and project links in `setup.py` point to this repository and credit Konsave. The `konsave` and `kongui` commands are both still installed

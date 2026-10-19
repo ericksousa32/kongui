@@ -59,7 +59,16 @@ setup(
     include_package_data=True,
     python_requires=">=3.9",
     install_requires=_REQUIREMENTS,
-    extras_require={"dev": _REQUIREMENTS_DEV, "gui": ["PySide6>=6.8"]},
+    extras_require={
+        "dev": _REQUIREMENTS_DEV,
+        "gui": [
+            # PySide6 6.10 and newer crash the interpreter on Python older than 3.12
+            # (a segmentation fault, or an abort at exit); 6.8 and 6.9 pass the whole
+            # test suite there. See docs/LIMITATIONS.md.
+            "PySide6>=6.8,<6.10; python_version < '3.12'",
+            "PySide6>=6.8; python_version >= '3.12'",
+        ],
+    },
     classifiers=[
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
         "Development Status :: 3 - Alpha",
