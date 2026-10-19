@@ -88,7 +88,11 @@ Before **exporting** a profile, make sure the global file and the profile's agre
   version and `kongui.__version__` reads it from the installed package, so they can
   not disagree ([`RELEASING.md`](RELEASING.md)). A checkout that was never installed
   reports `0+unknown` and the interface shows `dev`; a build between two tags is a
-  `.devN` version. Building needs the git history and tags (or an sdist).
+  `.devN` version. `setuptools_scm` is declared as a build requirement in
+  `pyproject.toml`. Building needs the git history and tags, an sdist, or an archive
+  made by `git archive` (GitHub's "Source code" files carry the version through
+  `.git_archival.txt`). A copy of the working tree made by hand, with no `.git`,
+  can not be built: use a clone or an sdist.
 * `.github/workflows/deploy.yml` still publishes to PyPI on any tag `v*`. It must be
   changed or disabled **before** the first tag.
 

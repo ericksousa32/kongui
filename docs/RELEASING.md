@@ -14,7 +14,10 @@ git tag v0.1.0a1  ──setuptools_scm──▶  package version 0.1.0a1  ──
 ```
 
 * `setup.py` uses `use_scm_version=True` (build time): the wheel and the sdist get
-  the version computed from the tag.
+  the version computed from the tag. `setuptools_scm` is a **build requirement**
+  declared in `pyproject.toml` (`[build-system]`: `setuptools>=75`,
+  `setuptools_scm>=8`), not in `setup_requires` (the old mechanism, deprecated).
+  `pyproject.toml` declares nothing else; the package metadata stays in `setup.py`.
 * `kongui/__init__.py` (run time) reads the version of the installed `kongui`
   distribution with `importlib.metadata.version("kongui")`. It has no copy of its
   own, so the command line, the *About* page and the sidebar can never disagree with
@@ -54,10 +57,11 @@ is merged into `master` (only when a version is complete).
 2. Put the changes of the release in `CHANGELOG.md` (move `[Unreleased]` under the new
    version) and update the status line in `README.md`.
 3. Create an **annotated** tag on `master`: `git tag -a v0.1.0a1 -m "KonGUI 0.1.0a1"`.
-4. Build from that tag, in a clean virtual environment with `setuptools` 75 or newer
-   (`python -m build --wheel --sdist`). Both files must be named `kongui-0.1.0a1…`.
-   The build needs the git history and the tag (`git fetch --tags`; in a CI checkout
-   use `fetch-depth: 0`). An sdist carries its version and can be built without
+4. Build from that tag: `python -m build` (it makes the sdist and the wheel in an
+   isolated environment and installs the build requirements itself). Both files must
+   be named `kongui-0.1.0a1…`. The build needs the git history and the tag
+   (`git fetch --tags`; in a CI checkout use `fetch-depth: 0`) *or* an archive made
+   by `git archive` (see §5). An sdist carries its version and can be built without
    `.git`.
 5. **Check that the tag and the version agree**: install the wheel in a clean
    environment and run
@@ -70,7 +74,43 @@ is merged into `master` (only when a version is complete).
 > `.github/workflows/deploy.yml` publishes to PyPI on any tag `v*`
 > ([`LIMITATIONS.md`](LIMITATIONS.md) §5).
 
-## 4. Tests
+## 4. Building from a source archive (no `.git`)
+
+GitHub attaches "Source code (zip)" and "(tar.gz)" to every tag. They are made by
+`git archive`, so they have no `.git` folder, and a build from one used to fail with
+`setuptools_scm`'s "unable to detect version" (reproduced before the change). Two
+small files fix it:
+
+* `.git_archival.txt` holds `$Format:…$` placeholders (commit, date, `git describe`
+  name, ref names);
+* `.gitattributes` marks it `export-subst`, so `git archive` replaces the
+  placeholders with the real values.
+
+`setuptools_scm` reads the filled file where there is no repository. Results
+(`pip wheel --no-deps .`, in a clean virtual environment):
+
+| Source | Version of the wheel |
+|---|---|
+| a clone, at the tag `v0.1.0a1` | `0.1.0a1` |
+| `git archive` of that tag, unpacked (no `.git`) | `0.1.0a1` |
+| `git archive` of a commit after the tag | `0.1.0a2.dev1+g…` |
+| an archive made *without* the attribute | the build fails (the control of the test) |
+
+GitHub makes its "Source code" files with `git archive`, but a real download from
+GitHub was **not** tested (no tag exists yet): check it after the first pre-release
+(unpack the zip, run `pip wheel --no-deps .` and look at the version).
+
+`git archive` only fills the file for the commit it is run on. A copy of the
+working tree made by hand (not through `git archive`) still has the placeholders and
+no `.git`: build it from a clone, or from an sdist.
+
+Known warnings of the build (they do not fail it): setuptools says the licence
+classifier is deprecated in favour of an SPDX expression, and that
+`kongui.gui.translations` is "absent from `packages`" (it holds only the `.ts` and
+`.qm` files, which are included through `package_data`; the wheel was checked to
+contain the four files).
+
+## 5. Tests
 
 `tests.test_version`:
 
@@ -84,6 +124,14 @@ is merged into `master` (only when a version is complete).
 * the interface: the badge and the sidebar show the short form, only the *About* row
   shows the whole version, an unknown version shows `dev` and never `0+unknown`, and
   the sidebar in Portuguese.
+
+`tests.test_packaging` also covers the build side: `pyproject.toml` declares the
+build requirements, `setup_requires` is gone, and (when `git` and `setuptools_scm`
+are installed; `requirements_dev.txt` has the latter) a repository made in a
+temporary folder with the real `.git_archival.txt` and `.gitattributes` is archived
+with `git archive` and its version is asked of `setuptools_scm`: the archive of a tag
+gives the tag, the archive of a later commit a `.dev` version, and an archive without
+the attribute gives none.
 
 What the tests cannot do is build from a tag. That was checked by hand on a copy of
 the repository (the real repository was not tagged): with the tag `v0.1.0a1` the

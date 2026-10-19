@@ -1,0 +1,5 @@
+# Only the build system is declared here; the metadata stays in setup.py.
+# The version comes from the git tag (setuptools_scm), see docs/RELEASING.md.
+[build-system]
+requires = ["setuptools>=75", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"

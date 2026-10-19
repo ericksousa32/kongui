@@ -111,6 +111,7 @@ not exist and is a requirement; **Blocked** = depends on something out of reach;
 | `.knsv` exchanged with the original `konsave` in both directions | Tested | CliCompatibilityTests |
 | Unused dependencies | Tested | A-10; `setuptools` is no longer declared at runtime: nothing imports it and the whole suite passes with it made unimportable (§5, `tests.test_packaging`) |
 | Distribution called `kongui`, with the author, URL and links of this repository; both commands installed; the `konsave` command still starts | Tested | `tests.test_packaging`; a wheel built in a clean virtual environment and installed there printed `Konsave: 2.2.0+kongui` for `konsave -v` (patch `KONGUI-PATCH(rename)`, `KONSAVE_PATCHES.md` §3.5) |
+| Build from a clone, from an sdist and from a `git archive` / GitHub "Source code" file gives the version of the tag (`.git_archival.txt`, `pyproject.toml`) | Tested | `tests.test_packaging` (SourceArchiveTests, needs `git` and `setuptools_scm`; skipped otherwise); `pip wheel --no-deps .` and `python -m build` of the real files in a clean virtual environment (2026-10-18) |
 | The version in the interface is the version of the package, which comes from the git tag; unknown shows `dev` | Tested | `tests.test_version`; a wheel built from a local tag `v0.1.0a1` in a copy of the repository reported `0.1.0a1`, and one commit later `0.1.0a2.dev1+g…` (`RELEASING.md` §4) |
 | Choosing what a profile includes | Decided: manual | done in *Edit .YAML*, steps in `GUI_CONFIG.md` §7 and the README; not offered when saving |
 
@@ -205,29 +206,38 @@ one is written down in [`LIMITATIONS.md`](LIMITATIONS.md)):
    not disagree. Unknown (uninstalled checkout) is shown as `dev`; the badge and the
    sidebar show the short form. See [`RELEASING.md`](RELEASING.md) and
    `tests.test_version`.
-10. **Still open before the first tag:** `.github/workflows/deploy.yml` publishes to
-    PyPI on any `v*` tag (and its checkout does not fetch the tags that
-    `setuptools_scm` needs); `pip install kongui` does not install PySide6 (extra
-    `gui`).
+10. **`setuptools_scm` (decided):** it is now a declared build requirement
+    (`pyproject.toml`, `[build-system]`) and `setup_requires` was removed. Building
+    from GitHub's "Source code" archive of a tag failed ("unable to detect version")
+    and now works through `.git_archival.txt` + `.gitattributes`; see
+    [`RELEASING.md`](RELEASING.md) §4 and `tests.test_packaging`.
+11. **Still open before the first tag:** `.github/workflows/deploy.yml` publishes to
+    PyPI on any `v*` tag, builds with `python setup.py sdist bdist_wheel` (which no
+    longer installs `setuptools_scm` by itself) and its checkout does not fetch the
+    tags; `pip install kongui` does not install PySide6 (extra `gui`).
 
 ## 6. Test results
 
 Measured on 2026-10-18 on branch `feat/version-from-package` (uncommitted work on top of `dev` at `46ddc7d`, which already contains the profile descriptions and sections and the package rename), Python 3.13, Qt offscreen,
 as an unprivileged user with a temporary `$HOME`:
 
-* 937 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes, **run in the foreground**: started as a background job, the shell makes the child processes ignore Ctrl+C and `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails with `-9` instead of `130`; the same test passes alone and in the foreground). Over five full runs of this state, four passed and one coverage run reported a single failure whose name was not captured; the next runs (two plain, one with coverage, all logged) passed, so it was not reproduced and is not explained. If a test fails once, rerun it alone and in the foreground before treating it as a regression.
+* 943 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes). With `setuptools_scm` installed all 943 run; without it the 3 tests of `SourceArchiveTests` are skipped (940 run), as happened with this environment's plain system Python. Run it **in the foreground**: started as a background job, the shell makes the child processes ignore Ctrl+C and `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails with `-9` instead of `130`; the same test passes alone and in the foreground. Over five full runs of this state, four passed and one coverage run reported a single failure whose name was not captured; the next runs (two plain, one with coverage, all logged) passed, so it was not reproduced and is not explained. If a test fails once, rerun it alone and in the foreground before treating it as a regression.
 * The same suite also passed (912 tests, before `tests.test_packaging` existed) with `setuptools`, `pkg_resources` and `distutils` made unimportable (§5, item 3).
 * Coverage of `kongui/` with `coverage run --branch --source=kongui`: **96%**
-  (6943 statements, 224 not run; 1666 branches, 127 partly covered). `konsave/` was
+  (6943 statements, 224 not run; 1666 branches, 127 partly covered; measured before the last 6 tests, which only touch packaging files). `konsave/` was
   not measured. The lowest modules: `gui/__main__.py` 0% (three lines, only the
   `python -m kongui.gui` entry), `core/yamlmap.py` 87%, `gui/messages.py` 88%,
   `gui/widgets/dropzone.py` 88%, `gui/widgets/confedit.py` 90%, `gui/backend.py` 90%.
 * `pylint kongui`: 10.00/10; `black --check kongui tests konsave setup.py`: clean.
 * Packaging: `python -m build --wheel --no-isolation`, in a virtual environment with `setuptools` 75 or newer, built `kongui-0.1.dev43+g…-py3-none-any.whl` (2026-10-18): metadata `Name: kongui`, the new author, URLs and classifiers, `Requires-Dist: PyYaml>=5.4.1` only (PySide6 in the `gui` extra), both console scripts, no `tests/`. Installed there, `konsave -v` prints `Konsave: 2.2.0+kongui` and `ServiceBackend.engine_version`, which the *About* page shows, returns `2.2.0+kongui`. The version of the wheel comes from git (no tag exists yet).
-* Earlier note on packaging: `python -m build --wheel` works in a clean virtual environment. With the
-  distribution's own `setuptools` (Debian 68.1.2), `pip wheel .` fails with
-  `AttributeError: install_layout`; this comes from that setuptools and the legacy
-  `setup.py` path, not from the project's code.
+* `pyproject.toml` makes pip build in an isolated environment with `setuptools>=75`
+  and `setuptools_scm>=8`. `pip wheel --no-deps .` and `python -m build` (sdist and
+  wheel) were run on a copy of the repository tagged `v0.1.0a1` (and on a `git
+  archive` of it) in clean virtual environments: all gave `0.1.0a1`. The earlier
+  failure with the distribution's own `setuptools` (Debian 68.1.2, `pip wheel .`,
+  `AttributeError: install_layout`) came from using that old `setuptools` in the legacy
+  `setup.py` path; with `pyproject.toml` it is not used, but this was **not** re-tested
+  on Debian.
 * All tests use temporary home directories, and most GUI tests use the in-memory
   backend. None of this replaces testing in a real Plasma session (B-3).
 

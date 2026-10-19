@@ -1,0 +1,3 @@
+# Lets "git archive" (and the "Source code" files GitHub makes for a tag)
+# carry the version, so they can be built without a .git folder.
+.git_archival.txt  export-subst
