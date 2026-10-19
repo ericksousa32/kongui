@@ -62,6 +62,12 @@ class SetupMetadataTests(unittest.TestCase):
         attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
         self.assertRegex(attributes, r"(?m)^\.git_archival\.txt\s+export-subst$")
 
+    def test_pyside6_is_limited_where_it_crashes(self):
+        """PySide6 6.10+ crashes Python older than 3.12 (see ``docs/LIMITATIONS.md``)."""
+        self.assertIn("\"PySide6>=6.8,<6.10; python_version < '3.12'\"", self.setup)
+        self.assertIn("\"PySide6>=6.8; python_version >= '3.12'\"", self.setup)
+        self.assertNotIn('"gui": ["PySide6>=6.8"]', self.setup)
+
     def test_both_commands_are_installed(self):
         self.assertIn("konsave = konsave.__main__:main", self.setup)
         self.assertIn("kongui = kongui.gui.app:main", self.setup)

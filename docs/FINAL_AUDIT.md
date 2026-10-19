@@ -1,7 +1,10 @@
 # KonGUI final audit
 
-**Verdict: the project is NOT complete, but it is ready to be prepared for an alpha
-pre-release.** The mandatory requirements P-1 (RN-01, safety copy before
+**Verdict: the project is NOT complete, but it is ready for an alpha pre-release as
+soon as the owner records the real Plasma session report (B-3).** Everything that can
+be prepared from here is: package, version from the tag, release workflow, smoke test,
+installation instructions and the test script for the session
+([`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md)). No tag or release exists. The mandatory requirements P-1 (RN-01, safety copy before
 apply/import), P-2 (lock) and P-3 (basic limits and free-space checks on
 import/export) are implemented and tested, and so are the profile descriptions and
 sections (B-2). What remains open is B-3 (validation in a real Plasma session, in
@@ -143,7 +146,7 @@ window exists are English only.
 | P-3 | Limits for zip bombs, total size and disk space on import/export | Tested (basic protection) | 512 MiB file, 2 GiB really decompressed (stops at the limit), 10,000 entries, free-space check before import and export, friendly messages, failed export keeps the previous one; `tests.test_transfer_limits`; see `INTEGRATION.md` §10. Limits are fixed constants and estimates, not guarantees (see §4) |
 | B-1 | Progress and cancellation of operations | Blocked | the engine cannot be interrupted, and `konsave/` is only changed for the lock; today there is only "busy" |
 | B-2 | Profile description and sections | Tested (description and read-only sections) | the description is a small file inside the profile folder and the sections come from the profile's `conf.yaml` (`INTEGRATION.md` §11; `tests.test_profile_details`, `tests.test_gui_details`). The description does not travel in the `.knsv`; choosing what to include when saving is not offered (manual, through *Edit .YAML*) |
-| R-1 | First tag / pre-release | **Not started, on purpose** | decided to prepare first (this stage). Before the first tag: change or disable `.github/workflows/deploy.yml` (publishes to PyPI on any `v*` tag), record the B-3 report. The version shown in the interface is already tied to the package version, which comes from the tag (`RELEASING.md`) |
+| R-1 | First tag / pre-release | **Prepared, not created** | `.github/workflows/release.yml` replaced `deploy.yml` (no PyPI): tag check, build, clean-environment smoke test, checksums, GitHub pre-release; its steps were run on a scratch repository, never on real GitHub Actions (`RELEASING.md` §5). Before the first tag: record the B-3 report and follow the checklist in `RELEASING.md` §6 |
 | B-3 | Validation in a real Plasma session (actually applying, Wayland/drag-and-drop, SELinux, Flatpak) | **In progress** | the project owner is testing in a real Plasma session; results are not recorded here yet. The screenshots in `screenshots/` (Fedora 44, Qt 6.12, demo mode) show that the interface renders there, but they do not validate applying profiles, Wayland, SELinux or Flatpak |
 
 ## 4. Why it is not complete
@@ -211,20 +214,46 @@ one is written down in [`LIMITATIONS.md`](LIMITATIONS.md)):
     from GitHub's "Source code" archive of a tag failed ("unable to detect version")
     and now works through `.git_archival.txt` + `.gitattributes`; see
     [`RELEASING.md`](RELEASING.md) §4 and `tests.test_packaging`.
-11. **Still open before the first tag:** `.github/workflows/deploy.yml` publishes to
-    PyPI on any `v*` tag, builds with `python setup.py sdist bdist_wheel` (which no
-    longer installs `setuptools_scm` by itself) and its checkout does not fetch the
-    tags; `pip install kongui` does not install PySide6 (extra `gui`).
+11. **Release workflow (decided by the owner: "up to you"):** `deploy.yml` was
+    replaced by `release.yml`. It no longer publishes to PyPI; it builds with `python
+    -m build` from a checkout with the whole history, refuses tags that are not PEP 440
+    versions or not on `master`, tests the wheel in a clean environment
+    (`tools/smoke_test.py`), writes `SHA256SUMS` and creates a GitHub pre-release for
+    `a`, `b` and `rc` tags. `pip install kongui` still does not install PySide6 (extra
+    `gui`), as decided.
+12. **PySide6 on older Pythons (found while preparing the release):** PySide6 6.10 and
+    newer crash on Python older than 3.12, so the `gui` extra limits it to 6.8–6.9
+    there ([`LIMITATIONS.md`](LIMITATIONS.md) §5, evidence in §6 below).
 
 ## 6. Test results
 
-Measured on 2026-10-18 on branch `feat/version-from-package` (uncommitted work on top of `dev` at `46ddc7d`, which already contains the profile descriptions and sections and the package rename), Python 3.13, Qt offscreen,
-as an unprivileged user with a temporary `$HOME`:
+Measured on 2026-10-18 and 2026-10-19 on branch `chore/prerelease-readiness` (uncommitted work on top of `dev`, which already contains everything merged up to PR #9), as an unprivileged user with a temporary `$HOME`, Qt offscreen, each run **in the foreground**:
 
-* 943 tests, all passing (`python3 -m unittest discover -s tests -t .`, about 3 minutes). With `setuptools_scm` installed all 943 run; without it the 3 tests of `SourceArchiveTests` are skipped (940 run), as happened with this environment's plain system Python. Run it **in the foreground**: started as a background job, the shell makes the child processes ignore Ctrl+C and `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails with `-9` instead of `130`; the same test passes alone and in the foreground. Over five full runs of this state, four passed and one coverage run reported a single failure whose name was not captured; the next runs (two plain, one with coverage, all logged) passed, so it was not reproduced and is not explained. If a test fails once, rerun it alone and in the foreground before treating it as a regression.
+* **949 tests, all passing** (`python3 -m unittest discover -s tests -t .`, about 3 minutes). With `setuptools_scm` installed all 949 run; without it the 3 tests of `SourceArchiveTests` are skipped (946 run). Run it **in the foreground**: started as a background job, the shell makes the child processes ignore Ctrl+C and `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails with `-9` instead of `130`; the same test passes alone and in the foreground. Earlier in this work one coverage run reported a single failure whose name was not captured and that was not reproduced; if a test fails once, rerun it alone and in the foreground before treating it as a regression. One more one-off: a run on Python 3.10 that crossed midnight failed `tests.test_i18n...test_switching_back_and_forth_leaves_no_mixed_text` ("3 days ago" against "2 days ago": the demo dates are relative to now); it is time-dependent, not a regression, and that combination passed in the next run.
+* **Python and PySide6 matrix** (full suite each, all 949 tests OK and the process exiting with status 0):
+
+  | Python | PySide6 | Result |
+  |---|---|---|
+  | 3.9.25 | 6.9.3 (6.8.3 also) | OK |
+  | 3.10.22 | 6.9.3 | OK |
+  | 3.11.17 | 6.9.3 | OK |
+  | 3.12.15 | 6.12.0 | OK |
+  | 3.13 (system and venv) | 6.12.0 | OK |
+  | 3.14.8 | 6.12.0 | OK |
+
+  Where it did **not** work (hence the limit in the `gui` extra, `LIMITATIONS.md` §5):
+  3.9 with PySide6 6.10.3 segfaulted opening *Settings → Safety copies → Manage…*
+  (gdb: `PySide::qobjectConnectCallback`, inside PySide6); 3.11 with 6.10.3 segfaulted
+  in the GUI tests; 3.10 and 3.11 with 6.12.0 passed every test and then **aborted
+  while the interpreter shut down** (`free(): invalid size`, `bool_dealloc:
+  deallocating True or False`), reproducibly with the whole GUI test set (no single
+  module or pair of modules triggers it). It is not found in KonGUI's code; it
+  follows the PySide6 version and the Python version (3.12 and newer are not affected).
+* The installed application was also checked on 3.11 (PySide6 6.9.3, resolved by pip from the extra) and 3.13 (6.12.0): a wheel built from a tagged scratch copy, installed with `[gui]` in a clean environment, `tools/smoke_test.py --expect-version 0.1.0a1` run from another folder: version `0.1.0a1`, `konsave -v` prints `Konsave: 2.2.0+kongui`, both catalogs load, the window opens with its six pages, exit status 0.
+* **Release workflow:** the steps of its `build` job were run on a scratch repository (branch `master`, local bare remote, tag `v0.1.0a1`): version read, ancestor-of-`master` check, build, file names, clean-environment smoke test and `SHA256SUMS` all passed; a tag that is not a version, a tag whose commit is not on `master` and a tag that disagrees with the build were each refused. `actionlint` passes. **Not tested on real GitHub Actions** (`RELEASING.md` §5).
 * The same suite also passed (912 tests, before `tests.test_packaging` existed) with `setuptools`, `pkg_resources` and `distutils` made unimportable (§5, item 3).
 * Coverage of `kongui/` with `coverage run --branch --source=kongui`: **96%**
-  (6943 statements, 224 not run; 1666 branches, 127 partly covered; measured before the last 6 tests, which only touch packaging files). `konsave/` was
+  (6943 statements, 224 not run; 1666 branches, 127 partly covered; measured earlier in this work, before the packaging, version and smoke-test tests, which only touch packaging files and scripts). `konsave/` was
   not measured. The lowest modules: `gui/__main__.py` 0% (three lines, only the
   `python -m kongui.gui` entry), `core/yamlmap.py` 87%, `gui/messages.py` 88%,
   `gui/widgets/dropzone.py` 88%, `gui/widgets/confedit.py` 90%, `gui/backend.py` 90%.

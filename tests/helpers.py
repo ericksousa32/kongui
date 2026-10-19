@@ -1,5 +1,7 @@
 """Shared fixtures for the KonGUI tests."""
 
+import contextlib
+import logging
 import os
 import shutil
 import tempfile
@@ -11,6 +13,41 @@ from unittest import mock
 
 from kongui.core import ConfigService, KonsaveEngine, ProfileService
 from kongui.core.engine import EngineCall
+
+
+@contextlib.contextmanager
+def no_logs(case: unittest.TestCase, level: str = "ERROR"):
+    """Fails the test if anything is logged at ``level`` or above.
+
+    ``unittest.TestCase.assertNoLogs`` only exists from Python 3.10 and the project
+    supports 3.9.
+
+    Args:
+        case: The running test.
+        level: Lowest level that counts.
+    """
+    records = []
+
+    class Collector(logging.Handler):
+        """Keeps every record it receives."""
+
+        def emit(self, record):
+            records.append(record)
+
+    collector = Collector(level=logging.getLevelName(level))
+    root = logging.getLogger()
+    previous = root.level
+    root.addHandler(collector)
+    root.setLevel(min(previous or logging.WARNING, collector.level))
+    try:
+        yield
+    finally:
+        root.removeHandler(collector)
+        root.setLevel(previous)
+    case.assertEqual(
+        [record.getMessage() for record in records], [], "unexpected log records"
+    )
+
 
 BASE_CONF = """---
 save:

@@ -105,6 +105,7 @@ If PySide6 is not installed, they are skipped.
 | `tests.test_gui_dialogs` | the dialogs actually triggered (replace/unique name, reload/write, typed word, group name, backup preview and restore) and the helpers of `app.py` |
 | `tests.test_gui_audit` | findings of the final audit: closing during an operation, differing `conf.yaml` warning, export-folder check off the thread, Konsave version, export on a new account |
 | `tests.test_version` | the version shown in the badge, the *About* row and the sidebar caption (short form, whole version, `dev` when unknown); see [`RELEASING.md`](RELEASING.md) |
+| `tests.test_smoke` | `tools/smoke_test.py`, the check the release workflow runs on the built wheel: version, `konsave` command, translations, main window, normal exit; see [`RELEASING.md`](RELEASING.md) §5 |
 | `tests.test_gui_support` | messages, executors, `FakeBackend`, `ProfileStore`, feedback widgets |
 | `tests.test_gui_lock_wait` | waiting for and cancelling the cross-process lock in the interface (see [`CONCURRENCY.md`](CONCURRENCY.md)) |
 
