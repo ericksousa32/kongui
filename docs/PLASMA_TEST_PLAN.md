@@ -32,8 +32,8 @@ Mark each one *ok*, *problem* (describe it) or *not tested*.
 
 ### 1. Start and look
 
-1. `kongui --demo`: the window opens, the six pages open (Dashboard, Profiles,
-   Transfer, Settings, `conf.yaml`, About), nothing is written to `~/.config/konsave`.
+1. `kongui --demo`: the window opens, the five pages open (Dashboard, Profiles,
+   Transfer, Settings, About), nothing is written to `~/.config/konsave`.
 2. `kongui`: the real profiles are listed (or an empty state if you have none).
 3. Switch the Plasma color scheme (light ↔ dark) with the app open: the interface
    follows it and stays readable.
@@ -63,12 +63,15 @@ Mark each one *ok*, *problem* (describe it) or *not tested*.
 4. Import with the destination folders of the `export` section missing: the message
    should say what is wrong (this is Konsave's rule, not a KonGUI bug).
 
-### 4. The `conf.yaml` editor
+### 4. `conf.yaml` edited by hand
 
-1. Open *Edit .YAML*, add a group, save. Check that `conf.yaml.bak-*` appeared next to
-   the file.
-2. Save a profile and confirm the new group is in its sections.
-3. Type invalid YAML and see that the editor refuses to save it and says why.
+KonGUI has no editor for it (as in Konsave). Keep a copy of the file first.
+
+1. Add a group to `~/.config/konsave/conf.yaml` in a text editor (for example the
+   `autostart` entries you use), save a profile in KonGUI and confirm the new group
+   is in its sections.
+2. Break the file on purpose (for example delete a `:`), try to save a profile and
+   check that the notice says why and that no profile was created. Put the copy back.
 
 ### 5. Two things at once
 
@@ -101,7 +104,7 @@ Installed from (wheel of a release / clone):
 2. Save and apply:            ok / problem / not tested
 3. Export and import:         ok / problem / not tested
    drag and drop:             Wayland ok/problem/not tested; X11 ok/problem/not tested
-4. conf.yaml editor:          ok / problem / not tested
+4. conf.yaml by hand:         ok / problem / not tested
 5. Two things at once:        ok / problem / not tested
 6. SELinux / Flatpak / quit:  ok / problem / not tested
 

@@ -12,7 +12,7 @@ real profiles, and it needs no display (Qt's ``offscreen`` platform). The checks
    expected, which is how a release proves that the tag and the build agree);
 2. the bundled ``konsave`` command starts and prints its version;
 3. the translation catalogs were packaged and Qt can load them;
-4. the main window opens in demo mode, shows its six pages and closes;
+4. the main window opens in demo mode, shows its five pages and closes;
 5. the process then **exits normally** (the caller checks the exit status, so a
    crash while the interpreter shuts down fails the run).
 
@@ -103,8 +103,8 @@ def check_window(problems: List[str]) -> None:
     QTest.qWait(300)
     pages = list(window.pages)
     print(f"window: {len(pages)} pages ({', '.join(pages)})")
-    if len(pages) != 6 or not window.isVisible():
-        problems.append("the main window did not open with its six pages")
+    if len(pages) != 5 or not window.isVisible():
+        problems.append("the main window did not open with its five pages")
     window.close()
     window.deleteLater()
     QTest.qWait(50)

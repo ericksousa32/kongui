@@ -21,7 +21,7 @@ from kongui.core import (
     ArchiveExistsError,
     CliRunner,
     ConfigService,
-    ConfigValidationError,
+    ConfigError,
     ConfirmationRequiredError,
     KonsaveEngine,
     ProfileExistsError,
@@ -31,6 +31,7 @@ from kongui.core import (
 )
 from kongui.gui.backend import ServiceBackend
 from tests.helpers import (
+    install_conf,
     BASE_CONF,
     IsolatedHomeTestCase,
     make_dist_info,
@@ -68,7 +69,7 @@ class TransferCase(IsolatedHomeTestCase):
         (home / ".local/share").mkdir(parents=True)
         engine = KonsaveEngine(home, euid_provider=non_root)
         config = ConfigService(engine)
-        config.write_text(BASE_CONF)
+        install_conf(config, BASE_CONF)
         service = ProfileService(engine, config)
         return engine, service, ServiceBackend(service)
 
@@ -411,9 +412,9 @@ class ImportTests(TransferCase):
             self.out / "evil.knsv",
             {"conf.yaml": conf, "save/a": "x", "export/x/m.txt": "m"},
         )
-        with self.assertRaises(ConfigValidationError):
+        with self.assertRaises(ConfigError):
             self.backend_b.inspect_archive(str(archive))
-        with self.assertRaises(ConfigValidationError):
+        with self.assertRaises(ConfigError):
             self.import_b(path=archive)
         self.assertEqual(os.listdir(outside), [])
 

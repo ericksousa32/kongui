@@ -132,6 +132,9 @@ class LockCase(IsolatedHomeTestCase):
         self.engine, self.config, self.profiles = self.new_services()
         self.populate_live()
         self.path = default_lock_path(str(self.engine.konsave_dir))
+        # The lock file exists once any operation ran (as on a used account).
+        with self.engine.lock.hold(SHARED, "setup"):
+            pass
 
     def env(self, **extra):
         env = dict(os.environ)
@@ -533,7 +536,7 @@ class ServiceTests(LockCase):
             lambda: self.profiles.replace("work", confirmed=True),
             lambda: self.profiles.list_profiles(),
             lambda: self.profiles.export("work", directory=self.work),
-            lambda: self.config.write_text(self.config.read_text()),
+            lambda: self.profiles.set_description("work", "x"),
         ):
             with self.assertRaises(LockBusyError):
                 call()

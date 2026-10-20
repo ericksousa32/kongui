@@ -27,7 +27,7 @@ from typing import Callable, List, Tuple
 from unittest import mock
 
 from tests.gui_helpers import HAVE_QT, GuiTestCase
-from tests.helpers import BASE_CONF, non_root, really_root, write
+from tests.helpers import install_conf, BASE_CONF, non_root, really_root, write
 
 if HAVE_QT:
     from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
@@ -44,7 +44,6 @@ if HAVE_QT:
         ConfirmDialog,
         ConflictDialog,
         DetailsDialog,
-        GroupNameDialog,
         ProfileDialog,
         SafetyCopiesDialog,
     )
@@ -142,16 +141,6 @@ def description(text: str) -> Answer:
     return answer
 
 
-def group_name(name: str) -> Answer:
-    """Fills the *new group* dialog of the ``conf.yaml`` editor."""
-
-    def answer(dialog) -> None:
-        dialog.name_edit.setText(name)
-        confirm(dialog)
-
-    return answer
-
-
 def unique_name(dialog) -> None:
     """Picks "Use a unique name" when the exported file already exists."""
     dialog.confirm_button.click()
@@ -201,7 +190,7 @@ class OverviewCase(GuiTestCase):
         write(self.root / ".config/gtk-3.0/settings.ini", "[Settings]")
         self.engine = KonsaveEngine(self.root, euid_provider=non_root)
         self.config = ConfigService(self.engine)
-        self.config.write_text(BASE_CONF)
+        install_conf(self.config, BASE_CONF)
         self.backend = ServiceBackend(ProfileService(self.engine, self.config))
         self.user = ScriptedUser(self)
         self.window = self.make_window(
@@ -423,32 +412,38 @@ class TransferJourneyTests(OverviewCase):
         )
 
 
-# ---- 3. the conf.yaml editor decides what a profile holds ---------------------------
+# ---- 3. conf.yaml edited by hand decides what a profile holds ----------------------
+
+WIDGETS_GROUP = BASE_CONF.replace(
+    "export:",
+    "    widgets:\n"
+    '        location: "$HOME/.local/share"\n'
+    "        entries:\n"
+    "            - plasma\n"
+    "export:",
+)
 
 
-class ConfigJourneyTests(OverviewCase):
-    """Edit .YAML adds a group; the next profile saved holds it, older ones do not."""
+class HandEditedConfigJourneyTests(OverviewCase):
+    """KonGUI has no conf.yaml editor: the user edits the file, as with Konsave."""
 
-    def test_a_group_added_in_the_editor_is_saved_and_applied(self):
+    def test_a_group_added_by_hand_is_saved_and_applied(self):
+        self.assertNotIn("config", self.window.pages)  # no editor page any more
         self.window.controller.save("Antes")
         write(self.root / ".local/share/plasma/look.txt", "look-A")
 
-        # Add a "save" group through the editor: name, folder, one entry.
-        page = self.page("config")
-        editor = page.editors["save"]
-        with self.user.answers((GroupNameDialog, group_name("widgets"))):
-            editor.add_button.click()
-        editor.location_edit.setText("$HOME/.local/share")
-        editor.location_edit.editingFinished.emit()
-        editor.add_entry("plasma")
-        self.flush()
-        self.assertTrue(page.can_save())
-        with self.user.answers():  # a block-style file keeps its comments: no question
-            page.save_button.click()
-        self.assertIn("widgets", self.config.config_path.read_text(encoding="utf-8"))
-        self.assertEqual(len(self.config.list_backups()), 1)  # the previous file
+        # A broken edit is not checked beforehand: saving fails with Konsave's
+        # own reason and leaves no half-made profile.
+        install_conf(self.config, "save: [\n")
+        with self.user.answers((ProfileDialog, new_profile("Quebrado"))):
+            self.page("profiles").new_button.click()
+        failed = self.outcomes[-1]
+        self.assertFalse(failed.ok)
+        self.assertTrue(failed.details, "the notice says why")
+        self.assertFalse(self.profile_dir("Quebrado").exists())
 
-        # A profile saved now holds the new group; the older one does not.
+        # The user fixes the file, adding a group.
+        install_conf(self.config, WIDGETS_GROUP)
         with self.user.answers((ProfileDialog, new_profile("Depois"))):
             self.page("profiles").new_button.click()
         store = self.window.context.store
@@ -459,14 +454,18 @@ class ConfigJourneyTests(OverviewCase):
             "look-A",
         )
 
-        # And applying it puts that group's files back.
+        # Applying it puts that group's files back (after a safety copy).
         write(self.root / ".local/share/plasma/look.txt", "look-B")
         with self.user.answers((ConfirmDialog, confirm)):
             self.card("Depois").apply_button.click()
         self.assertEqual(self.read_live(".local/share/plasma/look.txt"), "look-A")
+        self.assertEqual(len(self.backend.list_backups()), 1)
 
-        self.assert_all_succeeded()
-        self.assertEqual(self.operations(), ["save", "save_config", "save", "apply"])
+        self.assertEqual(self.operations(), ["save", "save", "save", "apply"])
+        self.assertEqual([o.ok for o in self.outcomes], [True, False, True, True])
+        # Nothing besides the user's own file was written next to it.
+        names = os.listdir(self.config.config_path.parent)
+        self.assertEqual([n for n in names if n.startswith("conf.yaml")], ["conf.yaml"])
 
 
 # ---- 4. the application as the `kongui` command builds it ------------------------

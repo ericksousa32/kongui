@@ -53,7 +53,7 @@ class SmokeScriptTests(unittest.TestCase):
     def test_a_checkout_passes_and_the_process_exits_normally(self):
         result = run_script("--from-checkout")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("6 pages", result.stdout)
+        self.assertIn("5 pages", result.stdout)
         self.assertIn("kongui_pt_BR.qm loaded", result.stdout)
         self.assertIn("smoke test: ok", result.stdout)
 

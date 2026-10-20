@@ -1,14 +1,12 @@
 """The modal dialogs driven for real (``exec`` runs; buttons are clicked).
 
 Other tests replace ``ask`` with a mock, which leaves the dialogs' own logic
-untested: which button returns what, when Enter is ignored, how the backup
-preview loads. This file closes that gap (found by the final coverage audit).
+untested: which button returns what, when Enter is ignored. This file closes that gap (found by the final coverage audit).
 """
 
 from __future__ import annotations
 
 import unittest
-from datetime import datetime
 from unittest import mock
 
 from tests.gui_helpers import HAVE_QT, GuiTestCase
@@ -18,14 +16,7 @@ if HAVE_QT:
     from PySide6.QtGui import QKeyEvent
     from PySide6.QtWidgets import QApplication, QDialog
 
-    from kongui.core import BackupInfo
-    from kongui.gui.widgets.dialogs import (
-        BackupsDialog,
-        ChoiceDialog,
-        ConfirmDialog,
-        ConflictDialog,
-        GroupNameDialog,
-    )
+    from kongui.gui.widgets.dialogs import ConfirmDialog, ConflictDialog
 
 
 @unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
@@ -84,31 +75,6 @@ class ConflictDialogTests(DialogCase):
         self.assertEqual(len(seen), 1)
 
 
-class ChoiceDialogTests(DialogCase):
-    """The conf.yaml conflict dialog: reload from disk or write anyway."""
-
-    CHOICES = [("reload", "Recarregar", "default"), ("force", "Gravar", "danger-solid")]
-
-    def ask(self, click):
-        self.during_exec(click)
-        return ChoiceDialog.ask(None, "Mudou", "O arquivo mudou.", self.CHOICES)
-
-    def test_each_choice_returns_its_key(self):
-        self.assertEqual(
-            self.ask(lambda d: d.choice_buttons["reload"].click()), "reload"
-        )
-        self.assertEqual(self.ask(lambda d: d.choice_buttons["force"].click()), "force")
-
-    def test_cancel_and_close_return_cancel(self):
-        self.assertEqual(self.ask(lambda d: d.cancel_button.click()), "cancel")
-        self.assertEqual(self.ask(lambda d: d.reject()), "cancel")
-
-    def test_there_is_no_plain_confirm_button(self):
-        seen = []
-        self.ask(lambda d: (seen.append(d.confirm_button.isHidden()), d.reject()))
-        self.assertEqual(seen, [True])
-
-
 class ConfirmDialogTests(DialogCase):
     """The typed-word confirmation used to wipe every profile."""
 
@@ -140,118 +106,6 @@ class ConfirmDialogTests(DialogCase):
     def test_cancel_is_the_default_answer(self):
         self.during_exec(lambda d: d.reject())
         self.assertFalse(ConfirmDialog.ask(None, "?", "?", "Sim", destructive=True))
-
-
-class GroupNameDialogTests(DialogCase):
-    """Names of ``save``/``export`` groups are folder names."""
-
-    def test_validation_follows_the_rules_as_you_type(self):
-        dialog = GroupNameDialog(None, ["configs"])
-        self.assertFalse(dialog.confirm_button.isEnabled())
-        self.assertTrue(dialog.error_label.isHidden(), "no scolding before typing")
-        for bad, fragment in (
-            ("a/b", "sem “/”"),
-            ("..", "sem “/”"),
-            (".", "sem “/”"),
-            ("configs", "Já existe"),
-            ("   ", "Informe"),
-        ):
-            dialog.name_edit.setText(bad)
-            self.assertFalse(dialog.confirm_button.isEnabled(), bad)
-            self.assertIn(fragment, dialog.error_label.text(), bad)
-        for good in ("novo", "meu grupo", "configuração ç", "a.b"):
-            dialog.name_edit.setText(good)
-            self.assertTrue(dialog.confirm_button.isEnabled(), good)
-            self.assertTrue(dialog.error_label.isHidden())
-
-    def test_enter_is_ignored_until_the_name_is_valid(self):
-        dialog = GroupNameDialog(None, [])
-        dialog.name_edit.setText("a/b")
-        event = self.press(dialog, Qt.Key.Key_Return)
-        self.assertFalse(event.isAccepted())
-        self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
-        dialog.name_edit.setText("ok")
-        self.assertTrue(dialog.confirm_button.isEnabled())
-
-    def test_ask_returns_the_name_or_none(self):
-        def type_and_confirm(dialog):
-            dialog.name_edit.setText("novo")
-            dialog.confirm_button.click()
-
-        self.during_exec(type_and_confirm)
-        self.assertEqual(GroupNameDialog.ask(None, ["configs"]), "novo")
-        self.during_exec(lambda d: d.cancel_button.click())
-        self.assertIsNone(GroupNameDialog.ask(None, []))
-
-
-class BackupsDialogTests(DialogCase):
-    """Preview and restore of the saved ``conf.yaml`` versions."""
-
-    @staticmethod
-    def infos(*names):
-        return [
-            BackupInfo(name, None, datetime(2026, 10, 16, 21, 0, index), 100 + index)
-            for index, name in enumerate(names)
-        ]
-
-    def make(self, *names):
-        self.requests = []
-        dialog = BackupsDialog(
-            None,
-            self.infos(*names),
-            lambda name, done: self.requests.append((name, done)),
-        )
-        self.addCleanup(dialog.deleteLater)
-        return dialog
-
-    def test_empty_list_says_so_and_cannot_restore(self):
-        dialog = self.make()
-        self.assertFalse(dialog.empty_label.isHidden())
-        self.assertTrue(dialog.list_widget.isHidden())
-        self.assertFalse(dialog.confirm_button.isEnabled())
-        self.assertIsNone(dialog.selected_name())
-
-    def test_first_backup_is_previewed_and_restore_waits_for_it(self):
-        dialog = self.make("conf.yaml.bak-2", "conf.yaml.bak-1")
-        self.assertEqual([name for name, _ in self.requests], ["conf.yaml.bak-2"])
-        self.assertEqual(dialog.preview.toPlainText(), "Carregando…")
-        self.assertFalse(dialog.confirm_button.isEnabled())
-        self.requests[0][1]("save: {}\nexport: {}\n", None)
-        self.assertEqual(dialog.preview.toPlainText(), "save: {}\nexport: {}\n")
-        self.assertTrue(dialog.confirm_button.isEnabled())
-
-    def test_a_late_answer_for_another_row_is_ignored(self):
-        dialog = self.make("a", "b")
-        dialog.list_widget.setCurrentRow(1)
-        self.assertEqual([name for name, _ in self.requests], ["a", "b"])
-        self.requests[0][1]("texto de a", None)  # stale
-        self.assertEqual(dialog.preview.toPlainText(), "Carregando…")
-        self.assertFalse(dialog.confirm_button.isEnabled())
-        self.requests[1][1]("texto de b", None)
-        self.assertEqual(dialog.preview.toPlainText(), "texto de b")
-
-    def test_a_read_error_is_shown_and_blocks_restoring(self):
-        dialog = self.make("a")
-        self.requests[0][1](None, PermissionError("negado"))
-        self.assertIn("Não foi possível ler este backup", dialog.status_label.text())
-        self.assertFalse(dialog.confirm_button.isEnabled())
-        self.requests[0][1](None, None)
-        self.assertFalse(dialog.confirm_button.isEnabled())
-
-    def test_restore_returns_the_highlighted_backup(self):
-        dialog = self.make("conf.yaml.bak-2", "conf.yaml.bak-1")
-        dialog.list_widget.setCurrentRow(1)
-        self.requests[1][1]("antigo", None)
-        dialog.confirm_button.click()
-        self.assertEqual(dialog.chosen, "conf.yaml.bak-1")
-        self.assertEqual(dialog.result(), QDialog.DialogCode.Accepted)
-
-    def test_closing_chooses_nothing(self):
-        dialog = self.make("a")
-        self.requests[0][1]("x", None)
-        dialog.cancel_button.click()
-        self.assertIsNone(dialog.chosen)
-        self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
 
 
 class StartUpHelpersTests(GuiTestCase):

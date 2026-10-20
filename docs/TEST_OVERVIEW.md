@@ -1,7 +1,8 @@
 # Test overview
 
 One map of what the tests cover, feature by feature, and the result of the general
-review of the test suite made on 2026-10-19. It builds on the feature list in the
+review of the test suite made on 2026-10-19, updated the same day after the
+`conf.yaml` management was removed (§5). It builds on the feature list in the
 [README](../README.md), the pages in [`GUI_PROTOTYPE.md`](GUI_PROTOTYPE.md) §2 and the
 requirements matrix in [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §3, and does not repeat
 them.
@@ -36,11 +37,11 @@ python3 -m unittest tests.test_gui_overview -v    # about 3 seconds
 
 | Feature | Overview | In depth |
 |---|---|---|
-| Window, the six pages, navigation | every test (dashboard, profiles, transfer, settings, editor) | `tests.test_gui_startup`, `tests.test_gui_navigation` |
+| Window, the five pages, navigation | every test (dashboard, profiles, transfer, settings) | `tests.test_gui_startup`, `tests.test_gui_navigation` |
 | Dashboard figures, empty state, activity feed | `ProfileJourneyTests` (0 → 1 profile, active profile, activity entries) | `tests.test_gui_interaction` |
-| Save a profile with a description (dashboard button, *New profile*) | `ProfileJourneyTests`, `ConfigJourneyTests` | `tests.test_gui_operations`, `tests.test_gui_real_backend`, `tests.test_gui_details` |
-| Profile card: sections and description | `ProfileJourneyTests`, `ConfigJourneyTests` | `tests.test_gui_details`, `tests.test_profile_details` |
-| Apply, with the safety copy made first | `ProfileJourneyTests`, `ConfigJourneyTests`, `RealApplicationTests` | `tests.test_gui_operations`, `tests.test_gui_real_backend`, `tests.test_snapshot` |
+| Save a profile with a description (dashboard button, *New profile*) | `ProfileJourneyTests`, `HandEditedConfigJourneyTests` | `tests.test_gui_operations`, `tests.test_gui_real_backend`, `tests.test_gui_details` |
+| Profile card: sections and description | `ProfileJourneyTests`, `HandEditedConfigJourneyTests` | `tests.test_gui_details`, `tests.test_profile_details` |
+| Apply, with the safety copy made first | `ProfileJourneyTests`, `HandEditedConfigJourneyTests`, `RealApplicationTests` | `tests.test_gui_operations`, `tests.test_gui_real_backend`, `tests.test_snapshot` |
 | Restore a safety copy (*Settings → Safety copies*) | `ProfileJourneyTests` | `tests.test_gui_backups`, `tests.test_snapshot` |
 | Edit details (card menu) | `ProfileJourneyTests` | `tests.test_gui_details` |
 | Overwrite (card menu) | `ProfileJourneyTests` | `tests.test_gui_operations`, `tests.test_gui_real_backend` |
@@ -50,8 +51,8 @@ python3 -m unittest tests.test_gui_overview -v    # about 3 seconds
 | Import by dropping a `.knsv`: check, export section written, copy first, description not carried | `TransferJourneyTests` | `tests.test_gui_transfer`, `tests.test_gui_transfer_roundtrip`, `tests.test_profile_details` |
 | Recent transfers | `TransferJourneyTests` | none: before this review no test looked at this list |
 | Clear all (the word must be typed) | `TransferJourneyTests` | `tests.test_gui_dialogs`, `tests.test_gui_real_backend` |
-| `conf.yaml` editor: add a group, save with a backup | `ConfigJourneyTests` | `tests.test_gui_config`, `tests.test_config_editor`, `tests.test_config_service` |
-| What a profile includes is decided in *Edit .YAML* (`LIMITATIONS.md` §4) | `ConfigJourneyTests` (a new group goes into the next profile only, and is applied) | `tests.test_gui_details` |
+| No `conf.yaml` editor: a group added **by hand** goes into the next profile only, and is applied (`LIMITATIONS.md` §4) | `HandEditedConfigJourneyTests` | `tests.test_gui_details`, `tests.test_config_service` |
+| A broken `conf.yaml` (not checked beforehand): saving fails with Konsave's reason and leaves nothing | `HandEditedConfigJourneyTests` | `tests.test_profile_service_integration` |
 | The real assembly of the `kongui` command (`build_backend`, worker thread) | `RealApplicationTests` | `tests.test_gui_startup` (with the backend mocked), `tests.test_gui_lock_wait` |
 | Preferences saved and restored (theme, language) | `RealApplicationTests` (restart with the same settings file) | `tests.test_i18n`, `tests.test_gui_startup`, `tests.test_gui_interaction` |
 
@@ -81,9 +82,10 @@ said "Não foi possível aplicar o perfil" ("Could not apply the profile") with
 report and dropped those added later. It showed up in `RealApplicationTests`, whose
 first version used a home without `~/.local/share`. Now the added errors are listed
 too (in English, as the service writes them, like other engine messages). Regression
-tests: `tests.test_gui_support` (`test_a_refusal_added_after_validation_is_not_lost`)
-and `tests.test_gui_real_backend` (`test_a_refused_apply_says_why`); both fail
-without the fix.
+tests: `tests.test_gui_support` (now `test_a_refusal_says_what_was_refused_and_why`,
+rewritten when the validation report was removed: a refusal is a `ConfigError` whose
+`details` are always shown) and `tests.test_gui_real_backend`
+(`test_a_refused_apply_says_why`).
 
 The refusal itself was correct: KonGUI does not apply a group whose folder and parent
 folder are both missing. A real desktop home always has `~/.local/share` and
@@ -96,32 +98,30 @@ the two exports and the import.
 
 ## 4. Review of the existing tests
 
-Measured on 2026-10-19, Python 3.13, PySide6 6.12.0, as an unprivileged user, in the
+Measured on 2026-10-19, after the removal of §5, as an unprivileged user, in the
 foreground (method in [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
 
-* **955 tests in 34 modules, all passing** (952 run and 3 skipped where
-  `setuptools_scm` is missing). About 3 minutes; the slowest modules are the
-  interface ones: `test_i18n` 23 s, `test_gui_transfer` 21 s, `test_gui_config` 18 s,
-  `test_gui_interaction` 15 s, `test_locking` 15 s (it starts real processes),
-  `test_gui_operations` 14 s. The overview module takes about 3 s.
+* **805 tests in 32 modules, all passing** (802 run and 3 skipped where
+  `setuptools_scm` is missing), on Python 3.13 (system and virtual environment,
+  PySide6 6.12.0), 3.9 and 3.11 (PySide6 6.9.3) and 3.14 (PySide6 6.12.0). About
+  2.5 minutes. (Before the removal: 955 tests in 34 modules.)
 * **Coverage** of `kongui/` (`coverage run --branch`): **96 %** for the whole suite
-  (6,948 statements, 219 not run). The four overview tests alone reach **73 %**
-  (75 % of `kongui/gui`), which says how much of the program a few realistic
-  journeys exercise. The least covered modules are unchanged: `gui/__main__.py`
-  (three lines, the `python -m` entry), `core/yamlmap.py` 87 %, `gui/messages.py`
-  88 %, `gui/widgets/dropzone.py` 88 %.
+  (5,174 statements, 137 not run). The four overview tests alone reach **77 %**
+  (79 % of `kongui/gui`). The least covered modules: `gui/__main__.py` (three lines,
+  the `python -m` entry), `core/config.py` 88 % (unreadable-file paths),
+  `gui/widgets/dropzone.py` 88 %, `gui/backend.py` 90 %.
 * **Every test checks something.** A static pass over the syntax tree found three
   tests with no assertion call; all three check that a call does *not* raise
   (`ensure_not_root` for an ordinary user and on a platform without `geteuid`;
   `require_free_space` when the disk cannot be read), which is a valid test.
-* **Same names, different layers.** 17 test names appear in more than one class.
+* **Same names, different layers.** 12 test names appear in more than one class.
   Most are the same rule checked for each operation (for example "declining changes
   nothing" for apply, overwrite, remove and clear all). A few check the same
   behaviour at different layers: the service (`tests.test_profile_service_integration`),
   the interface's backend (`tests.test_gui_real_backend`,
-  `tests.test_gui_transfer_roundtrip`) and now the interface itself (the overview).
+  `tests.test_gui_transfer_roundtrip`) and the interface itself (the overview).
   That overlap is intentional (a failure then points at the layer that broke) and
-  costs little time (those modules take 1 to 3 s each), so no test was removed.
+  costs little time, so no test was removed for it.
 * **Skips** are deliberate: tests that would write files are skipped when the
   process is really root, the GUI tests when PySide6 is missing, and the source
   archive tests when `git` or `setuptools_scm` is missing.
@@ -133,7 +133,42 @@ foreground (method in [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
   language test compares relative dates and can fail once when a run crosses
   midnight.
 
-## 5. Limits
+## 5. After removing the `conf.yaml` management (2026-10-19)
+
+The owner decided to stay within Konsave's scope: no editor, no backups of
+`conf.yaml`, no validation of it by KonGUI, no A-4 warning
+([`LIMITATIONS.md`](LIMITATIONS.md) §2). Nothing else was to be removed. What was
+checked:
+
+* **Removed with it:** `tests.test_config_editor` and `tests.test_gui_config`
+  (59 + 37 tests, only the editor), the editor's dialogs in `tests.test_gui_dialogs`,
+  its failure paths and the A-4 tests in `tests.test_gui_audit` and
+  `tests.test_core_audit`, and the validation tests of `tests.test_config_service`
+  (rewritten for what is left: the default file and reading through Konsave).
+* **Behaviour that changed, and is now tested as it is:** a broken or unusual
+  `conf.yaml` is no longer refused beforehand. Saving with it fails with Konsave's
+  own reason and leaves no partial profile (nested entry, broken YAML,
+  `tests.test_profile_service_integration`); an unmatched `${ENDS_WITH=…}` is saved
+  as an empty group, as Konsave does, and applying it is refused because that
+  location is not inside the home. `HandEditedConfigJourneyTests` replaces the
+  editor journey: a broken file, then a group added by hand, saved and applied
+  through the interface.
+* **Kept, and still tested:** the safety copies, the free-space checks, the
+  sections on the cards, the refusal of archives or profiles that would write
+  outside the home (now also any entry that is not a single name, which the
+  removed validation used to catch), and the refusal to apply to a destination
+  whose parent does not exist.
+* **Every other feature:** the three other overview journeys (profiles and safety
+  copies; export, import and clear all; the `kongui` command's assembly with its
+  worker thread and preferences) pass unchanged, and so do the detailed modules.
+* **Installed package:** a wheel built from a tagged copy contains none of the
+  removed modules; installed with `[gui]` on Python 3.11 and 3.13 it passes
+  `tools/smoke_test.py` (five pages), and in a temporary home it saved, applied,
+  restored the safety copy, exported, removed and imported a profile, refused to
+  save with a broken `conf.yaml` (Konsave's reason, nothing left), saved after a
+  group was added by hand, and wrote no file next to `conf.yaml`.
+
+## 6. Limits
 
 * Nothing here replaces a real Plasma session ([`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md)):
   the "session" is a temporary folder, Qt runs offscreen and no window manager is

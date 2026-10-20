@@ -1,9 +1,12 @@
 """Core tests added by the final audit (real Konsave code, temporary homes).
 
-The scenario: the user saves a profile, later edits the active ``conf.yaml``
-(the GUI now makes that easy), then exports the profile. The original ``export``
-takes ``save/`` from the *profile's* groups but writes the *active* ``conf.yaml``
-into the ``.knsv``, so the archive can disagree with itself.
+The scenario: the user saves a profile, later edits the active ``conf.yaml`` by
+hand, then exports the profile. The original ``export`` takes ``save/`` from the
+*profile's* groups but writes the *active* ``conf.yaml`` into the ``.knsv``, so
+the archive can disagree with itself. KonGUI no longer warns about it (decided
+on 2026-10-19, the export behaves as Konsave's), but applying such an archive
+elsewhere is still refused with a reason, and inspecting it tells what is
+missing.
 """
 
 import os
@@ -12,10 +15,8 @@ import zipfile
 
 import yaml
 
-from kongui.core import CONF_DIFFERS_PREFIX, ConfigMissingError, ConfigValidationError
-from kongui.core import Group, apply_model, parse_model
-from kongui.core.profiles import describe_conf_differences
-from tests.helpers import BASE_CONF, make_knsv, write
+from kongui.core import ConfigError, ConfigMissingError
+from tests.helpers import install_conf, BASE_CONF, make_knsv, write
 from tests.test_profile_service_integration import IntegrationCase
 
 TWO_GROUPS = BASE_CONF.replace(
@@ -28,89 +29,36 @@ TWO_GROUPS = BASE_CONF.replace(
 )
 
 
-class ConfDifferenceTests(unittest.TestCase):
-    """The pure comparison."""
-
-    def test_same_groups_say_nothing(self):
-        data = yaml.safe_load(BASE_CONF)
-        self.assertEqual(describe_conf_differences(data, yaml.safe_load(BASE_CONF)), "")
-
-    def test_added_removed_and_changed_groups_are_marked(self):
-        mine = yaml.safe_load(TWO_GROUPS)
-        active = yaml.safe_load(BASE_CONF)
-        active["save"]["configs"]["entries"].append("newfile")
-        active["export"]["fonts"] = {"location": "$HOME", "entries": ["f"]}
-        text = describe_conf_differences(mine, active)
-        self.assertEqual(text, "save(-more ~configs); export(+fonts)")
-
-    def test_missing_entries_and_empty_sections_are_equivalent(self):
-        mine = {"save": {"a": {"location": "$HOME", "entries": None}}, "export": {}}
-        active = {"save": {"a": {"location": "$HOME"}}, "export": None}
-        self.assertEqual(describe_conf_differences(mine, active), "")
-
-    def test_garbage_does_not_raise(self):
-        self.assertEqual(describe_conf_differences(None, None), "")
-        self.assertEqual(describe_conf_differences([], "x"), "")
-
-
-class ExportWarnsWhenTheConfigChangedTests(IntegrationCase):
-    """Reproduced with the original code: nothing was said before."""
-
-    def export(self):
-        return self.profiles.export("work", directory=self.work)
+class ExportAfterTheConfigChangedTests(IntegrationCase):
+    """What Konsave does, and what KonGUI still protects."""
 
     def setUp(self):
         super().setUp()
         write(self.home / ".config/extrafile", "extra")
         self.profiles.save("work").raise_for_status()
 
-    def test_unchanged_configuration_exports_without_warning(self):
-        result = self.export()
+    def test_a_group_added_later_makes_the_archive_unappliable_elsewhere(self):
+        install_conf(self.config, TWO_GROUPS)
+        result = self.profiles.export("work", directory=self.work)
         self.assertTrue(result.ok, result.message)
-        self.assertFalse(
-            [line for line in result.warnings if line.startswith(CONF_DIFFERS_PREFIX)]
-        )
-
-    def test_group_added_after_saving_is_reported(self):
-        self.config.write_text(TWO_GROUPS)
-        result = self.export()
-        self.assertTrue(result.ok, result.message)
-        found = [w for w in result.warnings if w.startswith(CONF_DIFFERS_PREFIX)]
-        self.assertEqual(len(found), 1, result.warnings)
-        self.assertIn("save(+more)", found[0])
-        # ...and this is the failure the warning is about: it cannot be applied.
+        self.assertEqual(result.warnings, ())  # no warning any more
         other = self.second_home()[2]
         other.import_profile(self.work / "work.knsv", confirmed=True).raise_for_status()
-        with self.assertRaises(ConfigValidationError) as caught:
+        with self.assertRaises(ConfigError) as caught:
             other.apply("work", confirmed=True)
-        self.assertIn("save.more", " ".join(caught.exception.report.errors))
+        self.assertIn("save.more", " ".join(caught.exception.details))
 
-    def test_group_removed_after_saving_is_reported(self):
-        self.config.write_text(TWO_GROUPS)
+    def test_a_group_removed_later_is_left_out_of_the_archive_conf(self):
+        install_conf(self.config, TWO_GROUPS)
         self.profiles.save("both").raise_for_status()
-        self.config.write_text(BASE_CONF)
+        install_conf(self.config, BASE_CONF)
         result = self.profiles.export("both", directory=self.work)
         self.assertTrue(result.ok, result.message)
-        found = [w for w in result.warnings if w.startswith(CONF_DIFFERS_PREFIX)]
-        self.assertEqual(len(found), 1, result.warnings)
-        self.assertIn("save(-more)", found[0])
         with zipfile.ZipFile(self.work / "both.knsv") as handle:
             self.assertTrue(
                 any(name.startswith("save/more/") for name in handle.namelist())
             )
             self.assertNotIn("more", yaml.safe_load(handle.read("conf.yaml"))["save"])
-
-    def test_unreadable_active_configuration_does_not_break_the_export(self):
-        active = self.config.config_path
-        original = active.read_text(encoding="utf-8")
-        try:
-            active.write_bytes(b"\xff\xfe not utf-8")
-            result = self.export()
-        finally:
-            active.write_text(original, encoding="utf-8")
-        self.assertFalse(
-            [w for w in result.warnings if w.startswith(CONF_DIFFERS_PREFIX)]
-        )
 
 
 class InspectArchiveFolderTests(IntegrationCase):
@@ -153,33 +101,6 @@ class ExportNeedsTheActiveConfigTests(IntegrationCase):
         with self.assertRaises(ConfigMissingError):
             self.profiles.export("work", directory=self.work)
         self.assertEqual(os.listdir(self.work), [])
-
-
-class LineEndingTests(unittest.TestCase):
-    """A CRLF ``conf.yaml`` came back with mixed line endings."""
-
-    CRLF = BASE_CONF.replace("\n", "\r\n")
-
-    def add_group(self, text):
-        model = parse_model(text)
-        groups = tuple(model.groups("save")) + (Group("novo", "$HOME", ("x",), None),)
-        return apply_model(text, model.with_groups("save", groups))
-
-    def test_crlf_file_stays_crlf(self):
-        result = self.add_group(self.CRLF)
-        self.assertTrue(result.preserved)
-        self.assertEqual(result.text.count("\n"), result.text.count("\r\n"))
-        self.assertIn("novo", yaml.safe_load(result.text)["save"])
-
-    def test_lf_file_stays_lf(self):
-        result = self.add_group(BASE_CONF)
-        self.assertNotIn("\r", result.text)
-
-    def test_lossy_rewrite_also_keeps_crlf(self):
-        flow = 'save: {a: {location: "$HOME", entries: [x]}}\r\nexport: {}\r\n'
-        result = self.add_group(flow)
-        self.assertFalse(result.preserved)
-        self.assertEqual(result.text.count("\n"), result.text.count("\r\n"))
 
 
 if __name__ == "__main__":

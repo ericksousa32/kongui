@@ -15,7 +15,7 @@ from kongui.core import (
     NOT_IMPLEMENTED_OPERATIONS,
     ArchiveExistsError,
     ConfigMissingError,
-    ConfigValidationError,
+    ConfigError,
     ConfirmationRequiredError,
     NotImplementedOperationError,
     OperationFailedError,
@@ -173,9 +173,6 @@ class SaveTests(MockedServiceCase):
             with self.subTest(name=bad):
                 with self.assertRaises(ValidationError):
                     self.profiles.save(bad)
-        self.engine.config_file.write_text(small_conf(entries=["a/b"]))
-        with self.assertRaises(ConfigValidationError):
-            self.profiles.save("new")
         self.engine.config_file.unlink()
         with self.assertRaises(ConfigMissingError):
             self.profiles.save("new")
@@ -245,11 +242,9 @@ class ApplyTests(MockedServiceCase):
         patched = patch_engine_call(
             self.engine, {"apply_profile": lambda *a, **k: fake_call()}
         )
-        with self.assertRaises(ConfigValidationError) as caught:
+        with self.assertRaises(ConfigError) as caught:
             self.profiles.apply("p", confirmed=True)
-        self.assertTrue(
-            any("folder missing" in e for e in caught.exception.report.errors)
-        )
+        self.assertTrue(any("folder missing" in e for e in caught.exception.details))
         self.assertEqual(self.calls_of(patched, "apply_profile"), [])
 
     def test_destination_whose_parent_is_missing_is_refused(self):
@@ -257,7 +252,7 @@ class ApplyTests(MockedServiceCase):
         patched = patch_engine_call(
             self.engine, {"apply_profile": lambda *a, **k: fake_call()}
         )
-        with self.assertRaises(ConfigValidationError):
+        with self.assertRaises(ConfigError):
             self.profiles.apply("p", confirmed=True)
         self.assertEqual(self.calls_of(patched, "apply_profile"), [])
 
@@ -268,11 +263,9 @@ class ApplyTests(MockedServiceCase):
         patched = patch_engine_call(
             self.engine, {"apply_profile": lambda *a, **k: fake_call()}
         )
-        with self.assertRaises(ConfigValidationError) as caught:
+        with self.assertRaises(ConfigError) as caught:
             self.profiles.apply("p", confirmed=True)
-        self.assertTrue(
-            any("outside the home" in e for e in caught.exception.report.errors)
-        )
+        self.assertTrue(any("outside the home" in e for e in caught.exception.details))
         self.assertEqual(self.calls_of(patched, "apply_profile"), [])
         self.assertTrue(
             self.profiles.apply("p", confirmed=True, allow_outside_home=True).ok
@@ -284,7 +277,7 @@ class ApplyTests(MockedServiceCase):
         os.symlink(outside, self.home / "link")
         self.make_profile("p", conf=small_conf(location="$HOME/link"))
         patch_engine_call(self.engine, {"apply_profile": lambda *a, **k: fake_call()})
-        with self.assertRaises(ConfigValidationError):
+        with self.assertRaises(ConfigError):
             self.profiles.apply("p", confirmed=True)
 
 
@@ -518,7 +511,7 @@ class ImportTests(MockedServiceCase):
 
     def test_an_archive_with_an_invalid_configuration(self):
         archive = self.valid_archive(conf=small_conf(entries=["a/b"]))
-        with self.assertRaises(ConfigValidationError):
+        with self.assertRaises(ConfigError):
             self.profiles.import_profile(archive, confirmed=True)
 
     def test_destination_outside_home_is_refused_unless_allowed(self):
@@ -538,7 +531,7 @@ class ImportTests(MockedServiceCase):
                 )[1]
             },
         )
-        with self.assertRaises(ConfigValidationError):
+        with self.assertRaises(ConfigError):
             self.profiles.import_profile(archive, confirmed=True)
         self.assertEqual(self.calls_of(patched, "import_profile"), [])
         self.assertTrue(

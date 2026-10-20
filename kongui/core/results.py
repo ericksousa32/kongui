@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple, Union
+from typing import Optional, Tuple
 
 from kongui.core.errors import OperationFailedError
 
@@ -15,107 +14,6 @@ _VERSION_LINE = re.compile(r"^Konsave:\s*(\S+)\s*$", re.MULTILINE)
 #: Printed by the original exception handler (``funcs.exception_handler``)
 #: right before the process exits with status 0.
 ERROR_MARKER = "Please check the log at"
-
-
-PathStep = Union[str, int]
-
-
-@dataclass(frozen=True)
-class Problem:
-    """One finding about a ``conf.yaml``, with where it is.
-
-    Attributes:
-        severity: ``"error"`` (blocks saving) or ``"warning"``.
-        code: Stable identifier of the kind of finding, used by the GUI to
-            pick a translated explanation.
-        path: Where in the document, e.g. ``("save", "configs", "entries", 3)``.
-        message: English explanation (the same text kept in
-            :attr:`ValidationReport.errors`/``warnings``, without the label).
-        label: Dotted ``kind.group`` prefix of the legacy text, if any.
-        line: 1-based line in the text, if known.
-        column: 1-based column in the text, if known.
-        args: Values the explanation refers to (name, value, supported…).
-    """
-
-    severity: str
-    code: str
-    path: Tuple[PathStep, ...]
-    message: str
-    label: str = ""
-    line: Optional[int] = None
-    column: Optional[int] = None
-    args: Dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
-
-    @property
-    def is_error(self) -> bool:
-        """Whether this finding blocks saving."""
-        return self.severity == "error"
-
-    @property
-    def text(self) -> str:
-        """The legacy one-line text (``label: message``)."""
-        return f"{self.label}: {self.message}" if self.label else self.message
-
-    @property
-    def dotted_path(self) -> str:
-        """The path written as ``save.configs.entries[3]``."""
-        out = ""
-        for step in self.path:
-            out += (
-                f"[{step}]" if isinstance(step, int) else f"{'.' if out else ''}{step}"
-            )
-        return out
-
-
-@dataclass(frozen=True)
-class ValidationReport:
-    """Outcome of validating a ``conf.yaml``.
-
-    Attributes:
-        errors: Problems that make the configuration unusable.
-        warnings: Problems that deserve attention but do not block.
-        resolved: The configuration after placeholder resolution, produced by
-            the original ``read_konsave_config``. ``None`` if not reached.
-        problems: The same findings, structured and located in the text.
-    """
-
-    errors: Tuple[str, ...] = ()
-    warnings: Tuple[str, ...] = ()
-    resolved: Optional[Dict[str, Any]] = None
-    problems: Tuple[Problem, ...] = ()
-
-    @property
-    def ok(self) -> bool:
-        """Whether the report has no errors."""
-        return not self.errors
-
-    def with_errors(self, extra: Iterable[str]) -> "ValidationReport":
-        """Returns a copy of the report with extra errors appended.
-
-        Args:
-            extra: Additional error messages.
-
-        Returns:
-            ValidationReport: The new report.
-        """
-        return replace(self, errors=self.errors + tuple(extra))
-
-
-@dataclass(frozen=True)
-class BackupInfo:
-    """A saved copy of a previous ``conf.yaml``.
-
-    Attributes:
-        name: File name, ``conf.yaml.bak-<date>-<time>-<microseconds>``.
-        path: Full path of the backup.
-        created: When the backup was made (from its name; else its mtime).
-        size_bytes: Size of the backup.
-    """
-
-    name: str
-    path: Path
-    created: datetime
-    size_bytes: int
 
 
 @dataclass(frozen=True)
@@ -130,7 +28,8 @@ class ArchiveInspection:
         save_sections: Sections of the profile (``save`` in its ``conf.yaml``).
         export_sections: Sections written to the live system on import
             (``export`` in its ``conf.yaml``).
-        warnings: Non-blocking observations about the configuration.
+        warnings: Non-blocking observations (for example destination folders
+            that do not exist yet).
         name_taken: A profile with that name already exists.
     """
 

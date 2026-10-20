@@ -7,11 +7,7 @@ from typing import Collection, Optional
 from PySide6.QtCore import QCoreApplication as Q
 
 from kongui.core.errors import ValidationError
-from kongui.core.safety import (
-    is_plain_name,
-    validate_archive_name,
-    validate_profile_name,
-)
+from kongui.core.safety import validate_archive_name, validate_profile_name
 
 
 def profile_name_problem(name: str, existing: Collection[str] = ()) -> Optional[str]:
@@ -68,28 +64,5 @@ def archive_name_problem(name: str) -> Optional[str]:
             "spaces at the ends, control characters, or the .knsv or .zip "
             "extensions. Maximum 200 bytes (accented letters and emojis take "
             "more than one).",
-        )
-    return None
-
-
-def group_name_problem(name: str, existing: Collection[str] = ()) -> Optional[str]:
-    """Explains why a ``save``/``export`` group name cannot be used.
-
-    Args:
-        name: Name typed by the user.
-        existing: Other group names of the same section.
-
-    Returns:
-        Optional[str]: A message in the interface language, or ``None`` if the name is fine.
-    """
-    if not name.strip():
-        return Q.translate("validation", "Enter a name for the group.")
-    if not is_plain_name(name):
-        return Q.translate(
-            "validation", "Invalid name. Use a plain folder name: no “/”, “.” or “..”."
-        )
-    if name in existing:
-        return Q.translate(
-            "validation", "A group with that name already exists in this section."
         )
     return None

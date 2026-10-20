@@ -65,6 +65,27 @@ export:
 """
 
 
+def install_conf(config, text: str) -> Path:
+    """Writes the active ``conf.yaml`` the way a user would: by hand.
+
+    KonGUI no longer writes ``conf.yaml`` files, so the tests put the text in
+    place themselves.
+
+    Args:
+        config: The ``ConfigService`` whose active file is written.
+        text: YAML text.
+
+    Returns:
+        Path: The file written.
+    """
+    # A real home already has ~/.cache and the profiles folder (every engine
+    # call creates them if missing), as the removed ConfigService.write_text did.
+    config._engine.ensure_runtime_dirs()  # pylint: disable=protected-access
+    path = config.config_path
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
 def small_conf(location: str = "$HOME/.config", entries=("kdeglobals",)) -> str:
     """Builds a minimal configuration with one ``save`` section.
 
@@ -279,7 +300,7 @@ class IsolatedHomeTestCase(unittest.TestCase):
         engine = self.new_engine(home)
         config = ConfigService(engine)
         if conf is not None:
-            config.write_text(conf)
+            install_conf(config, conf)
         return engine, config, ProfileService(engine, config)
 
     def populate_live(self, home: Optional[Path] = None) -> Path:

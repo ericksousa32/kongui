@@ -16,7 +16,6 @@ What it aims to solve:
 
 - Make saving, applying, importing and exporting profiles approachable from a GUI.
 - Make risky steps explicit: destructive actions ask for confirmation, and files are copied to a safety copy before a profile is applied or imported.
-- Make the shared `conf.yaml` (what Konsave saves and exports) editable and validated.
 - Prevent two Konsave operations (two KonGUI windows, or KonGUI and the `konsave` command) from running over each other.
 
 ## Screenshots
@@ -36,24 +35,23 @@ Everything below is covered by the automated test suite (run in temporary home d
 - **Profiles:** list, save, overwrite, apply, remove, and remove all. Destructive actions require confirmation.
 - **Import / export:** `.knsv` archives. When the destination file already exists, the interface asks what to do instead of overwriting silently.
 - **Import / export protections:** a `.knsv` above 512 MiB, with more than 10,000 entries or that really expands to more than 2 GiB is refused before anything is written; corrupted or unsafe archives get a clear message; free disk space is checked before import and export; a failed export keeps the previous one and leaves no temporary files. The limits are fixed constants (see [`docs/INTEGRATION.md`](docs/INTEGRATION.md) §10).
-- **Profile description and sections:** an optional description per profile (saved with it or edited later from the card menu), and the sections of each profile read from its own `conf.yaml`. The description is kept next to the profile, not inside the `.knsv`, so it does not travel when exporting. What a profile contains is still decided in the `conf.yaml` editor.
+- **Profile description and sections:** an optional description per profile (saved with it or edited later from the card menu), and the sections of each profile read from its own `conf.yaml`. The description is kept next to the profile, not inside the `.knsv`, so it does not travel when exporting. What a profile contains is decided by `~/.config/konsave/conf.yaml`, which you edit by hand, as in Konsave.
 - **Safety copies:** the files that would be replaced are copied before a profile is applied or imported. Copies can be listed, restored and deleted from *Settings*; nothing is deleted automatically.
-- **`conf.yaml` editor:** edit the `save` and `export` sections or the YAML text, with validation (problems reported with line and column), automatic backups of the previous file, and restore.
 - **Cross-process lock:** operations use a `flock` lock on `~/.config/konsave/.kongui.lock`. If another Konsave operation is running, KonGUI shows that it is waiting, stays responsive, and lets you cancel the wait. The bundled `konsave` command waits too (see [Command line](#command-line-bundled-konsave)). Programs that do not use the lock, such as Plasma itself or a text editor, are not covered.
-- **Interface:** dashboard, profiles, import/export, settings, YAML editor and about pages; light, dark and system themes; keyboard shortcuts (`Ctrl+1` to `Ctrl+6` switch pages).
+- **Interface:** dashboard, profiles, import/export, settings and about pages; light, dark and system themes; keyboard shortcuts (`Ctrl+1` to `Ctrl+5` switch pages).
 - **Language:** English and Brazilian Portuguese. The first time it runs, KonGUI follows the system language (`pt_BR` gives Portuguese; any other locale, including `pt_PT`, gives English). Change it any time in *Settings → Language*; the choice is saved, applies immediately without restarting, and is never overwritten by the system language afterwards. See [Language](#language).
 - **Demo mode:** `--demo` runs the interface on fictitious in-memory data.
 - **Safety:** KonGUI refuses to run as root, and profile or archive names are validated before anything reaches the original code.
 
 ### Choosing what a profile includes
 
-KonGUI does not ask this when you save a profile; it stays manual, in *Edit .YAML*, as in Konsave:
+As in Konsave, KonGUI has no screen for this: what a profile holds is set in `~/.config/konsave/conf.yaml`, which you edit by hand in any text editor (the file format is explained under [Command line](#command-line-bundled-konsave)). The default file Konsave creates already covers the usual Plasma settings, themes, icons, fonts and the layouts of the main KDE apps.
 
-1. Open *Edit .YAML*. The groups under `save:` are what every new profile contains; the groups under `export:` only travel in the `.knsv`.
-2. Add, edit or remove groups (a `location` and the `entries` inside it) and save. The file is validated first and the previous version is kept as a backup.
-3. Save the profile. It gets a copy of `save` as it is *at that moment*; profiles saved earlier keep what they had. The cards show the sections each profile holds.
+1. Edit `~/.config/konsave/conf.yaml`. The groups under `save:` are what every new profile contains; the groups under `export:` only travel in the `.knsv`. Keep a copy of the file before changing it: KonGUI does not check it or keep backups.
+2. Save the profile in KonGUI. It gets a copy of `save` as it is *at that moment*; profiles saved earlier keep what they had. The cards show the sections each profile holds.
+3. If the file has a mistake, saving fails and the notice shows Konsave's own reason; fix the file and save again.
 
-Before exporting, make sure the global `conf.yaml` and the profile's agree: Konsave writes the global one into the `.knsv`, and KonGUI warns when they differ but does not rewrite the archive. More detail in [`docs/GUI_CONFIG.md`](docs/GUI_CONFIG.md) §7.
+Konsave writes the global `conf.yaml` into the `.knsv` when exporting, even if the profile was saved with another one; KonGUI does not change that (see [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) §2).
 
 ### In progress
 
@@ -70,9 +68,9 @@ The complete list, with the decisions behind it, is in [`docs/LIMITATIONS.md`](d
 
 - Not validated yet in a real Plasma session (applying, Wayland, SELinux, Flatpak).
 - Import and export limits are fixed constants and estimates, not guarantees; the `.knsv` is not signed.
-- The `conf.yaml` stored in a `.knsv` is the global one (a Konsave behaviour); KonGUI warns when it differs from the profile's and does not rewrite it.
-- Safety copies and `conf.yaml` backups are never removed automatically and have no count limit.
-- A `conf.yaml` written in YAML flow style is rewritten without its comments (after you confirm).
+- `conf.yaml` is edited by hand, as in Konsave: KonGUI does not check it beforehand or keep backups of it; a mistake shows up when saving, with Konsave's reason.
+- The `conf.yaml` stored in a `.knsv` is the global one (a Konsave behaviour); KonGUI does not warn when it differs from the profile's.
+- Safety copies are never removed automatically and have no count limit.
 - Starting `kongui` without PySide6 installed shows a plain `ImportError`; install the `gui` extra.
 
 The detailed status of each requirement is in [`docs/FINAL_AUDIT.md`](docs/FINAL_AUDIT.md).
@@ -168,7 +166,7 @@ The repository includes the Konsave source (`konsave/`), and the `konsave` comma
 <details>
 <summary>The configuration file (<code>~/.config/konsave/conf.yaml</code>)</summary>
 
-The file defines what is saved and what is only exported with a profile. On first use Konsave creates it from a KDE default when `XDG_CURRENT_DESKTOP` is `KDE`, and from a generic one otherwise. KonGUI has an editor for it (*Edit .YAML*); you can also edit it by hand.
+The file defines what is saved and what is only exported with a profile. On first use Konsave creates it from a KDE default when `XDG_CURRENT_DESKTOP` is `KDE`, and from a generic one otherwise. Edit it by hand in a text editor; KonGUI reads it but never changes it.
 
 ```yaml
 ---
@@ -235,7 +233,7 @@ KonGUI uses the same profile folder and `.knsv` format as the Konsave code bundl
 ## Documentation
 
 Technical documentation is in [`docs/`](docs/):
-[integration layer](docs/INTEGRATION.md), [services used by the interface](docs/GUI_SERVICES.md), [`conf.yaml` editor](docs/GUI_CONFIG.md), [interface prototype](docs/GUI_PROTOTYPE.md), [concurrency](docs/CONCURRENCY.md), [changes to Konsave](docs/KONSAVE_PATCHES.md), [limitations and decisions](docs/LIMITATIONS.md), [versions and releases](docs/RELEASING.md), the [test plan for a real Plasma session](docs/PLASMA_TEST_PLAN.md), the [test overview](docs/TEST_OVERVIEW.md) and the [final audit](docs/FINAL_AUDIT.md).
+[integration layer](docs/INTEGRATION.md), [services used by the interface](docs/GUI_SERVICES.md), [interface prototype](docs/GUI_PROTOTYPE.md), [concurrency](docs/CONCURRENCY.md), [changes to Konsave](docs/KONSAVE_PATCHES.md), [limitations and decisions](docs/LIMITATIONS.md), [versions and releases](docs/RELEASING.md), the [test plan for a real Plasma session](docs/PLASMA_TEST_PLAN.md), the [test overview](docs/TEST_OVERVIEW.md) and the [final audit](docs/FINAL_AUDIT.md).
 
 ## Original project and credits
 

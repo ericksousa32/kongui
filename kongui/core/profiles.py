@@ -2,9 +2,11 @@
 
 Every operation reuses the original ``konsave.funcs`` through
 :class:`~kongui.core.engine.KonsaveEngine`. This layer adds what the original
-lacks: argument and configuration validation *before* anything is written,
-fresh profile lists, outcome detection (the original always returns ``None``),
-and clean-up of leftovers it can prove it created itself.
+lacks: argument checks and safety refusals *before* anything is written (an
+archive or a profile that would write outside the home), fresh profile lists,
+outcome detection (the original always returns ``None``), and clean-up of
+leftovers it can prove it created itself. ``conf.yaml`` files are read through
+Konsave itself (:meth:`ConfigService.resolve`), never validated or rewritten.
 """
 
 # pylint: disable=too-many-lines  # one service, one cohesive class
@@ -21,15 +23,13 @@ from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
-import yaml
-
-from kongui.core.config import ConfigService
+from kongui.core.config import ConfigService, Groups
 from kongui.core.engine import EngineCall, KonsaveEngine
 from kongui.core.errors import (
     ArchiveExistsError,
     ArchiveLimitError,
+    ConfigError,
     ConfigMissingError,
-    ConfigValidationError,
     ConfirmationRequiredError,
     ProfileExistsError,
     ProfileInvalidError,
@@ -48,18 +48,14 @@ from kongui.core.profilemeta import (
     remove_description,
     write_description,
 )
-from kongui.core.results import (
-    ArchiveInspection,
-    OperationResult,
-    ProfileInfo,
-    ValidationReport,
-)
+from kongui.core.results import ArchiveInspection, OperationResult, ProfileInfo
 from kongui.core.snapshot import KEPT_PREFIX, SnapshotInfo, SnapshotService
 from kongui.core.safety import (
     MAX_ARCHIVE_BYTES,
     MAX_ARCHIVE_ENTRIES,
     MAX_EXTRACTED_BYTES,
     RESERVED_PREFIX,
+    is_plain_name,
     require_free_space,
     tree_size,
     validate_archive_name,
@@ -71,10 +67,6 @@ ON_CONFLICT_CHOICES = ("error", "unique", "overwrite")
 #: Bytes read at a time while counting what an archive decompresses to.
 _COUNT_CHUNK = 1 << 20
 
-#: Start of the warning ``export`` adds when the ``conf.yaml`` that goes into
-#: the ``.knsv`` is not the one the profile was saved with.
-CONF_DIFFERS_PREFIX = "the exported conf.yaml differs from the profile's conf.yaml"
-
 #: Prefix of the temporary folders ``replace`` creates inside the profiles
 #: folder. They are never listed as profiles, so profile names may not start
 #: with it (see :func:`kongui.core.safety.validate_profile_name`).
@@ -83,50 +75,6 @@ TEMP_PREFIX = RESERVED_PREFIX
 #: Operations that are planned but deliberately not implemented yet. Empty
 #: since the safety copies (RN-01) exist; kept so the API stays stable.
 NOT_IMPLEMENTED_OPERATIONS: Mapping[str, str] = {}
-
-
-def _normalized_groups(data: Any, kind: str) -> Dict[str, Tuple[str, Tuple[Any, ...]]]:
-    """Reads ``data[kind]`` as ``{group: (location, entries)}``, leniently."""
-    section = data.get(kind) if isinstance(data, dict) else None
-    groups: Dict[str, Tuple[str, Tuple[Any, ...]]] = {}
-    if isinstance(section, dict):
-        for name, body in section.items():
-            body = body if isinstance(body, dict) else {}
-            entries = body.get("entries")
-            groups[str(name)] = (
-                str(body.get("location")),
-                tuple(entries) if isinstance(entries, list) else (),
-            )
-    return groups
-
-
-def describe_conf_differences(profile_data: Any, active_data: Any) -> str:
-    """Compares the groups of two ``conf.yaml`` documents.
-
-    Args:
-        profile_data: The profile's configuration, as loaded from YAML.
-        active_data: The active configuration, as loaded from YAML.
-
-    Returns:
-        str: ``""`` if the ``save``/``export`` groups are the same, otherwise
-        a compact text such as ``save(+more -old ~changed); export(+icons)``:
-        ``+`` is only in the active file, ``-`` only in the profile's, ``~``
-        is in both with another location or other entries.
-    """
-    parts = []
-    for kind in ("save", "export"):
-        mine = _normalized_groups(profile_data, kind)
-        active = _normalized_groups(active_data, kind)
-        marks = [f"+{name}" for name in active if name not in mine]
-        marks += [f"-{name}" for name in mine if name not in active]
-        marks += [
-            f"~{name}"
-            for name, group in mine.items()
-            if name in active and group != active[name]
-        ]
-        if marks:
-            parts.append(f"{kind}({' '.join(marks)})")
-    return "; ".join(parts)
 
 
 class ProfileService:
@@ -289,15 +237,11 @@ class ProfileService:
         Raises:
             ValidationError: If the name or the description is not acceptable.
             ConfigMissingError: If there is no active ``conf.yaml``.
-            ConfigValidationError: If the active configuration is invalid.
             ProfileExistsError: If the profile exists and ``overwrite`` is false.
         """
         validate_profile_name(name)
         text = None if description is None else clean_description(description)
         self._require_config()
-        report = self._config.validate()
-        if not report.ok:
-            raise ConfigValidationError("the active configuration is invalid", report)
         names = self._engine.profile_names()
         if name in names and not overwrite:
             raise ProfileExistsError(f"profile already exists: {name}")
@@ -320,7 +264,7 @@ class ProfileService:
             f"profile '{name}' saved",
             "save failed",
             target,
-            report.warnings,
+            (),
             notes,
         )
 
@@ -354,14 +298,10 @@ class ProfileService:
             ValidationError: If the name is not acceptable.
             ProfileNotFoundError: If there is no such profile.
             ConfigMissingError: If there is no active ``conf.yaml``.
-            ConfigValidationError: If the active configuration is invalid.
         """
         self._require_confirmation(confirmed, "replace")
         existing = self.get_profile(name)
         self._require_config()
-        report = self._config.validate()
-        if not report.ok:
-            raise ConfigValidationError("the active configuration is invalid", report)
         stamp = f"{os.getpid()}-{time.time_ns()}"
         fresh = self._engine.profiles_dir / f"{TEMP_PREFIX}new-{stamp}-{name}"
         aside = self._engine.profiles_dir / f"{TEMP_PREFIX}old-{stamp}-{name}"
@@ -379,7 +319,7 @@ class ProfileService:
                 "",
                 f"replace failed; profile '{name}' was left as it was",
                 existing.path,
-                report.warnings,
+                (),
                 notes,
             )
         try:
@@ -394,14 +334,14 @@ class ProfileService:
                 f"replace failed: the description could not be carried over "
                 f"({error.strerror or error}); profile '{name}' was left as it was",
                 existing.path,
-                report.warnings,
+                (),
                 notes,
             )
         try:
             os.rename(existing.path, aside)
         except OSError as error:
             notes.append(self._remove_created(fresh))
-            return self._failed_swap(name, existing.path, call, error, report, notes)
+            return self._failed_swap(name, existing.path, call, error, notes)
         try:
             os.rename(fresh, existing.path)
         except OSError as error:
@@ -413,7 +353,7 @@ class ProfileService:
                     f"could not put the previous profile back from {aside}: {rollback_error}"
                 )
             notes.append(self._remove_created(fresh))
-            return self._failed_swap(name, existing.path, call, error, report, notes)
+            return self._failed_swap(name, existing.path, call, error, notes)
         notes_after = self._remove_created(aside)
         if not notes_after.startswith("removed"):
             notes.append(notes_after)
@@ -424,7 +364,7 @@ class ProfileService:
             f"profile '{name}' replaced",
             "",
             existing.path,
-            report.warnings,
+            (),
             notes,
         )
 
@@ -434,7 +374,6 @@ class ProfileService:
         path: Path,
         call: EngineCall,
         error: OSError,
-        report: ValidationReport,
         notes: List[str],
     ) -> OperationResult:
         """Builds the failure result of a rename that did not work.
@@ -444,7 +383,6 @@ class ProfileService:
             path: Folder of the profile.
             call: The engine call that saved the new copy.
             error: The ``OSError`` raised by the rename.
-            report: Validation report of the active configuration.
             notes: Clean-up notes collected so far.
 
         Returns:
@@ -457,7 +395,7 @@ class ProfileService:
             "",
             f"replace failed while swapping folders for '{name}': {error}",
             path,
-            report.warnings,
+            (),
             notes,
         )
 
@@ -490,27 +428,22 @@ class ProfileService:
             ValidationError: If the name is not acceptable.
             ProfileNotFoundError: If there is no such profile.
             ProfileInvalidError: If the profile has no ``conf.yaml``.
-            ConfigValidationError: If the profile cannot be applied safely.
+            ConfigError: If Konsave cannot read the profile's ``conf.yaml``,
+                or the profile cannot be applied safely.
             SnapshotError: If the safety copy could not be made.
         """
         self._require_confirmation(confirmed, "apply")
         info = self._require_valid_profile(name)
-        report = self._config.validate(info.path / "conf.yaml")
-        if not report.ok or report.resolved is None:
-            raise ConfigValidationError("the profile configuration is invalid", report)
-        problems = self._apply_problems(report.resolved, info.path)
+        groups = self._config.resolve(info.path / "conf.yaml")
+        problems = self._apply_problems(groups, info.path)
         if not allow_outside_home:
-            problems += self._outside_home_problems(report.resolved, ("save",))
+            problems += self._unsafe_destinations(groups, ("save",))
         if problems:
-            raise ConfigValidationError(
-                "the profile cannot be applied safely", report.with_errors(problems)
-            )
+            raise ConfigError("the profile cannot be applied safely", problems)
         snapshot = self._snapshots.create(
             "apply",
             name,
-            self._snapshots.destinations_of_apply(
-                report.resolved.get("save", {}), info.path
-            ),
+            self._snapshots.destinations_of_apply(groups["save"], info.path),
         )
         names = self._engine.profile_names()
         call = self._engine.call("apply_profile", name, names, len(names))
@@ -521,7 +454,7 @@ class ProfileService:
             f"profile '{name}' applied; log out and in to see all changes",
             "apply failed (some files may already have been replaced)",
             info.path,
-            report.warnings,
+            (),
         )
         return self._with_snapshot(result, snapshot)
 
@@ -583,7 +516,7 @@ class ProfileService:
             ProfileInvalidError: If the profile has no ``conf.yaml``.
             ConfigMissingError: If there is no active ``conf.yaml`` (the
                 original copies it into the archive and fails without it).
-            ConfigValidationError: If the profile configuration is invalid.
+            ConfigError: If Konsave cannot read the profile's ``conf.yaml``.
             ArchiveExistsError: If the conflict policy forbids the target.
         """
         validate_profile_name(name)
@@ -597,19 +530,16 @@ class ProfileService:
         if not os.access(folder, os.W_OK | os.X_OK):
             raise ValidationError(f"output folder is not writable: {folder}")
         base = validate_archive_name(archive_name) if archive_name else name
-        report = self._config.validate(info.path / "conf.yaml")
-        if not report.ok:
-            raise ConfigValidationError("the profile configuration is invalid", report)
+        groups = self._config.resolve(info.path / "conf.yaml")
         base, force = self._resolve_export_target(folder, base, on_conflict)
         # The original copies the data next to the archive and zips the copy,
         # so about twice the data must fit in the destination.
         require_free_space(
             folder,
-            2 * self._export_size(info.path, (report.resolved or {}).get("export", {})),
+            2 * self._export_size(info.path, groups["export"]),
             "the export",
         )
         names = self._engine.profile_names()
-        differences = self._conf_differences(info.path / "conf.yaml")
         call = self._engine.call(
             "export", name, names, len(names), str(folder), base, force
         )
@@ -628,7 +558,7 @@ class ProfileService:
             f"profile '{name}' exported to {archive}",
             "export failed",
             archive,
-            tuple(report.warnings) + differences,
+            (),
             notes,
         )
 
@@ -657,13 +587,14 @@ class ProfileService:
         Raises:
             ConfirmationRequiredError: If ``confirmed`` is not true.
             ValidationError: If the file is not an acceptable archive.
-            ConfigValidationError: If the archive configuration is unsafe.
+            ConfigError: If Konsave cannot read the archive's ``conf.yaml``, or
+                it would write outside the home folder.
             ProfileExistsError: If a profile with that name exists.
             SnapshotError: If the safety copy could not be made.
         """
         self._require_confirmation(confirmed, "import")
         path = Path(archive_path)
-        name, report = self._check_archive(path, allow_outside_home)
+        name, groups = self._check_archive(path, allow_outside_home)
         if name in self._engine.profile_names():
             raise ProfileExistsError(f"profile already exists: {name}")
         staging = self._engine.temp_dir / name
@@ -680,7 +611,7 @@ class ProfileService:
             "import",
             name,
             self._snapshots.destinations_of_import(
-                self._archive_members(path), (report.resolved or {}).get("export", {})
+                self._archive_members(path), groups["export"]
             ),
         )
         call = self._engine.call("import_profile", str(path))
@@ -709,7 +640,7 @@ class ProfileService:
             f"profile '{name}' imported",
             "import failed (files of the export section may already be written)",
             target,
-            report.warnings,
+            (),
             notes,
         )
         return self._with_snapshot(result, snapshot)
@@ -720,8 +651,9 @@ class ProfileService:
         """Checks a ``.knsv`` file and describes it, writing nothing.
 
         It applies the same checks as :meth:`import_profile` (readable zip,
-        safe member names, ``conf.yaml`` and ``save/`` present, valid and safe
-        configuration) so a problem is found before the user confirms.
+        safe member names, ``conf.yaml`` and ``save/`` present, a configuration
+        Konsave can read that stays inside the home) so a problem is found
+        before the user confirms.
 
         Args:
             archive_path: Path of the ``.knsv`` file.
@@ -733,29 +665,28 @@ class ProfileService:
         Raises:
             ValidationError: If the file is missing, not a ``.knsv``, not a
                 readable archive or its name is not acceptable.
-            ConfigValidationError: If its configuration is invalid or unsafe.
+            ConfigError: If its configuration cannot be read or is unsafe.
         """
         path = Path(archive_path)
-        name, report = self._check_archive(path, allow_outside_home)
-        resolved = report.resolved or {}
+        name, groups = self._check_archive(path, allow_outside_home)
         with zipfile.ZipFile(path) as handle:
             names = handle.namelist()
         members = len(names)
-        folders = self._archive_folder_warnings(resolved, names)
+        folders = self._archive_folder_warnings(groups, names)
         return ArchiveInspection(
             path=path,
             name=name,
             size_bytes=path.stat().st_size,
             member_count=members,
-            save_sections=tuple(resolved.get("save", {})),
-            export_sections=tuple(resolved.get("export", {})),
-            warnings=tuple(report.warnings) + folders,
+            save_sections=tuple(groups["save"]),
+            export_sections=tuple(groups["export"]),
+            warnings=tuple(folders),
             name_taken=name in self._engine.profile_names(),
         )
 
     def _check_archive(
         self, path: Path, allow_outside_home: bool
-    ) -> Tuple[str, ValidationReport]:
+    ) -> Tuple[str, Groups]:
         """Runs the checks shared by inspection and import.
 
         Args:
@@ -763,11 +694,11 @@ class ProfileService:
             allow_outside_home: Accept destinations outside the home folder.
 
         Returns:
-            Tuple[str, ValidationReport]: Profile name and configuration report.
+            Tuple[str, Groups]: Profile name and the groups of its configuration.
 
         Raises:
             ValidationError: If the file or its name is not acceptable.
-            ConfigValidationError: If the configuration is invalid or unsafe.
+            ConfigError: If the configuration cannot be read or is unsafe.
         """
         suffix = self._engine.export_extension
         if not path.is_file():
@@ -786,17 +717,12 @@ class ProfileService:
                 MAX_ARCHIVE_BYTES,
                 size,
             )
-        report = self._read_archive_config(path)
-        if not report.ok or report.resolved is None:
-            raise ConfigValidationError("the archive configuration is invalid", report)
+        groups = self._read_archive_config(path)
         if not allow_outside_home:
-            outside = self._outside_home_problems(report.resolved, ("export", "save"))
+            outside = self._unsafe_destinations(groups, ("export", "save"))
             if outside:
-                raise ConfigValidationError(
-                    "the archive writes outside the home folder",
-                    report.with_errors(outside),
-                )
-        return name, report
+                raise ConfigError("the archive writes outside the home folder", outside)
+        return name, groups
 
     @guarded(EXCLUSIVE)
     def wipe_all(self, *, confirmed: bool = False) -> OperationResult:
@@ -956,67 +882,44 @@ class ProfileService:
             raise ProfileInvalidError(f"profile '{name}' has no conf.yaml")
         return info
 
-    def _outside_home_problems(
-        self, resolved: Dict[str, Any], kinds: Iterable[str]
-    ) -> List[str]:
-        """Finds locations that resolve outside the home folder.
+    def _unsafe_destinations(self, groups: Groups, kinds: Iterable[str]) -> List[str]:
+        """Finds groups that would write outside the home folder.
+
+        A ``location`` that resolves outside the home is refused, and so is an
+        entry that is not a single file or folder name (``../x`` or ``a/b``),
+        because the original joins it to the location and could leave it.
 
         Args:
-            resolved: Output of the original ``read_konsave_config``.
+            groups: Groups read by :meth:`ConfigService.resolve`.
             kinds: Top-level keys to check.
 
         Returns:
-            List[str]: One message per offending section.
+            List[str]: One message per offending group or entry.
         """
         home = os.path.realpath(self._engine.home)
         problems = []
         for kind in kinds:
-            for section, data in resolved.get(kind, {}).items():
+            for section, data in groups.get(kind, {}).items():
                 location = data["location"]
                 real = os.path.realpath(location)
                 if real != home and not real.startswith(home + os.sep):
                     problems.append(
                         f"{kind}.{section}: '{location}' is outside the home folder"
                     )
+                for entry in data["entries"]:
+                    if not is_plain_name(entry):
+                        problems.append(
+                            f"{kind}.{section}: entry {entry!r} is not a plain "
+                            "file or folder name"
+                        )
         return problems
 
-    def _conf_differences(self, profile_conf: Path) -> Tuple[str, ...]:
-        """Warns when the ``.knsv`` would carry another ``conf.yaml``.
-
-        The original ``export`` copies the *active* ``conf.yaml`` into the
-        archive, but takes ``save/`` and ``export/`` from the groups of the
-        *profile's* ``conf.yaml``. If the active file was edited after the
-        profile was saved, the archive disagrees with itself: a group added
-        since then makes the imported profile impossible to apply, and a
-        group removed since then is silently ignored when it is applied.
-
-        Args:
-            profile_conf: ``conf.yaml`` stored in the profile.
-
-        Returns:
-            Tuple[str, ...]: One warning, or none.
-        """
-        try:
-            mine = yaml.safe_load(profile_conf.read_text(encoding="utf-8"))
-            active = yaml.safe_load(
-                self._config.config_path.read_text(encoding="utf-8")
-            )
-        except (OSError, UnicodeDecodeError, yaml.YAMLError):
-            return ()
-        found = describe_conf_differences(mine, active)
-        if not found:
-            return ()
-        legend = "+ only in the active file, - only in the profile, ~ changed"
-        return (f"{CONF_DIFFERS_PREFIX} ({legend}): {found}",)
-
     @staticmethod
-    def _archive_folder_warnings(
-        resolved: Dict[str, Any], names: List[str]
-    ) -> Tuple[str, ...]:
+    def _archive_folder_warnings(groups: Groups, names: List[str]) -> Tuple[str, ...]:
         """Compares the groups of an archive's ``conf.yaml`` with its ``save/``.
 
         Args:
-            resolved: Resolved configuration read from the archive.
+            groups: Groups of the archive's configuration.
             names: Member names of the archive.
 
         Returns:
@@ -1028,16 +931,16 @@ class ProfileService:
             for parts in (PurePosixPath(name).parts for name in names)
             if len(parts) > 1 and parts[0] == "save"
         }
-        groups = set(resolved.get("save", {}))
+        wanted = set(groups["save"])
         warnings = []
-        missing = sorted(groups - present)
+        missing = sorted(wanted - present)
         if missing:
             warnings.append(
                 "the archive has no data folder in save/ for: "
                 + ", ".join(missing)
                 + " (the imported profile could not be applied)"
             )
-        extra = sorted(present - groups)
+        extra = sorted(present - wanted)
         if extra:
             warnings.append(
                 "save/ has folders that its conf.yaml does not list: "
@@ -1047,18 +950,18 @@ class ProfileService:
         return tuple(warnings)
 
     @staticmethod
-    def _apply_problems(resolved: Dict[str, Any], profile_dir: Path) -> List[str]:
+    def _apply_problems(groups: Groups, profile_dir: Path) -> List[str]:
         """Finds problems the original would hide behind a success message.
 
         Args:
-            resolved: Output of the original ``read_konsave_config``.
+            groups: Groups of the profile's configuration.
             profile_dir: Folder of the profile being applied.
 
         Returns:
             List[str]: One message per problem.
         """
         problems = []
-        for section, data in resolved.get("save", {}).items():
+        for section, data in groups["save"].items():
             if not (profile_dir / section).is_dir():
                 problems.append(f"save.{section}: folder missing in the profile")
             location = data["location"]
@@ -1136,20 +1039,21 @@ class ProfileService:
         except (zipfile.BadZipFile, OSError):
             return False
 
-    def _read_archive_config(self, archive: Path) -> ValidationReport:
-        """Validates the structure and ``conf.yaml`` of a ``.knsv`` read-only.
+    def _read_archive_config(self, archive: Path) -> Groups:
+        """Checks the structure of a ``.knsv`` and reads its ``conf.yaml``.
 
         Nothing is extracted to the real folders: only ``conf.yaml`` is copied
-        to a temporary folder so that the original code can resolve it.
+        to a temporary folder so that the original code can read it.
 
         Args:
             archive: Path of the ``.knsv``.
 
         Returns:
-            ValidationReport: Report for the archive configuration.
+            Groups: The groups of the archive's configuration.
 
         Raises:
             ValidationError: If the file is not a usable archive.
+            ConfigError: If Konsave cannot read its ``conf.yaml``.
         """
         try:
             with zipfile.ZipFile(archive) as handle:
@@ -1186,7 +1090,7 @@ class ProfileService:
         with tempfile.TemporaryDirectory(prefix="kongui-import-") as folder:
             candidate = Path(folder) / "conf.yaml"
             candidate.write_bytes(data)
-            return self._config.validate(candidate)
+            return self._config.resolve(candidate)
 
     @staticmethod
     def _measure_extracted(archive: Path) -> int:

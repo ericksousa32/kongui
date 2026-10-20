@@ -30,7 +30,7 @@ from kongui.core.profilemeta import (
     read_description,
     write_description,
 )
-from tests.helpers import BASE_CONF, make_knsv, write
+from tests.helpers import install_conf, BASE_CONF, make_knsv, write
 from tests.test_profile_service_integration import IntegrationCase
 
 TWO_GROUPS = """save:
@@ -413,7 +413,7 @@ class SectionsTests(DetailsCase):
 
     def setUp(self):
         super().setUp()
-        self.config.write_text(TWO_GROUPS)
+        install_conf(self.config, TWO_GROUPS)
         write(self.home / ".config" / "kdeglobals", "x")
 
     def test_empty_groups_are_hidden(self):
@@ -432,7 +432,7 @@ class SectionsTests(DetailsCase):
 
     def test_sections_come_from_the_profile_not_from_the_current_conf(self):
         self.profiles.save("work").raise_for_status()
-        self.config.write_text(BASE_CONF)
+        install_conf(self.config, BASE_CONF)
         self.assertEqual(profile_sections(self.folder("work")), ("configs",))
 
     def test_odd_configurations_never_raise(self):
