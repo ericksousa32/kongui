@@ -19,7 +19,15 @@ from kongui.gui.controller import LoadState, ProfileController
 from kongui.gui.state import AppSettings, ProfileStore
 from kongui.gui.tasks import InlineExecutor
 from tests.gui_helpers import GuiTestCase
-from tests.helpers import BASE_CONF, make_knsv, no_logs, non_root, really_root, write
+from tests.helpers import (
+    install_conf,
+    BASE_CONF,
+    make_knsv,
+    no_logs,
+    non_root,
+    really_root,
+    write,
+)
 
 
 def snapshot_dir(folder):
@@ -47,7 +55,7 @@ class RealBackendCase(GuiTestCase):
         (self.root / ".local/share").mkdir(parents=True, exist_ok=True)
         engine = KonsaveEngine(self.root, euid_provider=non_root)
         self.config = ConfigService(engine)
-        self.config.write_text(BASE_CONF)
+        install_conf(self.config, BASE_CONF)
         self.engine = engine
         self.service = ProfileService(engine, self.config)
         self.backend = ServiceBackend(self.service)

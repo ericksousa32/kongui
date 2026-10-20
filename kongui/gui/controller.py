@@ -34,11 +34,8 @@ from kongui.gui.tasks import Executor
 
 LOG = logging.getLogger(__name__)
 
-#: Operations on the ``conf.yaml``; they never touch the profile list.
 #: Operations that cannot change the profile list: it is not reloaded after them.
-_CONFIG_OPERATIONS = (
-    "save_config",
-    "restore_config",
+_LIST_UNCHANGED = (
     "restore_backup",
     "delete_backup",
 )
@@ -467,46 +464,6 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         """
         self._executor.submit(work, on_done)
 
-    def save_config(
-        self, text: str, expected_digest: Optional[str], *, force: bool = False
-    ) -> bool:
-        """Writes the ``conf.yaml`` (validated first, previous file kept).
-
-        Args:
-            text: The new contents.
-            expected_digest: Digest the text was loaded with.
-            force: Write even if the file changed on disk meanwhile.
-
-        Returns:
-            bool: ``False`` if another operation is running.
-        """
-        return self._run(
-            "save_config",
-            "",
-            lambda: self._backend.save_config(text, expected_digest, force=force),
-            reload_profiles=False,
-        )
-
-    def restore_config(
-        self, name: str, expected_digest: Optional[str], *, force: bool = False
-    ) -> bool:
-        """Puts a ``conf.yaml`` backup back.
-
-        Args:
-            name: Backup file name.
-            expected_digest: Digest of the file the user last saw.
-            force: Write even if the file changed on disk meanwhile.
-
-        Returns:
-            bool: ``False`` if another operation is running.
-        """
-        return self._run(
-            "restore_config",
-            name,
-            lambda: self._backend.restore_config(name, expected_digest, force=force),
-            reload_profiles=False,
-        )
-
     def restore_backup(self, backup_id: str, *, confirmed: bool = False) -> bool:
         """Puts the files of a safety copy back (destructive).
 
@@ -586,7 +543,7 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         """Starts an operation unless another one is running.
 
         ``reload_profiles=False`` is for operations that cannot change the
-        profile list (the ``conf.yaml`` ones).
+        profile list (the safety copy ones).
         """
         if self.busy:
             return False
@@ -595,7 +552,7 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         self._cancelling = False
         self._cancel.clear()
         if operation == "list" or (
-            self._state is LoadState.IDLE and operation not in _CONFIG_OPERATIONS
+            self._state is LoadState.IDLE and operation not in _LIST_UNCHANGED
         ):
             self._state = LoadState.LOADING
         self.operation_started.emit(operation, name)
@@ -656,7 +613,7 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         elif operation == "list" and error is not None:
             self._state = LoadState.ERROR
             self._error_cause = error
-        elif self._state is LoadState.LOADING and operation not in _CONFIG_OPERATIONS:
+        elif self._state is LoadState.LOADING and operation not in _LIST_UNCHANGED:
             self._state = LoadState.READY if self._store.profiles() else LoadState.ERROR
             if self._state is LoadState.ERROR:
                 self._error_cause = error
@@ -664,7 +621,7 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
             not name
             and result is not None
             and result.path is not None
-            and operation not in _CONFIG_OPERATIONS
+            and operation not in _LIST_UNCHANGED
         ):
             name = result.path.name
         outcome = self._outcome(operation, name, result, error, list_error)
@@ -729,13 +686,6 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         details: List[str] = []
         if operation == "export" and result is not None and result.path is not None:
             details.append(str(result.path))
-        if operation in ("save_config", "restore_config") and result is not None:
-            if result.backup is not None:
-                details.append(
-                    QCoreApplication.translate(
-                        "ProfileController", "Copy of the previous file: {name}"
-                    ).format(name=result.backup.name)
-                )
         hint = messages.outcome_hint(operation, True)
         if hint:
             details.append(hint)

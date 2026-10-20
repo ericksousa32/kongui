@@ -47,13 +47,11 @@ Functions of the original that are **not** used: `list_profiles` (only prints),
 ```
 kongui/core/
 ├── engine.py    KonsaveEngine   loads the engine for a HOME, captures stdout/stderr and the log
-├── config.py    ConfigService   conf.yaml: create default, validate (with positions), resolve, write, backups
-├── confedit.py  parse_model/apply_model  comment-preserving conf.yaml editing (see GUI_CONFIG.md)
-├── yamlmap.py   line/column and end of content from PyYAML nodes
+├── config.py    ConfigService   conf.yaml: create the default, read it through Konsave (never writes it)
 ├── profiles.py  ProfileService  profiles: save, apply, remove, export, import, wipe all
 ├── cli.py       CliRunner       real CLI (diagnostics, read-only by default)
 ├── safety.py    name validation and root guard
-├── results.py   OperationResult, ValidationReport, Problem, BackupInfo, CliResult, ProfileInfo
+├── results.py   OperationResult, ArchiveInspection, CliResult, ProfileInfo
 └── errors.py    exception hierarchy
 ```
 
@@ -103,10 +101,10 @@ turns a failure into `OperationFailedError`.
 | A profile named `../x` or `.` escapes/pollutes the profiles folder | `validate_profile_name` refuses separators, `.`/`..`, control characters, leading/trailing spaces, a leading `-`, `.knsv` and the reserved prefix `.kongui-` (listing hides that prefix: the profile would be invisible). The limit is 200 UTF-8 **bytes** (Linux limits bytes, not characters) |
 | `apply`, `import`, `remove`, `wipe` are destructive | They require `confirmed=True` (exactly `True`; `1` or `"yes"` do not count) |
 | `export` with `force` deletes the `<destination>/<name>` folder | `force` is never used for folders; `on_conflict` = `error` (default), `unique` or `overwrite` (only replaces a regular `.knsv`) |
-| `save` with a nested entry (`a/b`) aborts halfway | `conf.yaml` is validated first; entries with `/`, `..` or absolute paths are an error |
-| An unmatched `ENDS_WITH` creates a literal folder in the current directory | An unresolved placeholder is a validation error; `apply` refuses |
+| `save` with a nested entry (`a/b`) aborts halfway | `conf.yaml` is not validated (2026-10-19): Konsave aborts and its reason is reported; the folder the failed call created is removed, so no partial profile is left |
+| An unmatched `ENDS_WITH` stays literal text (a relative path) | `save` copies nothing for that group (as Konsave); `apply` refuses because the location is not inside the home, so nothing is written |
 | `apply` with a missing destination reports success | Destination pre-check; post-check through the log |
-| A `.knsv` writes wherever its `conf.yaml` says | Destinations outside `HOME` (including through a symbolic link) are refused (`allow_outside_home=True` allows them); members with `..` or an absolute path are refused |
+| A `.knsv` (or a profile) writes wherever its `conf.yaml` says | Destinations outside `HOME` (including through a symbolic link), and entries that are not a single name (`../x`, `a/b`), are refused on `import` and `apply` (`allow_outside_home=True` allows other locations, never such entries); members with `..` or an absolute path are refused |
 | `import` of `x.knsv.knsv` merges into an existing profile | Names containing `.knsv` are refused |
 | Partial profile after a failure | Leftovers the call itself created are removed (only if they did not exist before) |
 | `wipe` uses `input()` | The engine supplies the `WIPE` answer only during the call, and only with `confirmed=True` |
@@ -130,23 +128,16 @@ Without the package installed, `version` is `0+unknown`.
 
 ### `ConfigService(engine)`
 
+KonGUI does not edit, back up or validate `conf.yaml` files (removed on
+2026-10-19, see [`LIMITATIONS.md`](LIMITATIONS.md) §2): the user edits them by hand,
+as with Konsave. The service only finds, bootstraps and reads them.
+
 | Method | Description |
 |---|---|
 | `config_path`, `exists()` | Location and existence of the active `conf.yaml` |
-| `MAX_CONFIG_BYTES` | Maximum accepted size (1 MiB); above it validation fails |
+| `MAX_CONFIG_BYTES` | Largest file read (1 MiB); also the limit for the `conf.yaml` inside a `.knsv` |
 | `ensure_default_config(kind=None, *, desktop=None)` | Creates the default if it does not exist: `conf_kde.yaml` when `XDG_CURRENT_DESKTOP == "KDE"`, otherwise `conf_other.yaml`. Never changes an existing file |
-| `placeholders()` | Supported placeholders, read from `parse.tokens` |
-| `validate(path=None)`, `validate_text(text)` | `ValidationReport(errors, warnings, resolved)`; they write nothing |
-| `read_resolved(path=None)` | Configuration with placeholders resolved, or `ConfigValidationError` |
-| `read_text(path=None)` | Raw text |
-| `default_text(kind=None, *, desktop=None)` | Text of the default template, without creating a file |
-| `digest()` | SHA-256 of the active file (`None` if it does not exist), to detect external changes |
-| `write_text(text, *, expected_digest=...)` | Validates, keeps the previous version as `conf.yaml.bak-<date>` and swaps atomically (follows symlinks, keeps permissions). With `expected_digest`, refuses with `ConfigConflictError` if the file changed. `ValidationReport.problems` carries each finding with path, line and column |
-| `list_backups()`, `backup_path(name)`, `read_backup(name)` | `conf.yaml.bak-*` backups (newest first); names containing folders are never accepted (`BackupNotFoundError`) |
-| `restore_backup(name, *, expected_digest=...)` | Validates the backup, keeps the current file as a new backup and restores it |
-
-The `conf.yaml` editor (form model and comment-preserving text editing) lives in
-`kongui/core/confedit.py` and `yamlmap.py`; see [`GUI_CONFIG.md`](GUI_CONFIG.md).
+| `resolve(path=None)` | Reads a file through the original `read_konsave_config` (placeholders resolved) and returns its `save` and `export` groups as `{kind: {group: {"location", "entries"}}}`. `ConfigMissingError` if the file does not exist; `ConfigError` (with `details`) if it is too large or Konsave cannot read it, or if a group has no `location` or `entries` that is not a list (shapes the operations could not walk). Nothing else is checked, and nothing is written |
 
 ### `ProfileService(engine, config=None)`
 
@@ -157,9 +148,9 @@ The `conf.yaml` editor (form model and comment-preserving text editing) lives in
 | `profile_details(names)` | (disk read) | Description and sections of some profiles (§11), read separately from `list_profiles` so the operations do not parse every `conf.yaml`; never raises for one bad profile |
 | `set_description(name, description)` | (small file) | Sets, changes or clears the description (§11); writes nothing else |
 | `replace(name, *, confirmed)` | `save_profile` (temporary name) | Real replacement: saves the current configuration to `.kongui-new-…`, swaps with `rename` and deletes the old one; if anything fails, the old profile stays (or returns) in place. Does not change Konsave's code. The temporaries never appear in `list_profiles` |
-| `apply(name, *, confirmed, allow_outside_home=False)` | `apply_profile` | Before writing, copies the files it will overwrite (safety copy, §9); if the copy fails, **nothing is applied** (`SnapshotError`). Folders are merged |
+| `apply(name, *, confirmed, allow_outside_home=False)` | `apply_profile` | Reads the profile's `conf.yaml` through Konsave; refuses (`ConfigError`, reasons in `details`) a group whose destination is outside the home, an entry that is not a single name, a group whose folder is missing from the profile, or a destination whose parent does not exist either. Before writing, copies the files it will overwrite (safety copy, §9); if the copy fails, **nothing is applied** (`SnapshotError`). Folders are merged |
 | `remove(name, *, confirmed)` | `remove_profile` | Irreversible |
-| `export(name, *, directory, archive_name=None, on_conflict="error")` | `export` | The output folder must exist; the temporary assembly folder is created in it. Requires the active `conf.yaml` (`ConfigMissingError` if missing: the original copies it into the archive). Returns a **warning** (`CONF_DIFFERS_PREFIX`) when the active `conf.yaml`, which goes into the `.knsv`, has different groups from the profile's, from which `save/` and `export/` are taken |
+| `export(name, *, directory, archive_name=None, on_conflict="error")` | `export` | The output folder must exist; the temporary assembly folder is created in it. Requires the active `conf.yaml` (`ConfigMissingError` if missing: the original copies it into the archive). The active `conf.yaml`, which goes into the `.knsv`, may have other groups than the profile's; as in Konsave, nothing is said about it (§8) |
 | `import_profile(archive_path, *, confirmed, allow_outside_home=False)` | `import_profile` | Writes the archive's `export` section into the system immediately, after making a safety copy of the files it will overwrite (§9) |
 | `inspect_archive(archive_path, *, allow_outside_home=False)` | (read-only) | Applies the same checks as `import_profile` and returns `ArchiveInspection` (name, size, `save`/`export` sections, warnings, `name_taken`) without extracting anything. Warnings include groups without a folder in `save/` (the imported profile could not be applied) and folders the archive's `conf.yaml` does not list (ignored when applying) |
 | `wipe_all(*, confirmed)` | `wipe` | Deletes every profile; keeps `conf.yaml` |
@@ -198,8 +189,7 @@ python3 -m unittest discover -s tests -t . -v
 # Per service
 python3 -m unittest tests.test_safety -v                        # guards and names
 python3 -m unittest tests.test_engine -v                        # KonsaveEngine
-python3 -m unittest tests.test_config_service -v                # ConfigService
-python3 -m unittest tests.test_config_editor -v                 # conf.yaml editing, backups, the original's placeholders
+python3 -m unittest tests.test_config_service -v                # ConfigService (default file, reading)
 python3 -m unittest tests.test_profile_service_mocked -v        # ProfileService, simulated engine
 python3 -m unittest tests.test_profile_service_integration -v   # ProfileService, real original engine
 python3 -m unittest tests.test_cli_runner -v                    # CliRunner (simulated and real subprocess)
@@ -222,8 +212,8 @@ home = Path(tempfile.mkdtemp(prefix="kongui-manual-"))
 engine = KonsaveEngine(home)                      # refuses root
 config = ConfigService(engine)
 config.ensure_default_config(kind="kde")          # creates the default conf.yaml
-report = config.validate()
-print(report.ok, report.warnings[:1])
+groups = config.resolve()                         # read through Konsave
+print(sorted(groups["save"]))
 
 profiles = ProfileService(engine, config)
 result = profiles.save("demo")
@@ -239,8 +229,9 @@ What to look for in each service:
 
 * **KonsaveEngine**: `engine.profiles_dir` is inside the given `HOME`; after the
   engine is created, `os.environ["HOME"]` and `sys.modules` are unchanged.
-* **ConfigService**: `validate_text` with `entries: ["a/b"]` returns an error and
-  writes nothing; a repeated `write_text` creates `conf.yaml.bak-*`.
+* **ConfigService**: `resolve()` returns the groups with `$HOME` and the other
+  placeholders replaced, and never writes; a broken file raises `ConfigError` with
+  Konsave's own reason in `details`.
 * **ProfileService**: `apply`/`remove`/`import_profile`/`wipe_all` without
   `confirmed=True` raise `ConfirmationRequiredError`; `export` with
   `on_conflict="overwrite"` over a folder with the same name raises
@@ -268,12 +259,9 @@ before `apply`/`import` (requirement RN-01) has existed since §9.
 * Validation on a real Fedora KDE (Plasma 6) session, **in progress**: value of
   `XDG_CURRENT_DESKTOP` in the session, Plasma 6 file paths, overwriting by a
   running Plasma, SELinux and Flatpak ("to investigate" items of the audit).
-* `deploy.yml` still publishes to PyPI on any `v*` tag; it has to be changed or
-  disabled before the first tag. (The package name is decided: `kongui`; see
-  [`LIMITATIONS.md`](LIMITATIONS.md) §5.)
-* Pruning of safety copies and of `conf.yaml` backups, a limit on their number, and
-  rewriting the `conf.yaml` stored in a `.knsv`: decided **not** to do (see
-  [`LIMITATIONS.md`](LIMITATIONS.md) §2).
+* Editing, backing up or validating `conf.yaml` (removed on 2026-10-19), pruning of
+  safety copies or a limit on their number, and rewriting the `conf.yaml` stored in a
+  `.knsv`: decided **not** to do (see [`LIMITATIONS.md`](LIMITATIONS.md) §2).
 
 ### Limitations of the original engine that the layer does **not** fix
 
@@ -282,7 +270,7 @@ before `apply`/`import` (requirement RN-01) has existed since §9.
 * `apply` merges folders: files that are not in the profile stay.
 * `export` reads the `export` section from the live system at export time and
   writes the current **global** `conf.yaml` into the `.knsv`, which may differ from
-  the profile's `conf.yaml` [CONFIRMED].
+  the profile's `conf.yaml` [CONFIRMED]; KonGUI no longer warns about it.
 * `import` needs the destination folder of each `export` section to exist already
   (for example `~/.local/share`); otherwise the copy fails, the original still
   prints success, and the layer reports a failure and removes the profile it
@@ -291,8 +279,8 @@ before `apply`/`import` (requirement RN-01) has existed since §9.
   `XDG_CURRENT_DESKTOP == "KDE"`: composite values such as `KDE:GNOME` pick the
   generic template.
 * The engine iterates over **all** top-level keys of `conf.yaml` as if they were
-  section groups and fails if any is not a mapping [CONFIRMED]; the layer treats
-  this as a validation error.
+  section groups and fails if any is not a mapping [CONFIRMED]; the layer reports
+  Konsave's error (`ConfigError` when reading, a failed result when saving).
 * Without `~/.cache`, the original CLI breaks when trying to record an error (exit
   1 and a traceback). In-process calls do not suffer from this because the engine
   creates the folder.
@@ -403,6 +391,6 @@ Konsave stores neither; KonGUI adds them **without changing the engine or the `.
   * `replace` swaps the whole folder, so it carries the description over *before* the swap; if that fails nothing changes and the previous profile stays.
   * `import_profile` removes any such file that came inside the archive: Konsave copies everything under `save/` into the profile, so an archive could plant one. An imported profile always starts without a description (if the removal fails, a warning says so).
 * **Sections**: not stored. They are the `save` groups of the profile's own `conf.yaml` that hold at least one file (a group with no files, such as `autostart` in the default configuration, is left out; a group name that could point outside the profile, or a linked folder, is ignored). The `export` groups are not sections of a profile: they are read from the live system at export time and never stored in it. The interface shows friendly, translated names only for the groups of the default configuration (`configs`, `app_layouts`, `autostart`); any other group keeps its own name.
-* **What to include**: choosing what a profile contains is **not** offered. It stays manual, through the `conf.yaml` editor; the steps are in [`GUI_CONFIG.md`](GUI_CONFIG.md) §7.
+* **What to include**: choosing what a profile contains is **not** offered. It stays manual: the user edits `~/.config/konsave/conf.yaml` by hand, as with Konsave; the steps are in [`LIMITATIONS.md`](LIMITATIONS.md) §4.
 
 Tests: `tests.test_profile_details` (service: persistence, isolation, renaming, import, removal, failures, compatibility with the exported archive) and `tests.test_gui_details` (dialog, card, warnings, plain text, friendly names), always in temporary homes.

@@ -36,12 +36,12 @@
         <translation>Em desenvolvimento</translation>
     </message>
     <message>
-        <source>Listing, saving, overwriting, applying, removing, clearing, importing and exporting profiles use the real Konsave, and conf.yaml can be edited (with validation and backup). Before applying or importing, the files that would be overwritten are copied and can be restored in Settings.</source>
-        <translation>Listar, salvar, sobrescrever, aplicar, remover, limpar, importar e exportar perfis usam o Konsave de verdade, e o conf.yaml pode ser editado (com validação e backup). Antes de aplicar ou importar, os arquivos que serão sobrescritos são copiados e podem ser restaurados em Configurações.</translation>
-    </message>
-    <message>
         <source>Environment</source>
         <translation>Ambiente</translation>
+    </message>
+    <message>
+        <source>Listing, saving, overwriting, applying, removing, clearing, importing and exporting profiles use the real Konsave. What a profile holds is set in ~/.config/konsave/conf.yaml, edited by hand as in Konsave. Before applying or importing, the files that would be overwritten are copied and can be restored in Settings.</source>
+        <translation>Listar, salvar, sobrescrever, aplicar, remover, limpar, importar e exportar perfis usam o Konsave real. O que um perfil contém é definido em ~/.config/konsave/conf.yaml, editado à mão como no Konsave. Antes de aplicar ou importar, os arquivos que seriam sobrescritos são copiados e podem ser restaurados em Configurações.</translation>
     </message>
     <message>
         <source>KonGUI version</source>
@@ -65,53 +65,6 @@
     </message>
 </context>
 <context>
-    <name>BackupsDialog</name>
-    <message>
-        <source>conf.yaml backups</source>
-        <translation>Backups do conf.yaml</translation>
-    </message>
-    <message>
-        <source>Restore this backup</source>
-        <translation>Restaurar este backup</translation>
-    </message>
-    <message>
-        <source>Close</source>
-        <translation>Fechar</translation>
-    </message>
-    <message>
-        <source>Each time conf.yaml is saved or restored, the previous version is kept next to it. Restoring also keeps the current version.</source>
-        <translation>Cada vez que o conf.yaml é salvo ou restaurado, a versão anterior é guardada ao lado dele. Restaurar também guarda a versão atual.</translation>
-    </message>
-    <message>
-        <source>Available backups</source>
-        <translation>Backups disponíveis</translation>
-    </message>
-    <message>
-        <source>There are no backups yet.</source>
-        <translation>Ainda não há backups.</translation>
-    </message>
-    <message>
-        <source>Backup contents</source>
-        <translation>Conteúdo do backup</translation>
-    </message>
-    <message>
-        <source>{when}  ·  {size}  ·  {name}</source>
-        <translation>{when}  ·  {size}  ·  {name}</translation>
-    </message>
-    <message>
-        <source>Loading…</source>
-        <translation>Carregando…</translation>
-    </message>
-    <message>
-        <source>Could not read this backup: {reason}</source>
-        <translation>Não foi possível ler este backup: {reason}</translation>
-    </message>
-    <message>
-        <source>unknown error</source>
-        <translation>erro desconhecido</translation>
-    </message>
-</context>
-<context>
     <name>BaseDialog</name>
     <message>
         <source>Cancel</source>
@@ -123,213 +76,6 @@
     <message>
         <source>Operation in progress</source>
         <translation>Operação em andamento</translation>
-    </message>
-</context>
-<context>
-    <name>ConfigPage</name>
-    <message>
-        <source>Files that go into the profile when you save it, and that are copied back to the system when you apply it.</source>
-        <extracomment>Wait after the last keystroke in the text tab before validating. English sources of the section introductions (context &quot;ConfigPage&quot;).</extracomment>
-        <translation>Arquivos de configuração que entram no perfil quando você o salva, e que são copiados de volta ao sistema quando você o aplica.</translation>
-    </message>
-    <message>
-        <source>Items that do not stay in the profile (themes, icons, fonts…): they only go into the .knsv file when exporting and are written to the system when importing.</source>
-        <translation>Itens que não ficam no perfil (temas, ícones, fontes…): só vão para o arquivo .knsv ao exportar e são gravados no sistema ao importar.</translation>
-    </message>
-    <message>
-        <source>Edit .YAML</source>
-        <translation>Editar .YAML</translation>
-    </message>
-    <message>
-        <source>Edit conf.yaml with validation, backup and restore</source>
-        <translation>Edite o conf.yaml com validação, backup e restauração</translation>
-    </message>
-    <message>
-        <source>Could not open conf.yaml</source>
-        <translation>Não foi possível abrir o conf.yaml</translation>
-    </message>
-    <message>
-        <source>“save” section</source>
-        <translation>Seção save</translation>
-    </message>
-    <message>
-        <source>“export” section</source>
-        <translation>Seção export</translation>
-    </message>
-    <message>
-        <source>Text (YAML)</source>
-        <translation>Texto (YAML)</translation>
-    </message>
-    <message>
-        <source>Advanced editing of the whole file. Comments and unknown keys stay as they are; anything invalid is pointed out below and prevents saving.</source>
-        <translation>Edição avançada do arquivo inteiro. Comentários e chaves desconhecidas ficam como estão; o que for inválido é apontado abaixo e impede de salvar.</translation>
-    </message>
-    <message>
-        <source>conf.yaml text</source>
-        <translation>Texto do conf.yaml</translation>
-    </message>
-    <message>
-        <source>Validate now</source>
-        <translation>Validar agora</translation>
-    </message>
-    <message>
-        <source>Backups…</source>
-        <translation>Backups…</translation>
-    </message>
-    <message>
-        <source>Discard changes</source>
-        <translation>Descartar alterações</translation>
-    </message>
-    <message>
-        <source>Save</source>
-        <translation>Salvar</translation>
-    </message>
-    <message>
-        <source>Loading…</source>
-        <translation>Carregando…</translation>
-    </message>
-    <message>
-        <source>Unsaved changes</source>
-        <translation>Alterações não salvas</translation>
-    </message>
-    <message>
-        <source>Unknown error.</source>
-        <translation>Erro desconhecido.</translation>
-    </message>
-    <message>
-        <source>Error reading the file</source>
-        <translation>Erro ao ler o arquivo</translation>
-    </message>
-    <message>
-        <source>The file does not exist yet; saving will create it from the default template.</source>
-        <translation>O arquivo ainda não existe; ao salvar, ele será criado a partir do modelo padrão.</translation>
-    </message>
-    <message>
-        <source>File in use by Konsave.</source>
-        <translation>Arquivo em uso pelo Konsave.</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n backup(s) kept.</source>
-        <translation>
-            <numerusform>%n backup guardado.</numerusform>
-            <numerusform>%n backups guardados.</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>No backups yet.</source>
-        <translation>Nenhum backup ainda.</translation>
-    </message>
-    <message>
-        <source>Demo mode: you are editing a temporary copy of the default conf.yaml; the real file is neither read nor changed.</source>
-        <translation>Modo de demonstração: você está editando uma cópia temporária do conf.yaml padrão; o arquivo real não é lido nem alterado.</translation>
-    </message>
-    <message>
-        <source>Could not apply the edit</source>
-        <translation>Não foi possível aplicar a edição</translation>
-    </message>
-    <message>
-        <source>Save without the comments?</source>
-        <translation>Salvar sem os comentários?</translation>
-    </message>
-    <message>
-        <source>This edit could not keep the file&apos;s comments. Unknown keys are kept, but the comments will be lost (the previous file is kept as a backup).</source>
-        <translation>Esta edição não pôde manter os comentários do arquivo. As chaves desconhecidas continuam, mas os comentários serão perdidos (o arquivo anterior fica guardado como backup).</translation>
-    </message>
-    <message>
-        <source>Save anyway</source>
-        <translation>Salvar assim mesmo</translation>
-    </message>
-    <message>
-        <source>Wait</source>
-        <translation>Aguarde</translation>
-    </message>
-    <message>
-        <source>Another operation is still in progress.</source>
-        <translation>Outra operação ainda está em andamento.</translation>
-    </message>
-    <message>
-        <source>Checking the file</source>
-        <translation>Verificando o arquivo</translation>
-    </message>
-    <message>
-        <source>Save again when it finishes.</source>
-        <translation>Salve de novo quando terminar.</translation>
-    </message>
-    <message>
-        <source>conf.yaml has errors and was not saved</source>
-        <translation>O conf.yaml tem erros e não foi salvo</translation>
-    </message>
-    <message>
-        <source>Fix the items in red below. Nothing was written.</source>
-        <translation>Corrija os itens em vermelho abaixo. Nada foi gravado.</translation>
-    </message>
-    <message>
-        <source>Nothing to save</source>
-        <translation>Nada a salvar</translation>
-    </message>
-    <message>
-        <source>The file is already as you left it.</source>
-        <translation>O arquivo já está como você o deixou.</translation>
-    </message>
-    <message>
-        <source>Discard the changes?</source>
-        <translation>Descartar as alterações?</translation>
-    </message>
-    <message>
-        <source>The changes made here, not yet saved, will be lost. The file on disk was not touched.</source>
-        <translation>As alterações feitas aqui, ainda não salvas, serão perdidas. O arquivo no disco não foi tocado.</translation>
-    </message>
-    <message>
-        <source>Discard</source>
-        <translation>Descartar</translation>
-    </message>
-    <message>
-        <source>Leave without saving conf.yaml?</source>
-        <translation>Sair sem salvar o conf.yaml?</translation>
-    </message>
-    <message>
-        <source>There are unsaved changes in the editor. If you leave now, they will be lost; nothing was written.</source>
-        <translation>Há alterações não salvas no editor. Se sair agora, elas serão perdidas; nada foi gravado.</translation>
-    </message>
-    <message>
-        <source>Leave without saving</source>
-        <translation>Sair sem salvar</translation>
-    </message>
-    <message>
-        <source>Could not list the backups</source>
-        <translation>Não foi possível listar os backups</translation>
-    </message>
-    <message>
-        <source>The current conf.yaml will be replaced by the backup&apos;s contents. A copy of the current file is kept as a new backup, so you can go back.</source>
-        <translation>O conf.yaml atual será substituído pelo conteúdo do backup. Uma cópia do arquivo atual é guardada como novo backup, então dá para voltar.</translation>
-    </message>
-    <message>
-        <source>Unsaved changes in the editor will also be lost.</source>
-        <translation>As alterações não salvas no editor também serão perdidas.</translation>
-    </message>
-    <message>
-        <source>Restore this backup?</source>
-        <translation>Restaurar este backup?</translation>
-    </message>
-    <message>
-        <source>Restore</source>
-        <translation>Restaurar</translation>
-    </message>
-    <message>
-        <source>conf.yaml changed on disk</source>
-        <translation>O conf.yaml mudou no disco</translation>
-    </message>
-    <message>
-        <source>Another program changed the file after it was opened here. You can reload the version on disk (discarding what is in the editor), write anyway (the file on disk is kept as a backup) or cancel and decide later.</source>
-        <translation>Outro programa alterou o arquivo depois que ele foi aberto aqui. Você pode recarregar a versão do disco (descartando o que está no editor), gravar mesmo assim (o arquivo do disco fica guardado como backup) ou cancelar e decidir depois.</translation>
-    </message>
-    <message>
-        <source>Reload from disk</source>
-        <translation>Recarregar do disco</translation>
-    </message>
-    <message>
-        <source>Write anyway</source>
-        <translation>Gravar mesmo assim</translation>
     </message>
 </context>
 <context>
@@ -526,29 +272,6 @@
     </message>
 </context>
 <context>
-    <name>GroupNameDialog</name>
-    <message>
-        <source>New group</source>
-        <translation>Novo grupo</translation>
-    </message>
-    <message>
-        <source>Add</source>
-        <translation>Adicionar</translation>
-    </message>
-    <message>
-        <source>The group name is also the name of the folder inside the saved profile.</source>
-        <translation>O nome do grupo é também o nome da pasta dentro do perfil salvo.</translation>
-    </message>
-    <message>
-        <source>Group name</source>
-        <translation>Nome do grupo</translation>
-    </message>
-    <message>
-        <source>E.g.: configs</source>
-        <translation>Ex.: configs</translation>
-    </message>
-</context>
-<context>
     <name>MainWindow</name>
     <message>
         <source>Cancel the wait or wait for the other operation to finish before closing.</source>
@@ -572,63 +295,6 @@
     <message>
         <source>Nothing was changed.</source>
         <translation>Nada foi alterado.</translation>
-    </message>
-</context>
-<context>
-    <name>ProblemList</name>
-    <message>
-        <source>Not checked yet.</source>
-        <translation>Ainda não verificado.</translation>
-    </message>
-    <message>
-        <source>Checking…</source>
-        <translation>Verificando…</translation>
-    </message>
-    <message>
-        <source>The file could not be checked</source>
-        <translation>Não foi possível verificar o arquivo</translation>
-    </message>
-    <message numerus="yes">
-        <source>%n error(s)</source>
-        <translation>
-            <numerusform>%n erro</numerusform>
-            <numerusform>%n erros</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%n warning(s)</source>
-        <translation>
-            <numerusform>%n aviso</numerusform>
-            <numerusform>%n avisos</numerusform>
-        </translation>
-    </message>
-    <message>
-        <source>{errors} and {warnings}</source>
-        <translation>{errors} e {warnings}</translation>
-    </message>
-    <message>
-        <source>No problems found</source>
-        <translation>Nenhum problema encontrado</translation>
-    </message>
-</context>
-<context>
-    <name>ProblemRow</name>
-    <message>
-        <source>Error</source>
-        <extracomment>Group the owner should select after applying the next edit.</extracomment>
-        <translation>Erro</translation>
-    </message>
-    <message>
-        <source>Warning</source>
-        <translation>Aviso</translation>
-    </message>
-    <message>
-        <source>Go to</source>
-        <translation>Ir para</translation>
-    </message>
-    <message>
-        <source>{kind}: {text}</source>
-        <translation>{kind}: {text}</translation>
     </message>
 </context>
 <context>
@@ -819,12 +485,8 @@
     <name>ProfileController</name>
     <message>
         <source>The profile was imported but not applied: {reason}</source>
-        <extracomment>Operations on the ``conf.yaml``; they never touch the profile list. Operations that cannot change the profile list: it is not reloaded after them. Emitted by the worker thread when the lock is busy (queued to the GUI).</extracomment>
+        <extracomment>Operations that cannot change the profile list: it is not reloaded after them. Emitted by the worker thread when the lock is busy (queued to the GUI).</extracomment>
         <translation>O perfil foi importado, mas não foi aplicado: {reason}</translation>
-    </message>
-    <message>
-        <source>Copy of the previous file: {name}</source>
-        <translation>Cópia do arquivo anterior: {name}</translation>
     </message>
     <message>
         <source>The profile list could not be refreshed: {reason}</source>
@@ -1060,97 +722,6 @@
     <message>
         <source>Search</source>
         <translation>Buscar</translation>
-    </message>
-</context>
-<context>
-    <name>SectionEditor</name>
-    <message>
-        <source>The file text could not be read as a form. Fix the problems in the “Text” tab to edit here again.</source>
-        <translation>O texto do arquivo não pôde ser lido como formulário. Corrija os problemas na aba “Texto” para voltar a editar por aqui.</translation>
-    </message>
-    <message>
-        <source>Groups</source>
-        <translation>Grupos</translation>
-    </message>
-    <message>
-        <source>{kind} groups</source>
-        <translation>Grupos de {kind}</translation>
-    </message>
-    <message>
-        <source>Add</source>
-        <translation>Adicionar</translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation>Remover</translation>
-    </message>
-    <message>
-        <source>No group selected. Add a group or pick one from the list.</source>
-        <translation>Nenhum grupo selecionado. Adicione um grupo ou escolha um da lista.</translation>
-    </message>
-    <message>
-        <source>Group name</source>
-        <translation>Nome do grupo</translation>
-    </message>
-    <message>
-        <source>Source folder (location)</source>
-        <translation>Pasta de origem (location)</translation>
-    </message>
-    <message>
-        <source>Files and folders (entries)</source>
-        <translation>Arquivos e pastas (entries)</translation>
-    </message>
-    <message>
-        <source>Group items</source>
-        <translation>Itens do grupo</translation>
-    </message>
-    <message>
-        <source>Add item</source>
-        <translation>Adicionar item</translation>
-    </message>
-    <message>
-        <source>Remove item</source>
-        <translation>Remover item</translation>
-    </message>
-    <message>
-        <source>Each item is the name of a file or folder inside the source folder. Double-click to edit; do not use “/”.</source>
-        <translation>Cada item é o nome de um arquivo ou pasta dentro da pasta de origem. Duplo clique edita; não use “/”.</translation>
-    </message>
-    <message>
-        <source>Source folder</source>
-        <translation>Pasta de origem</translation>
-    </message>
-    <message>
-        <source>E.g.: $HOME/.config</source>
-        <translation>Ex.: $HOME/.config</translation>
-    </message>
-    <message>
-        <source>text</source>
-        <translation>texto</translation>
-    </message>
-    <message>
-        <source>Insert:</source>
-        <translation>Inserir:</translation>
-    </message>
-    <message>
-        <source>Functions:</source>
-        <translation>Funções:</translation>
-    </message>
-    <message>
-        <source>Insert {token}</source>
-        <translation>Inserir {token}</translation>
-    </message>
-    <message>
-        <source>Insert {template} (replace “{sample}” with your text)</source>
-        <translation>Inserir {template} (troque “{sample}” pelo texto)</translation>
-    </message>
-    <message>
-        <source>Use only the name of the file or folder, without “/”.</source>
-        <translation>Use só o nome do arquivo ou pasta, sem “/”.</translation>
-    </message>
-    <message>
-        <source>Konsave resolves this folder as: {path}</source>
-        <translation>O Konsave resolve esta pasta como: {path}</translation>
     </message>
 </context>
 <context>
@@ -1734,14 +1305,6 @@
         <translation>Não foi possível restaurar os dados</translation>
     </message>
     <message>
-        <source>Could not save conf.yaml</source>
-        <translation>Não foi possível salvar o conf.yaml</translation>
-    </message>
-    <message>
-        <source>Could not restore the conf.yaml backup</source>
-        <translation>Não foi possível restaurar o backup do conf.yaml</translation>
-    </message>
-    <message>
         <source>Could not restore the safety copy</source>
         <translation>Não foi possível restaurar a cópia de segurança</translation>
     </message>
@@ -1789,14 +1352,6 @@
     <message>
         <source>Fictitious profiles restored</source>
         <translation>Perfis fictícios restaurados</translation>
-    </message>
-    <message>
-        <source>conf.yaml saved</source>
-        <translation>conf.yaml salvo</translation>
-    </message>
-    <message>
-        <source>conf.yaml backup restored</source>
-        <translation>Backup do conf.yaml restaurado</translation>
     </message>
     <message>
         <source>Safety copy restored</source>
@@ -1880,10 +1435,6 @@
         <translation>Não foi possível remover a descrição que veio dentro do arquivo: {reason}</translation>
     </message>
     <message>
-        <source>The .knsv carries Konsave&apos;s current conf.yaml, which differs from the conf.yaml stored in this profile. Groups: {found} (+ only in the current one, − only in the profile, ~ changed). On another computer, a new group prevents applying the profile and a group that disappeared is ignored without warning.</source>
-        <translation>O .knsv leva o conf.yaml atual do Konsave, que é diferente do conf.yaml guardado neste perfil. Grupos: {found} (+ só no atual, − só no perfil, ~ alterado). Em outro computador, um grupo novo impede aplicar o perfil e um grupo que sumiu é ignorado sem aviso.</translation>
-    </message>
-    <message>
         <source>Safety copy stored ({id}). To undo, use Settings → Safety copies.</source>
         <translation>Cópia de segurança guardada ({id}). Para desfazer, use Configurações → Cópias de segurança.</translation>
     </message>
@@ -1957,123 +1508,6 @@
         <translation>Há uma pasta de importação antiga e abandonada; remova-a antes.</translation>
     </message>
     <message>
-        <source>The conf.yaml file does not exist.</source>
-        <extracomment>English source of the explanation of each kind of ``conf.yaml`` finding (``Problem.code``). ``{…}`` fields are taken from ``Problem.args``.</extracomment>
-        <translation>O arquivo conf.yaml não existe.</translation>
-    </message>
-    <message>
-        <source>The file is too large to be a Konsave configuration.</source>
-        <translation>O arquivo é grande demais para ser uma configuração do Konsave.</translation>
-    </message>
-    <message>
-        <source>The file could not be read: {detail}</source>
-        <translation>Não foi possível ler o arquivo: {detail}</translation>
-    </message>
-    <message>
-        <source>The YAML is malformed: {problem}. Fix the syntax (indentation, quotes, colons or brackets) at this point.</source>
-        <translation>O YAML está malformado: {problem}. Corrija a sintaxe (indentação, aspas, dois-pontos ou colchetes) neste ponto.</translation>
-    </message>
-    <message>
-        <source>The file must be a map with the “save” and “export” sections at the root.</source>
-        <translation>O arquivo precisa ser um mapa com as seções “save” e “export” na raiz.</translation>
-    </message>
-    <message>
-        <source>The “{key}” section is missing. Konsave requires both sections, “save” and “export”; use “{key}: {{}}” if it should stay empty.</source>
-        <translation>Falta a seção “{key}”. O Konsave exige as duas seções, “save” e “export”; use “{key}: {{}}” se ela deve ficar vazia.</translation>
-    </message>
-    <message>
-        <source>“{key}” must be a map of groups. Leaving it empty (“{key}:”) makes Konsave fail; write “{key}: {{}}”.</source>
-        <translation>“{key}” precisa ser um mapa de grupos. Deixá-la vazia (“{key}:”) faz o Konsave falhar; escreva “{key}: {{}}”.</translation>
-    </message>
-    <message>
-        <source>The key “{key}” is unknown and is ignored when saving and exporting. It was kept in the file.</source>
-        <translation>A chave “{key}” é desconhecida e é ignorada ao salvar e exportar. Ela foi mantida no arquivo.</translation>
-    </message>
-    <message>
-        <source>The unknown key “{key}” must be a map of groups; Konsave goes through every key at the root and would fail here.</source>
-        <translation>A chave desconhecida “{key}” precisa ser um mapa de grupos; o Konsave percorre todas as chaves da raiz e falharia aqui.</translation>
-    </message>
-    <message>
-        <source>The key “{key}” appears more than once. YAML keeps only the last one and the other would be silently lost.</source>
-        <translation>A chave “{key}” aparece mais de uma vez. O YAML guarda só a última e a outra seria perdida em silêncio.</translation>
-    </message>
-    <message>
-        <source>The group name “{name}” must be a plain folder name: no “/”, not empty, “.” or “..”.</source>
-        <translation>O nome do grupo “{name}” precisa ser um nome simples de pasta: sem “/”, sem ser vazio, “.” ou “..”.</translation>
-    </message>
-    <message>
-        <source>The group must have “location” and “entries”.</source>
-        <translation>O grupo precisa ter “location” e “entries”.</translation>
-    </message>
-    <message>
-        <source>Unknown keys in this group are ignored by Konsave: {keys_text}. They were kept in the file.</source>
-        <translation>Chaves desconhecidas neste grupo são ignoradas pelo Konsave: {keys_text}. Elas foram mantidas no arquivo.</translation>
-    </message>
-    <message>
-        <source>“location” must be a non-empty text (the source folder).</source>
-        <translation>“location” precisa ser um texto não vazio (a pasta de origem).</translation>
-    </message>
-    <message>
-        <source>The placeholder ${name} does not exist in Konsave. The recognized ones are: {supported}.</source>
-        <translation>O placeholder ${name} não existe no Konsave. Os reconhecidos são: {supported}.</translation>
-    </message>
-    <message>
-        <source>The function ${{{name}=...}} does not exist in Konsave. Recognized: {supported}.</source>
-        <translation>A função ${{{name}=...}} não existe no Konsave. Reconhecidas: {supported}.</translation>
-    </message>
-    <message>
-        <source>Only the last placeholder function has an effect in the original Konsave.</source>
-        <translation>Só a última função de placeholder tem efeito no Konsave original.</translation>
-    </message>
-    <message>
-        <source>“entries” is missing. Use an empty list (“entries: []”) if the group has no items.</source>
-        <translation>Falta “entries”. Use uma lista vazia (“entries: []”) se o grupo não tem itens.</translation>
-    </message>
-    <message>
-        <source>“entries” must be a list of names.</source>
-        <translation>“entries” precisa ser uma lista de nomes.</translation>
-    </message>
-    <message>
-        <source>The item {value_text} must be a single file or folder name, without “/”. Nested paths make Konsave abort the whole save.</source>
-        <translation>O item {value_text} precisa ser um único nome de arquivo ou pasta, sem “/”. Caminhos aninhados fazem o Konsave abortar todo o salvamento.</translation>
-    </message>
-    <message>
-        <source>The item {value_text} is repeated.</source>
-        <translation>O item {value_text} está repetido.</translation>
-    </message>
-    <message>
-        <source>The placeholder was not resolved ({resolved}). Without a matching folder, Konsave would use this text as a relative path.</source>
-        <translation>O placeholder não foi resolvido ({resolved}). Sem uma pasta correspondente, o Konsave usaria esse texto como caminho relativo.</translation>
-    </message>
-    <message>
-        <source>The resolved folder is not an absolute path: {resolved}.</source>
-        <translation>A pasta resolvida não é um caminho absoluto: {resolved}.</translation>
-    </message>
-    <message>
-        <source>The folder {resolved} does not exist on this computer; the items of this group will be silently ignored.</source>
-        <translation>A pasta {resolved} não existe neste computador; os itens deste grupo serão ignorados em silêncio.</translation>
-    </message>
-    <message>
-        <source>The file&apos;s comments could not be kept in this edit; when saving, they will be lost (the previous file is kept as a backup).</source>
-        <translation>Os comentários do arquivo não puderam ser mantidos nesta edição; ao salvar, eles serão perdidos (o arquivo anterior fica como backup).</translation>
-    </message>
-    <message>
-        <source>Konsave could not interpret the file: {detail}</source>
-        <translation>O Konsave não conseguiu interpretar o arquivo: {detail}</translation>
-    </message>
-    <message>
-        <source>line {line}, column {column}</source>
-        <translation>linha {line}, coluna {column}</translation>
-    </message>
-    <message>
-        <source>line {line}</source>
-        <translation>linha {line}</translation>
-    </message>
-    <message>
-        <source>file</source>
-        <translation>arquivo</translation>
-    </message>
-    <message>
         <source>{text} Folder: {path}</source>
         <translation>{text} Pasta: {path}</translation>
     </message>
@@ -2114,6 +1548,18 @@
         <translation>Descompactado, o arquivo ocuparia mais de {limit}, acima do limite de segurança, por isso não foi importado. Ele pode não ser um perfil.</translation>
     </message>
     <message>
+        <source>The profile cannot be applied safely:</source>
+        <translation>O perfil não pode ser aplicado com segurança:</translation>
+    </message>
+    <message>
+        <source>The file would write outside your home folder, so it was not used:</source>
+        <translation>O arquivo escreveria fora da sua pasta pessoal, por isso não foi usado:</translation>
+    </message>
+    <message>
+        <source>Konsave could not read this conf.yaml. Fix it in a text editor:</source>
+        <translation>O Konsave não conseguiu ler este conf.yaml. Corrija-o num editor de texto:</translation>
+    </message>
+    <message>
         <source>KonGUI must not be run as root. Open it as your own user.</source>
         <translation>O KonGUI não deve ser executado como root. Abra-o com o seu usuário.</translation>
     </message>
@@ -2142,10 +1588,6 @@
         <translation>A operação exige confirmação explícita e não foi confirmada.</translation>
     </message>
     <message>
-        <source>conf.yaml was changed by another program after being opened here. Nothing was written.</source>
-        <translation>O conf.yaml foi alterado por outro programa depois de aberto aqui. Nada foi gravado.</translation>
-    </message>
-    <message>
         <source>The other Konsave operation (in the terminal or in another KonGUI window) did not finish in time. Nothing was changed; try again when it finishes.</source>
         <translation>A outra operação do Konsave (no terminal ou em outra janela do KonGUI) não terminou a tempo. Nada foi alterado; tente de novo quando ela terminar.</translation>
     </message>
@@ -2172,10 +1614,6 @@
     <message>
         <source>The safety copy could not be made or read, so the operation was not done (or not completed).</source>
         <translation>A cópia de segurança não pôde ser feita ou lida, então a operação não foi feita (ou não foi concluída).</translation>
-    </message>
-    <message>
-        <source>That backup no longer exists. The list was refreshed.</source>
-        <translation>Esse backup não existe mais. A lista foi atualizada.</translation>
     </message>
     <message>
         <source>Not enough free disk space in {folder}: about {needed} are needed and {available} are free. Free some space and try again. Nothing was changed.</source>
@@ -2207,18 +1645,6 @@
     <message>
         <source>Invalid name. Do not use slashes, “.” or “..”, a leading hyphen, spaces at the ends, control characters, or the .knsv or .zip extensions. Maximum 200 bytes (accented letters and emojis take more than one).</source>
         <translation>Nome inválido. Não use barras, “.” ou “..”, hífen no início, espaços nas pontas, caracteres de controle, nem as extensões .knsv ou .zip. Máximo de 200 bytes (letras acentuadas e emojis ocupam mais de um).</translation>
-    </message>
-    <message>
-        <source>Enter a name for the group.</source>
-        <translation>Informe um nome para o grupo.</translation>
-    </message>
-    <message>
-        <source>Invalid name. Use a plain folder name: no “/”, “.” or “..”.</source>
-        <translation>Nome inválido. Use um nome simples de pasta: sem “/”, “.” ou “..”.</translation>
-    </message>
-    <message>
-        <source>A group with that name already exists in this section.</source>
-        <translation>Já existe um grupo com esse nome nesta seção.</translation>
     </message>
 </context>
 </TS>

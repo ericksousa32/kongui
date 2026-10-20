@@ -22,13 +22,14 @@ The other mandatory requirements are implemented and tested: safety copy before
 
 | Decision | Consequence | Where |
 |---|---|---|
-| **What a profile includes is chosen by hand**, in *Edit .YAML*. The save dialog has no "what to include" check boxes in real mode | the `save` groups of the global `conf.yaml` decide what is saved; see §4 below for the steps | [`GUI_CONFIG.md`](GUI_CONFIG.md) §7 |
-| **The `conf.yaml` inside a `.knsv` is not rewritten.** Konsave puts the *global* file there while it assembles `save/` and `export/` from the *profile's* file | if they differ the archive contradicts itself. KonGUI **warns** on export and when inspecting an archive (`+` only in the active one, `-` only in the profile, `~` changed) and does nothing else | [`FINAL_AUDIT.md`](FINAL_AUDIT.md) A-4 |
-| **No limit on the number of safety copies** and **no automatic pruning** (also of the `conf.yaml` backups) | copies and backups grow until the user deletes them: safety copies in *Settings → Safety copies → Manage…*; the `conf.yaml` backups are the files `conf.yaml.bak-*` next to it in `~/.config/konsave/` and have no delete button (remove them by hand). Pruning would remove the oldest copy first, which is the one that holds the original state | [`INTEGRATION.md`](INTEGRATION.md) §9, [`GUI_CONFIG.md`](GUI_CONFIG.md) §6 |
+| **No `conf.yaml` management (2026-10-19).** The editor, its backups (`conf.yaml.bak-*`), KonGUI's own validation of the file (errors with line and column, duplicate keys, placeholder checks) and the warning about a `.knsv` whose `conf.yaml` differs from the profile's (A-4) were removed, to stay within Konsave's scope | the user edits `~/.config/konsave/conf.yaml` by hand, as with Konsave (§4). KonGUI still *reads* the file through Konsave's own parser, because the safety copies, the free-space estimates, the sections on the cards and the refusals below need to know where files go | this file, §4 |
+| **What a profile includes is chosen by hand**, in `~/.config/konsave/conf.yaml`. The save dialog has no "what to include" check boxes in real mode | the `save` groups of the global `conf.yaml` decide what is saved | §4 |
+| **The `conf.yaml` inside a `.knsv` is not rewritten, and there is no warning about it.** Konsave puts the *global* file there while it assembles `save/` and `export/` from the *profile's* file | if they differ the archive contradicts itself: a group added since makes the profile impossible to apply on the other computer (KonGUI refuses and says which group), a group removed since is ignored. Inspecting an archive before importing still lists groups without data | [`FINAL_AUDIT.md`](FINAL_AUDIT.md) A-4 |
+| **Safety refusals are kept.** Applying a profile, or importing a `.knsv`, whose `conf.yaml` would write outside the home folder (a `location` outside it, or an entry such as `../x`) is refused, and so is applying a group whose folder and parent folder are both missing | the notice lists the reasons. These are not validation of the user's file: they protect the session from a hostile archive or a profile that would leave the home | [`INTEGRATION.md`](INTEGRATION.md) §10 |
+| **No limit on the number of safety copies** and **no automatic pruning** | copies grow until the user deletes them in *Settings → Safety copies → Manage…*. Pruning would remove the oldest copy first, which is the one that holds the original state | [`INTEGRATION.md`](INTEGRATION.md) §9 |
 | **The description does not travel in the `.knsv`** and **the `.knsv` format is unchanged** | an imported profile starts without a description | [`INTEGRATION.md`](INTEGRATION.md) §11 |
 | **P-3 limits stay fixed constants** | see §3 | [`INTEGRATION.md`](INTEGRATION.md) §10 |
 | **Without PySide6, `kongui` shows a raw `ImportError`** for now | the interface needs the `gui` extra: `pip install "kongui[gui]"` | [`README.md`](../README.md) |
-| **A `conf.yaml` in YAML *flow* style stays as it is**: the editor falls back to regenerating the text, which **loses the comments**, and asks for explicit confirmation first | none beyond the confirmation | [`GUI_CONFIG.md`](GUI_CONFIG.md) §2 |
 | **The package is called `kongui`** (not `Konsave`); author, URL and links in `setup.py` are this repository's | the bundled `konsave` command is still installed; see §5 | [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md) §3.5 |
 | **`setuptools` is not a runtime dependency** and was removed from `requirements.txt` | it is only needed to *build* the package. Proof: nothing in `kongui/` or `konsave/` imports it, and the whole test suite passes with `setuptools`, `pkg_resources` and `distutils` made unimportable (`tests.test_packaging` checks the imports and the requirements) | [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §5 |
 
@@ -57,20 +58,26 @@ They protect against a damaged or hostile `.knsv` and against a full disk. They 
 
 ## 4. How to choose what a profile includes
 
-KonGUI does not ask this when saving. The rule is Konsave's own:
+KonGUI does not ask this when saving and has no screen for it. The rule is
+Konsave's own, and so is the tool: a text editor.
 
-1. Open **Edit .YAML**. The `save:` groups are what a profile contains; the
-   `export:` groups are only exported with it.
-2. Add a group (a name, a `location` and the `entries` inside it) or edit one, or
-   remove the ones you do not want, then save the file. The editor validates it first
-   and keeps a backup of the previous version.
+1. Open `~/.config/konsave/conf.yaml` in a text editor (Konsave creates it the first
+   time; KonGUI creates the same default file before the first save). The `save:`
+   groups are what a profile contains; the `export:` groups are only exported with
+   it. The default KDE file already lists the usual Plasma settings, the layouts of
+   the main KDE apps, and the themes, icons and fonts to export; its `autostart`
+   group is empty.
+2. Add a group (a name, a `location` and the `entries` inside it), edit one, or remove
+   the ones you do not want. **Keep a copy of the file first**: KonGUI does not check
+   it or keep backups of it.
 3. Save the profile (**Save profile**). The profile gets a copy of `save` as it was
-   *at that moment*; profiles saved earlier keep what they had.
+   *at that moment*; profiles saved earlier keep what they had. If the file has a
+   mistake, the save fails and the notice shows Konsave's own reason (for example a
+   YAML error, or an entry with a `/` in it); nothing is left behind.
 4. The cards show what each profile ended up holding (its sections).
 
 Before **exporting** a profile, make sure the global file and the profile's agree
-(see the A-4 warning above). Step-by-step detail and the reasons are in
-[`GUI_CONFIG.md`](GUI_CONFIG.md) §7.
+(see A-4 in §2): KonGUI no longer warns about it.
 
 ## 5. Package and installation
 
@@ -141,3 +148,8 @@ Before **exporting** a profile, make sure the global file and the profile's agre
   the cross-process lock.
 * Demo mode (`--demo`) shows things real mode does not (for example the "what to
   include" check boxes in the save dialog); its data is fictitious and English.
+* A mistake in `conf.yaml` is only found when an operation reads it (saving reports
+  Konsave's reason). A placeholder that matches no folder (`${ENDS_WITH="…"}`) is
+  read as Konsave reads it, as literal relative text: the group is saved empty, and
+  applying the profile is refused (that location is not inside the home), so nothing
+  is written.

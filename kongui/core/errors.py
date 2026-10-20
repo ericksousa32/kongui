@@ -8,10 +8,10 @@ fail halfway and the caller needs stdout, stderr and the error list.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Iterable, Optional, Tuple
 
 if TYPE_CHECKING:  # pragma: no cover
-    from kongui.core.results import OperationResult, ValidationReport
+    from kongui.core.results import OperationResult
 
 
 class KonGuiError(Exception):
@@ -82,32 +82,26 @@ class InsufficientSpaceError(KonGuiError):
         self.available = available
 
 
-class ConfigValidationError(ValidationError):
-    """Raised when a ``conf.yaml`` (or an operation derived from it) is unsafe.
+class ConfigError(ValidationError):
+    """Raised when Konsave cannot read a ``conf.yaml``, or what it says is unsafe.
+
+    KonGUI does not validate ``conf.yaml`` files itself: it reads them through
+    the original ``read_konsave_config`` and refuses an operation only when that
+    fails or when the result would write outside the home folder.
 
     Attributes:
-        report: The validation report that explains the problem, if any.
+        details: One line per reason (may be empty).
     """
 
-    def __init__(
-        self, message: str, report: Optional["ValidationReport"] = None
-    ) -> None:
+    def __init__(self, message: str, details: Iterable[str] = ()) -> None:
         """Creates the error.
 
         Args:
             message: Human readable summary.
-            report: Detailed report with every error and warning found.
+            details: The reasons, one per line.
         """
         super().__init__(message)
-        self.report = report
-
-
-class ConfigConflictError(KonGuiError):
-    """Raised when ``conf.yaml`` changed on disk after it was loaded for editing."""
-
-
-class BackupNotFoundError(KonGuiError):
-    """Raised when a requested ``conf.yaml`` backup does not exist."""
+        self.details: Tuple[str, ...] = tuple(str(line) for line in details)
 
 
 class ConfigMissingError(KonGuiError):

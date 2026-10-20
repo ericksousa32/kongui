@@ -21,7 +21,10 @@ Portuguese interface, with an English gloss in parentheses where needed.
 
 * Baseline: the original CLI (`konsave/__main__.py`) and the requirements of each
   earlier stage (integration, prototype, wiring to the services, import/export,
-  `conf.yaml` editor).
+  `conf.yaml` editor). The editor and everything else that managed `conf.yaml`
+  (backups, KonGUI's own validation, the A-4 warning) were **removed on 2026-10-19**
+  by decision of the owner (§5, item 13); the rows about them are kept below for
+  the record and marked as removed.
 * **Limitation of this audit:** the "requirements matrix" of the first audit is not
   in the repository, in the project documents or in the history this session has
   access to (only the "RN-01" reference remains in `docs/INTEGRATION.md`). The list
@@ -46,15 +49,15 @@ Portuguese interface, with an English gloss in parentheses where needed.
 | A-1 | A `.kongui-*` name was accepted on save but never listed (an "invisible" profile, impossible to remove) | reserved prefix refused by the core and by the GUI | b05e3db |
 | A-2 | Name limit counted in characters: names with accents/emoji passed and the file system refused them (255 bytes) | limit of 200 **bytes** (core + message in the GUI) | b05e3db |
 | A-3 | Closing the window during an operation froze it, left an orphan process and printed a traceback | window refuses to close while busy; the worker ignores `RuntimeError` after teardown | 8730a08 |
-| A-4 | Exporting with a global `conf.yaml` different from the profile's produced a contradictory `.knsv` without a warning | warning on export and on inspect (`+` only in the active one, `-` only in the profile, `~` changed); message in pt-BR | c6c9a6d |
+| A-4 | Exporting with a global `conf.yaml` different from the profile's produced a contradictory `.knsv` without a warning | warning on export and on inspect (`+` only in the active one, `-` only in the profile, `~` changed); message in pt-BR | c6c9a6d (**removed 2026-10-19**: no warning any more; inspection still lists groups without data) |
 | A-5 | `probe_export` (disk access) ran on the interface thread | runs in the background; button locked while checking | 969d8d5 |
 | A-6 | The Konsave version (`-v`) did not appear in the interface | "Versão do Konsave" (Konsave version) in the About page | 969d8d5 |
 | A-7 | The import message with a leftover folder did not say which folder | path included | 969d8d5 |
 | A-8 | Exporting on an account without `conf.yaml` failed with a raw `FileNotFoundError` | creates the default first (as the original does on startup); the core requires an active config | 4d2730f |
-| A-9 | The `conf.yaml` editor could mix `\n` and `\r\n` | the original's line breaks are preserved | 0f268a0 |
+| A-9 | The `conf.yaml` editor could mix `\n` and `\r\n` | the original's line breaks are preserved | 0f268a0 (**editor removed 2026-10-19**) |
 | A-10 | `requirements_dev.txt` listed unused dependencies | only `black` and `pylint` | 0f268a0 |
 | A-12 | **P-1 / RN-01:** apply and import overwrote files with no way back (the confirmation texts said "no backup") | `kongui/core/snapshot.py`: copy of the files that would be overwritten before running (fail closed), restore/list/delete, dialog in Settings → Safety copies ("Configurações → Cópias de segurança"; `docs/INTEGRATION.md` §9, `docs/GUI_SERVICES.md` §7) | commit of that stage |
-| A-11 | Real dialogs (confirm, choose, type `APAGAR`) without a test | `tests.test_gui_dialogs`; failure paths of the editor in `tests.test_gui_audit` | 0f268a0 + this one |
+| A-11 | Real dialogs (confirm, choose, type `APAGAR`) without a test | `tests.test_gui_dialogs`; failure paths of the editor in `tests.test_gui_audit` (editor removed 2026-10-19) | 0f268a0 + this one |
 
 ## 3. Final requirements matrix
 
@@ -82,18 +85,17 @@ not exist and is a requirement; **Blocked** = depends on something out of reach;
 | `-h/--help` | — | N/A | makes no sense in a GUI |
 | Default `conf.yaml` created on startup | `ensure_default_config` before save/export | Tested | `conf_kde.yaml` vs. `conf_other.yaml` according to the desktop; FreshAccountExportTests |
 
-### 3.2 The `conf.yaml` editor
+### 3.2 `conf.yaml` (management removed)
+
+On 2026-10-19 the owner decided to stay within Konsave's scope: KonGUI no longer
+edits, backs up or validates `conf.yaml`; the user edits it by hand.
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Validate before writing; do not write on failure | Tested | `tests.test_config_editor`, `tests.test_gui_config` |
-| Errors with line/column and path; go to the spot | Tested | same |
-| Backup before each write; restore a backup | Tested | same; conflict can be forced (`tests.test_gui_audit`) |
-| Preserve comments, unknown keys, placeholders, BOM, anchors | Tested | real Plasma 6 archive (`tests/profile_test.knsv`) |
-| *Flow* style ⇒ rewrite without comments, only with explicit "yes" | Tested | `tests.test_gui_audit` (ConfigPageFailurePathTests) |
-| Writing while busy / without validating writes nothing | Tested | same |
-| Placeholders (`$HOME`, `$XDG_*`…) interpreted like the original | Tested | `tests.test_config_service` (PlaceholderValidationTests) |
-| Pruning of old backups | Decided: not done | project decision (2026-10-18): `conf.yaml.bak-*` files are never removed automatically and have no count limit; see `LIMITATIONS.md` §2 |
+| Editor, validation with line/column, backups and restore, flow-style handling | **Removed** (decision) | `kongui/gui/pages/config.py`, `widgets/confedit.py`, `core/confedit.py`, `core/yamlmap.py` and their tests deleted; `ConfigService` keeps only `ensure_default_config` and `resolve` |
+| `conf.yaml` read the way Konsave reads it (placeholders by the original `read_konsave_config`) | Tested | `tests.test_config_service` |
+| A mistake in `conf.yaml` is reported with Konsave's reason and leaves nothing behind | Tested | `tests.test_profile_service_integration` (`test_a_broken_conf_yaml_fails_with_konsave_s_reason`, nested entry), `tests.test_gui_overview` (`HandEditedConfigJourneyTests`) |
+| Safety refusals kept: destinations outside the home, entries that are not a single name, apply with a missing destination | Tested | `tests.test_profile_service_mocked`, `tests.test_profile_service_integration` (HostileArchiveIntegrationTests), `tests.test_gui_real_backend` (`test_a_refused_apply_says_why`) |
 
 ### 3.3 Safety, concurrency and files
 
@@ -110,13 +112,13 @@ not exist and is a requirement; **Blocked** = depends on something out of reach;
 | RN-01: restore (files, mode, links, created files), with confirmation, manifest validation, paths only inside the home, undo of the restore | Tested | RestoreRulesTests, EdgeCaseTests |
 | Profile description (small file inside the profile folder) and read-only sections: persistence, isolation between profiles, renamed folder, removal, import without metadata (a description planted in an archive is dropped), failed writes, `replace` carry-over, no change to the exported archive; dialog, card, warnings, plain-text display, friendly group names | Tested | `tests.test_profile_details`, `tests.test_gui_details` |
 | RN-01: list/delete copies in the interface; buttons locked during an operation; nothing is deleted by itself | Tested | `tests.test_gui_backups` (DemoSafetyCopyTests) |
-| Import → export preserves the profile (real Plasma 6 archive) | Tested | identical, except `conf.yaml` (A-4/§5) |
+| Import → export preserves the profile (real Plasma 6 archive) | Tested | identical, except `conf.yaml` (A-4, §5) |
 | `.knsv` exchanged with the original `konsave` in both directions | Tested | CliCompatibilityTests |
 | Unused dependencies | Tested | A-10; `setuptools` is no longer declared at runtime: nothing imports it and the whole suite passes with it made unimportable (§5, `tests.test_packaging`) |
 | Distribution called `kongui`, with the author, URL and links of this repository; both commands installed; the `konsave` command still starts | Tested | `tests.test_packaging`; a wheel built in a clean virtual environment and installed there printed `Konsave: 2.2.0+kongui` for `konsave -v` (patch `KONGUI-PATCH(rename)`, `KONSAVE_PATCHES.md` §3.5) |
 | Build from a clone, from an sdist and from a `git archive` / GitHub "Source code" file gives the version of the tag (`.git_archival.txt`, `pyproject.toml`) | Tested | `tests.test_packaging` (SourceArchiveTests, needs `git` and `setuptools_scm`; skipped otherwise); `pip wheel --no-deps .` and `python -m build` of the real files in a clean virtual environment (2026-10-18) |
 | The version in the interface is the version of the package, which comes from the git tag; unknown shows `dev` | Tested | `tests.test_version`; a wheel built from a local tag `v0.1.0a1` in a copy of the repository reported `0.1.0a1`, and one commit later `0.1.0a2.dev1+g…` (`RELEASING.md` §4) |
-| Choosing what a profile includes | Decided: manual | done in *Edit .YAML*, steps in `GUI_CONFIG.md` §7 and the README; not offered when saving |
+| Choosing what a profile includes | Decided: manual | the user edits `~/.config/konsave/conf.yaml` by hand, as with Konsave; steps in `LIMITATIONS.md` §4 and the README; not offered when saving |
 
 ### 3.4 Interface language
 
@@ -157,8 +159,8 @@ project is still not declared complete: B-1 does not prevent use, but it limits
 what can be claimed, and B-3 (real-session testing) is still in progress. B-2 was
 resolved in part (description and read-only sections, `INTEGRATION.md` §11); what
 remains of it is by design: the description does not travel in the `.knsv`, and
-choosing what a profile contains stays manual in the `conf.yaml` editor (steps in
-`GUI_CONFIG.md` §7).
+choosing what a profile contains stays manual: the user edits `conf.yaml` by hand
+(steps in `LIMITATIONS.md` §4).
 
 Limits of P-3: the limits are constants, not a policy; the free-space check is an
 estimate and is not atomic with the operation (another program can fill the disk
@@ -179,7 +181,7 @@ one is written down in [`LIMITATIONS.md`](LIMITATIONS.md)):
 
 1. **`conf.yaml` inside the `.knsv`**: Konsave writes the global `conf.yaml` but
    assembles `save/`/`export/` from the profile's. Decision: **it is not rewritten**.
-   The GUI keeps warning (A-4).
+   The warning (A-4) was removed on 2026-10-19 (item 13).
 2. **RN-01 safety copies**: scope "only the files the operation overwrites", in
    `~/.config/konsave/kongui-backups/`. Decision: **no limit on the number of copies
    and no automatic pruning** (pruning would delete precisely the oldest copy, which
@@ -192,9 +194,11 @@ one is written down in [`LIMITATIONS.md`](LIMITATIONS.md)):
    only use is `setup.py`, which is build time (the release workflow installs it).
 4. **Missing PySide6**: the `kongui` command still shows a raw `ImportError`. Left as
    it is for now.
-5. **`conf.yaml` backups** are never pruned. Decision: no pruning.
+5. **`conf.yaml` backups** are never pruned. Decision: no pruning. (Superseded on
+   2026-10-19: there are no `conf.yaml` backups any more, item 13.)
 6. **A *flow*-style `conf.yaml`** falls back to a rewrite that loses comments (with
-   explicit confirmation). Left as it is.
+   explicit confirmation). Left as it is. (Superseded on 2026-10-19: there is no
+   editor any more, item 13.)
 7. **P-3 limits**: left as fixed constants; their limits are now spelled out in
    [`LIMITATIONS.md`](LIMITATIONS.md) §3 and `INTEGRATION.md` §10.
 8. **Package name and metadata**: the distribution is now `kongui`, with the author,
@@ -224,10 +228,36 @@ one is written down in [`LIMITATIONS.md`](LIMITATIONS.md)):
 12. **PySide6 on older Pythons (found while preparing the release):** PySide6 6.10 and
     newer crash on Python older than 3.12, so the `gui` extra limits it to 6.8–6.9
     there ([`LIMITATIONS.md`](LIMITATIONS.md) §5, evidence in §6 below).
+13. **No `conf.yaml` management (decided 2026-10-19):** "stay within Konsave's
+    scope". Removed: the *Edit .YAML* page and its widgets and dialogs, the
+    comment-preserving editor, the `conf.yaml.bak-*` backups, KonGUI's own validation
+    (errors with line and column, duplicate keys, placeholder checks) and the A-4
+    export warning. Kept, by the owner's choice: reading `conf.yaml` through
+    Konsave's own parser, because the safety copies, the free-space estimates and the
+    sections need it, and the safety refusals (an archive or profile that would write
+    outside the home, including entries such as `../x`; applying to a destination
+    whose parent does not exist). No other feature was removed. Effect on use: a
+    mistake in the file is found when saving, with Konsave's reason; the default
+    KDE file already covers the usual Plasma settings. See
+    [`LIMITATIONS.md`](LIMITATIONS.md) §2 and §4.
 
 ## 6. Test results
 
-Measured on 2026-10-18 and 2026-10-19 on branch `chore/prerelease-readiness` (uncommitted work on top of `dev`, which already contains everything merged up to PR #9), as an unprivileged user with a temporary `$HOME`, Qt offscreen, each run **in the foreground**:
+Last measured on 2026-10-19 on branch `refactor/remove-yaml-management` (the removal
+of the `conf.yaml` management, §5 item 13, on top of `dev` with everything merged up
+to PR #11), as an unprivileged user with a temporary `$HOME`, Qt offscreen, each run
+**in the foreground**:
+
+* **805 tests, all passing** after the removal, on Python 3.13 (system and virtual
+  environment, PySide6 6.12.0), 3.9 and 3.11 (PySide6 6.9.3) and 3.14 (PySide6
+  6.12.0); 3 tests are skipped where `setuptools_scm` is missing. Coverage of
+  `kongui/`: **96%** (5,174 statements, 137 not run). What the removal changed in
+  the tests, and the check of the installed package, are in
+  [`TEST_OVERVIEW.md`](TEST_OVERVIEW.md) §5. The figures below the line are from the
+  day before the removal and are kept for the record (the Python matrix and the
+  PySide6 findings still apply).
+
+Before the removal (2026-10-18 and 2026-10-19, branch `chore/prerelease-readiness`):
 
 * **955 tests, all passing** (`python3 -m unittest discover -s tests -t .`, about 3 minutes; 949 when the Python matrix below was run, before the overview tests of 2026-10-19). With `setuptools_scm` installed all of them run; without it the 3 tests of `SourceArchiveTests` are skipped. The general review of the suite (overview tests through the real interface, the feature map, the static checks of the tests) is in [`TEST_OVERVIEW.md`](TEST_OVERVIEW.md); it found and fixed one defect: a refused apply or import could be reported with no reason (§3 there). Run it **in the foreground**: started as a background job, the shell makes the child processes ignore Ctrl+C and `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails with `-9` instead of `130`; the same test passes alone and in the foreground. Earlier in this work one coverage run reported a single failure whose name was not captured and that was not reproduced; if a test fails once, rerun it alone and in the foreground before treating it as a regression. One more one-off: a run on Python 3.10 that crossed midnight failed `tests.test_i18n...test_switching_back_and_forth_leaves_no_mixed_text` ("3 days ago" against "2 days ago": the demo dates are relative to now); it is time-dependent, not a regression, and that combination passed in the next run.
 * **Python and PySide6 matrix** (full suite each, all 949 tests OK and the process exiting with status 0):
@@ -255,7 +285,7 @@ Measured on 2026-10-18 and 2026-10-19 on branch `chore/prerelease-readiness` (un
 * Coverage of `kongui/` with `coverage run --branch --source=kongui`: **96%**
   (6948 statements, 219 not run; 1668 branches, 127 partly covered; 2026-10-19, 955 tests). The four overview tests alone reach 73%. `konsave/` was
   not measured. The lowest modules: `gui/__main__.py` 0% (three lines, only the
-  `python -m kongui.gui` entry), `core/yamlmap.py` 87%, `gui/messages.py` 88%,
+  `python -m kongui.gui` entry), `core/yamlmap.py` (since removed) 87%, `gui/messages.py` 88%,
   `gui/widgets/dropzone.py` 88%, `gui/widgets/confedit.py` 90%, `gui/backend.py` 90%.
 * `pylint kongui`: 10.00/10; `black --check kongui tests konsave setup.py`: clean.
 * Packaging: `python -m build --wheel --no-isolation`, in a virtual environment with `setuptools` 75 or newer, built `kongui-0.1.dev43+g…-py3-none-any.whl` (2026-10-18): metadata `Name: kongui`, the new author, URLs and classifiers, `Requires-Dist: PyYaml>=5.4.1` only (PySide6 in the `gui` extra), both console scripts, no `tests/`. Installed there, `konsave -v` prints `Konsave: 2.2.0+kongui` and `ServiceBackend.engine_version`, which the *About* page shows, returns `2.2.0+kongui`. The version of the wheel comes from git (no tag exists yet).

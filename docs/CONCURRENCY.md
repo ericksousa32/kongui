@@ -42,9 +42,9 @@ interface, with an English gloss in parentheses where needed.
 |---|---|
 | save, replace, apply, remove, import, wipe all | exclusive |
 | restore and delete a safety copy | exclusive |
-| write `conf.yaml` (digest comparison + write) and create the default | exclusive |
+| create the default `conf.yaml` | exclusive |
 | list profiles, read a profile, export, list copies | shared |
-| read `conf.yaml` to display it | no lock (the write is atomic through `os.replace`) |
+| read a `conf.yaml` (KonGUI never writes one; the user edits it by hand) | the lock of the operation that reads it |
 | `konsave --version`, `--help` | no lock |
 
 The lock is **not** held while the user decides in a dialog: it only exists inside
@@ -126,8 +126,9 @@ behind an operation that is waiting.
   (including `--list`) refuse instead of running unprotected.
 * The CLI exits with 75 on conflict, whereas the original Konsave always exits
   with 0.
-* A read of `conf.yaml` without the lock may see the file as it was before a write
-  in progress (never a half-written file).
+* `conf.yaml` is edited by hand, in a text editor that does not use the lock: an
+  operation that reads it while it is being saved may see an incomplete file and
+  fail with Konsave's reason (run it again).
 
 ## 6. Tests
 

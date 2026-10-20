@@ -14,7 +14,6 @@ TITLES = {
     "profiles": "Perfis",
     "transfer": "Importar / Exportar",
     "settings": "Configurações",
-    "config": "Editar .YAML",
     "about": "Sobre",
 }
 
@@ -104,7 +103,7 @@ class ShortcutTests(GuiTestCase):
 
     def test_ctrl_digits_switch_pages(self):
         window = self.make_window()
-        for digit, key in zip("123456", TITLES):
+        for digit, key in zip("12345", TITLES):
             with self.subTest(digit=digit):
                 self.press(window, getattr(Qt.Key, f"Key_{digit}"))
                 self.assertEqual(window.current_key, key)

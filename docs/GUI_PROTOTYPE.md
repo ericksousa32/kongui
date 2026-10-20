@@ -33,8 +33,10 @@ Preferences live in `<user config folder>/kongui/kongui-gui.ini` (through
 | Perfis (Profiles) | `profiles` | `Ctrl+2` | Clear all, New profile (`Ctrl+N`) | search (`Ctrl+F`), sorting, grid/list, profile cards |
 | Importar / Exportar (Import / Export) | `transfer` | `Ctrl+3` | — | export form (profile, folder, name; if the file already exists, it always asks), `.knsv` drop area with verification, recent transfers (see [`GUI_SERVICES.md`](GUI_SERVICES.md) §4) |
 | Configurações (Settings) | `settings` | `Ctrl+4` | — | theme, display, notice duration, safety copies, demo data (only in `--demo` mode) |
-| Editar .YAML (Edit .YAML) | `config` | `Ctrl+5` | Validate, Backups…, Discard, Save | `conf.yaml` editor: separate `save` and `export` sections, YAML text, problems panel with line/column, backups and restore (see [`GUI_CONFIG.md`](GUI_CONFIG.md)) |
-| Sobre (About) | `about` | `Ctrl+6` | — | version, environment, links, prototype notice |
+| Sobre (About) | `about` | `Ctrl+5` | — | version, environment, links, prototype notice |
+
+There is no `conf.yaml` editor (removed on 2026-10-19): as in Konsave, the user
+edits `~/.config/konsave/conf.yaml` by hand ([`LIMITATIONS.md`](LIMITATIONS.md) §4).
 
 The side navigation is fixed (232 px) with icon and label. The window has a minimum
 size of 900 × 600.
@@ -58,7 +60,7 @@ size of 900 × 600.
 | `theme.py` | color tokens, Qt palette, style sheet and `ThemeManager` |
 | `icons.py` | SVG icons drawn in code and colored by the theme |
 | `formatting.py` | sizes, dates and relative dates in the language in use |
-| `widgets/` | reusable pieces: `common` (button, label, badge, card, segmented control), `grid` (adaptive grid), `cards`, `shell` (side and top bars), `states` (empty state), `search`, `toast`, `dialogs`, `dropzone`, `rows`, `feedback` (busy bar, wait banner and error strip), `confedit` (section editor and problems list for `conf.yaml`) |
+| `widgets/` | reusable pieces: `common` (button, label, badge, card, segmented control), `grid` (adaptive grid), `cards`, `shell` (side and top bars), `states` (empty state), `search`, `toast`, `dialogs`, `dropzone`, `rows`, `feedback` (busy bar, wait banner and error strip) |
 | `pages/` | one class per page, on top of `pages/base.py` |
 
 Rules followed: colors only come from `Tokens`; icons are rebuilt when
@@ -101,10 +103,9 @@ If PySide6 is not installed, they are skipped.
 | `tests.test_gui_real_backend` | the six operations on the real services, in a temporary `$HOME` |
 | `tests.test_gui_transfer` | import and export in the interface (in-memory backend): form, conflicts, confirmations, errors |
 | `tests.test_gui_transfer_roundtrip` | export and import on the real services, in two temporary homes; compatibility with the original `python -m konsave` |
-| `tests.test_gui_config` | `conf.yaml` editor in the interface (memory and real services): validate, save, cancel, backups, conflict, special characters |
 | `tests.test_gui_backups` | safety copies in the interface: dialog, restore/delete with confirmation, locks, errors, messages and end to end with the real services |
-| `tests.test_gui_dialogs` | the dialogs actually triggered (replace/unique name, reload/write, typed word, group name, backup preview and restore) and the helpers of `app.py` |
-| `tests.test_gui_audit` | findings of the final audit: closing during an operation, differing `conf.yaml` warning, export-folder check off the thread, Konsave version, export on a new account |
+| `tests.test_gui_dialogs` | the dialogs actually triggered (replace/unique name, typed word) and the helpers of `app.py` |
+| `tests.test_gui_audit` | findings of the final audit: closing during an operation, archive warnings in the import form, export-folder check off the thread, Konsave version, export on a new account |
 | `tests.test_version` | the version shown in the badge, the *About* row and the sidebar caption (short form, whole version, `dev` when unknown); see [`RELEASING.md`](RELEASING.md) |
 | `tests.test_smoke` | `tools/smoke_test.py`, the check the release workflow runs on the built wheel: version, `konsave` command, translations, main window, normal exit; see [`RELEASING.md`](RELEASING.md) §5 |
 | `tests.test_gui_support` | messages, executors, `FakeBackend`, `ProfileStore`, feedback widgets |
@@ -165,7 +166,7 @@ recreated:
 * `i18n.bind(owner, apply)` runs `apply` on `LanguageChange` for anything else.
 * `Page` has `TITLE` / `SUBTITLE` and a `retranslate()` hook; pages with built
   content (profile cards, counts, problem list, status line) rebuild it there. The
-  current page, search text, sort order, form fields and the YAML text are kept.
+  current page, search text, sort order and form fields are kept.
 * Dialogs are created per use, so they are always in the current language.
 
 **Writing texts.** Use `self.tr("...")` (or `QCoreApplication.translate("Context",

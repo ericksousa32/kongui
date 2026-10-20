@@ -38,7 +38,7 @@ Page ──► ProfileActions (dialogs) ──► ProfileController ──► Ex
 * `tasks.py`: `ThreadExecutor` runs the work in a thread and hands the result back
   to the interface thread through a signal; the interface does not freeze.
 * **Nothing that touches the disk runs on the interface thread**: reads
-  (`conf.yaml`, backups, `.knsv` inspection) go through `controller.background`,
+  (safety copies, `.knsv` inspection) go through `controller.background`,
   and so does the check of the export folder (`probe_export`). The window **does
   not close** while an operation runs (notice "Operação em andamento", operation
   in progress): Konsave cannot be interrupted, and closing would leave the process
@@ -73,13 +73,13 @@ longer exist stay in the profile. For a real "Sobrescrever" (Overwrite),
 temporary name (`.kongui-…`), checks the result and swaps with `rename`, rolling
 back if anything fails. Entries with that prefix are never listed.
 
-### Operations on `conf.yaml`
+### No operations on `conf.yaml`
 
-`ProfileBackend` also exposes `load_config`, `check_config`, `save_config`,
-`list_config_backups`, `read_config_backup` and `restore_config` (see
-[`GUI_CONFIG.md`](GUI_CONFIG.md)). Reads run in the background without counting as
-an operation; `save_config` and `restore_config` use the same cycle as the others
-(busy bar, success or error notice) and do not reload the profile list.
+The interface does not read, edit or back up `conf.yaml` (removed on 2026-10-19,
+[`LIMITATIONS.md`](LIMITATIONS.md) §2): the user edits it by hand, as with Konsave.
+The operations read it themselves, through Konsave, when they need to know where
+files go; a mistake in it shows up as the failure of the operation, with Konsave's
+reason.
 
 ## 4. Import and export
 
@@ -125,7 +125,7 @@ unique name is `name_fDD-MM-YYYY:HH-MM-SS`; the core's is `name-2`.
   original also refuses).
 * `ProfileService.inspect_archive` (new, read-only) performs the same checks as
   the import — readable zip, safe member names, `conf.yaml` and `save/` present,
-  valid configuration and destinations inside the home — and shows name, size and
+  a configuration Konsave can read and destinations inside the home — and shows name, size and
   sections before anything is written. A missing file, a non-zip, one without
   `conf.yaml`, with unsafe paths or without read permission appears as an error in
   the form.
@@ -165,7 +165,7 @@ No test applies a profile to the real session: they use `FakeBackend` or a
 temporary `$HOME`, and the tests with files refuse to run as root.
 
 ```bash
-QT_QPA_PLATFORM=offscreen python3 -m unittest tests.test_gui_operations tests.test_gui_real_backend tests.test_gui_support tests.test_gui_transfer tests.test_gui_transfer_roundtrip tests.test_gui_config tests.test_config_editor -v
+QT_QPA_PLATFORM=offscreen python3 -m unittest tests.test_gui_operations tests.test_gui_real_backend tests.test_gui_support tests.test_gui_transfer tests.test_gui_transfer_roundtrip -v
 ```
 
 `tests.test_gui_transfer_roundtrip` exports in one home and imports in another with
@@ -186,9 +186,9 @@ CLI.
   `.knsv` (an imported profile starts without one), and it is lost if the profile
   folder is removed or replaced by something that does not copy it.
 * The sections shown on a card are the `save` groups of the profile's `conf.yaml`
-  that hold files. Choosing what to include when saving is not offered: edit the
-  `conf.yaml` (*Edit .YAML*) instead; the steps are in
-  [`GUI_CONFIG.md`](GUI_CONFIG.md) §7. In demo mode the save dialog still shows the
+  that hold files. Choosing what to include when saving is not offered: edit
+  `~/.config/konsave/conf.yaml` by hand instead; the steps are in
+  [`LIMITATIONS.md`](LIMITATIONS.md) §4. In demo mode the save dialog still shows the
   fictitious check boxes.
 * No cancellation or partial progress; only "busy". Exporting or importing a large
   profile can take long and blocks other operations.
@@ -208,9 +208,10 @@ CLI.
 * Export copies the current **global** `conf.yaml` into the `.knsv`, but assembles
   `save/` and `export/` from the groups of the **profile's** `conf.yaml` (a Konsave
   limitation). If they differ, the archive contradicts itself: a new group prevents
-  applying the imported profile; a removed group is ignored without a warning. The
-  GUI warns on export and when inspecting the archive, but does **not rewrite** the
-  archive's `conf.yaml` (that would change Konsave's output; project decision).
+  applying the imported profile (the refusal names the group); a removed group is
+  ignored. As in Konsave, the GUI does not warn on export and does **not rewrite** the
+  archive's `conf.yaml` (project decisions); inspecting an archive before importing
+  still lists groups that have no data in it.
 * The executable bit and file metadata do not survive the export → import cycle
   (a Konsave limitation).
 * `replace` uses `rename` (same file system) and only leaves a `.kongui-*` leftover
@@ -219,7 +220,6 @@ CLI.
   serialized by the cross-process lock; the interface shows the wait and lets you
   cancel it (see [`CONCURRENCY.md`](CONCURRENCY.md) §4).
 * The engine redirects `stdout` globally during each call.
-* Editing `conf.yaml` is described in [`GUI_CONFIG.md`](GUI_CONFIG.md).
 * Testing in a real Plasma session is in progress.
 
 ## 7. Safety copies (RN-01)

@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QDialog
 from kongui.core.profilemeta import META_FILENAME
 from kongui.gui.widgets.common import Badge
 from kongui.gui.widgets.dialogs import DetailsDialog, ProfileDialog
-from tests.helpers import write
+from tests.helpers import install_conf, write
 from tests.test_gui_real_backend import RealBackendCase
 from tests.test_profile_details import TWO_GROUPS
 
@@ -205,7 +205,7 @@ class SectionChipsTests(RealBackendCase):
         return [badge.text() for badge in card.findChildren(Badge)]
 
     def test_known_groups_get_friendly_names_and_empty_ones_are_hidden(self):
-        self.config.write_text(TWO_GROUPS)
+        install_conf(self.config, TWO_GROUPS)
         self.service.save("work").raise_for_status()
         window = self.make_window(backend=self.backend)
         window.controller.refresh()
@@ -214,9 +214,10 @@ class SectionChipsTests(RealBackendCase):
         self.assertEqual(self.chips(card), ["Desktop settings"])
 
     def test_unknown_groups_keep_their_own_name(self):
-        self.config.write_text(
+        install_conf(
+            self.config,
             'save:\n  my_vim:\n    location: "$HOME/.config"\n    entries:\n      - vimrc\n'
-            'export:\n  share_folder:\n    location: "$HOME/.local/share"\n    entries: []\n'
+            'export:\n  share_folder:\n    location: "$HOME/.local/share"\n    entries: []\n',
         )
         write(self.root / ".config/vimrc", "set number")
         self.service.save("editor").raise_for_status()

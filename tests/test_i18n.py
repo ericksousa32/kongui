@@ -367,25 +367,6 @@ class LiveSwitchTests(WindowCase):
         self.assertNotEqual(page.search.placeholderText(), placeholder)
         self.assertEqual(len(self.names(page)), 1)
 
-    def test_the_yaml_editor_keeps_its_text(self):
-        from kongui.gui.widgets.dialogs import ConfirmDialog
-
-        # Closing a window with unsaved edits asks first; answer "leave".
-        patcher = mock.patch.object(ConfirmDialog, "ask", return_value=True)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        window = self.open_window(page="config")
-        page = window.pages["config"]
-        self.run_all()
-        page.text_edit.setPlainText("save: {}\nexport: {}\n# my note\n")
-        self.flush()
-        save_text = page.save_button.text()
-        self.switch("pt_BR")
-        self.assertEqual(
-            page.text_edit.toPlainText(), "save: {}\nexport: {}\n# my note\n"
-        )
-        self.assertNotEqual(page.save_button.text(), save_text)
-
     def test_profile_cards_follow(self):
         window = self.open_window(page="profiles")
         page = window.pages["profiles"]
@@ -438,7 +419,7 @@ class LaterComponentsTests(WindowCase):
     def test_dialogs_opened_after_the_switch(self):
         from kongui.gui.widgets.dialogs import (
             ConfirmDialog,
-            GroupNameDialog,
+            DetailsDialog,
             ProfileDialog,
         )
 
@@ -446,13 +427,13 @@ class LaterComponentsTests(WindowCase):
         english = (
             ConfirmDialog(window, "T", "M").cancel_button.text(),
             ProfileDialog(window, [], ["Fonts"]).windowTitle(),
-            GroupNameDialog(window, []).windowTitle(),
+            DetailsDialog(window, "Work", "").windowTitle(),
         )
         self.switch("pt_BR")
         portuguese = (
             ConfirmDialog(window, "T", "M").cancel_button.text(),
             ProfileDialog(window, [], ["Fonts"]).windowTitle(),
-            GroupNameDialog(window, []).windowTitle(),
+            DetailsDialog(window, "Work", "").windowTitle(),
         )
         self.assertEqual(portuguese[0], "Cancelar")
         for first, second in zip(english, portuguese):
@@ -744,9 +725,6 @@ class MessageTests(GuiTestCase):
             messages.failure_title("remove", "A"), "Could not remove profile “A”"
         )
         self.assertEqual(
-            messages.failure_title("save_config", "A"), "Could not save conf.yaml"
-        )
-        self.assertEqual(
             messages.failure_title("nope", ""), "Could not complete the operation"
         )
         self.assertIn(
@@ -761,10 +739,6 @@ class MessageTests(GuiTestCase):
         self.assertEqual(
             messages.failure_title("remove", "A"),
             "Não foi possível remover o perfil “A”",
-        )
-        self.assertEqual(
-            messages.failure_title("save_config", "A"),
-            "Não foi possível salvar o conf.yaml",
         )
         self.assertIn(
             "não existe mais", messages.describe_error(ProfileNotFoundError("x"))[0]
@@ -785,7 +759,6 @@ class MessageTests(GuiTestCase):
             messages.SUCCESS_HINT,
             messages.FAILURE_TITLES,
             messages.FAILURE_TITLES_WITH_NAME,
-            messages.PROBLEM_TEXTS,
             dict(messages._VALIDATION_TEXTS),  # pylint: disable=protected-access
         ]
         for table in tables:
@@ -795,37 +768,15 @@ class MessageTests(GuiTestCase):
                         QCoreApplication.translate("messages", source), source
                     )
 
-    def test_problem_texts_and_positions(self):
-        from kongui.core import Problem
-        from kongui.gui import i18n, messages
-
-        problem = Problem(
-            "error",
-            "missing-top-key",
-            ("export",),
-            "x",
-            line=3,
-            column=2,
-            args={"key": "export"},
-        )
-        i18n.manager().install("en")
-        self.assertEqual(messages.problem_place(problem), "line 3, column 2 · export")
-        self.assertIn("The “export” section is missing", messages.problem_text(problem))
-        self.assertIn("“export: {}”", messages.problem_text(problem))
-        i18n.manager().install("pt_BR")
-        self.assertEqual(messages.problem_place(problem), "linha 3, coluna 2 · export")
-        self.assertIn("Falta a seção “export”", messages.problem_text(problem))
-
     def test_validation_messages(self):
         from kongui.gui import i18n
-        from kongui.gui.validation import group_name_problem, profile_name_problem
+        from kongui.gui.validation import profile_name_problem
 
         i18n.manager().install("en")
         self.assertEqual(profile_name_problem(" "), "Enter a name for the profile.")
         self.assertEqual(
             profile_name_problem("a", ["a"]), "A profile with that name already exists."
         )
-        self.assertEqual(group_name_problem("a/b").split(".")[0], "Invalid name")
         i18n.manager().install("pt_BR")
         self.assertEqual(profile_name_problem(" "), "Informe um nome para o perfil.")
         self.assertEqual(
