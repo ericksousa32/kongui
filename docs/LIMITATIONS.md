@@ -126,6 +126,11 @@ Before **exporting** a profile, make sure the global file and the profile's agre
   from `packages`" (it holds only the `.ts` and `.qm` files, which are included
   through `package_data`; the wheel was checked to contain them).
 * There is no AppImage, no RPM and no Flatpak; the pre-release is a wheel and an sdist.
+  `install.sh` installs the wheel for the user (a virtual environment in
+  `~/.venvs/kongui`, the `kongui` command in `~/.local/bin`, a menu entry), checks it
+  against `SHA256SUMS`, updates and uninstalls it; see the README. KonGUI has **no
+  icon** yet (the menu shows a generic one), the script is for Linux with `python3`
+  3.9 or newer, and it was only run on Fedora-like systems and in the tests.
 
 ## 6. Inherited from Konsave (not fixed here)
 

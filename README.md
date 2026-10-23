@@ -92,53 +92,41 @@ The detailed status of each requirement is in [`docs/FINAL_AUDIT.md`](docs/FINAL
 The pre-releases are on the
 [Releases](https://github.com/ericksousa32/kongui/releases) page (marked *Pre-release*;
 the first one is [`0.1.0a1`](https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1)), each with the wheel, the sdist and a
-`SHA256SUMS` file. There is no RPM, Flatpak or AppImage yet: KonGUI is installed in a
-Python virtual environment, and two small extra steps make it open like any other
-application.
+`SHA256SUMS` file. There is no RPM, Flatpak or AppImage yet: the script `install.sh`
+installs KonGUI for your user in a Python virtual environment and makes it open like
+any other application.
 
 ### 1. Install (once)
 
-Copy the whole block into a terminal on Fedora KDE. Change `VERSION` for a later
-release.
-
 ```bash
-VERSION=0.1.0a1
-
-# Download the wheel and the checksums, and check them
-mkdir -p ~/Downloads/kongui-$VERSION && cd ~/Downloads/kongui-$VERSION
-base=https://github.com/ericksousa32/kongui/releases/download/v$VERSION
-curl -LO "$base/kongui-$VERSION-py3-none-any.whl" -LO "$base/SHA256SUMS"
-sha256sum -c --ignore-missing SHA256SUMS
-
-# Install KonGUI (with PySide6, the "[gui]" part) in its own environment
-python3 -m venv ~/.venvs/kongui
-~/.venvs/kongui/bin/pip install "./kongui-$VERSION-py3-none-any.whl[gui]"
-
-# Make `kongui` a command that works in any terminal...
-mkdir -p ~/.local/bin
-ln -sf ~/.venvs/kongui/bin/kongui ~/.local/bin/kongui
-
-# ...and add KonGUI to the Plasma application menu
-mkdir -p ~/.local/share/applications
-cat > ~/.local/share/applications/kongui.desktop <<EOF
-[Desktop Entry]
-Type=Application
-Name=KonGUI
-Comment=Save and apply KDE Plasma configuration profiles
-Exec=$HOME/.venvs/kongui/bin/kongui
-Icon=preferences-desktop
-Terminal=false
-Categories=Settings;Utility;
-EOF
-kbuildsycoca6 >/dev/null 2>&1 || true   # refresh the menu now (optional)
+curl -fsSLO https://raw.githubusercontent.com/ericksousa32/kongui/master/install.sh
+bash install.sh
 ```
 
-* `python3` is part of Fedora; if it is missing, `sudo dnf install python3`.
-* The virtual environment is needed because KonGUI ships its own copy of the
-  `konsave` Python package and would replace an existing Konsave installation. Only
-  the `kongui` command is linked, never `konsave`.
-* The menu icon is a generic one from the Plasma theme: KonGUI has no icon of its
-  own yet.
+You can read the script before running it (`less install.sh`). It needs no root
+(and refuses to run as root) and only writes inside your home folder:
+
+1. it downloads the wheel of the **newest release** (pre-releases included) from
+   GitHub and checks it against that release's `SHA256SUMS`;
+2. it installs it, with PySide6, in its own virtual environment, `~/.venvs/kongui`
+   (KonGUI ships its own copy of the `konsave` Python package and must not replace an
+   existing Konsave);
+3. it links the `kongui` command into `~/.local/bin` (never `konsave`);
+4. it adds KonGUI to the application menu (`~/.local/share/applications/kongui.desktop`;
+   no icon of its own yet, Plasma shows a generic one).
+
+The first installation downloads PySide6 (Qt) and can take a few minutes. It needs
+`python3` 3.9 or newer, `curl` and `sha256sum`, all part of Fedora.
+
+Options: `bash install.sh --release 0.1.0a1` installs a given release;
+`bash install.sh --wheel ./kongui-0.1.0a1-py3-none-any.whl` installs a wheel you
+already downloaded (checked against a `SHA256SUMS` next to it, if there is one);
+`bash install.sh --help` lists them. From `0.1.0a2` on, `install.sh` is also attached to
+each release and listed in its `SHA256SUMS`.
+
+The script never replaces a file it did not make: a `~/.local/bin/kongui` that is not a
+link, a different `kongui.desktop`, or a `~/.venvs/kongui` folder that is not KonGUI's
+environment are left alone (with a warning, or an error for the folder).
 
 ### 2. Open it (every time)
 
@@ -155,26 +143,45 @@ If a terminal says `kongui: command not found`, open a new terminal. On Fedora,
 `fish_add_path ~/.local/bin`. The full path always works:
 `~/.venvs/kongui/bin/kongui`.
 
-### 3. Update to a new pre-release
+### 3. Update
 
-Download the new wheel as in step 1 (with the new `VERSION`) and, in that folder:
-
-```bash
-~/.venvs/kongui/bin/pip install --upgrade "./kongui-$VERSION-py3-none-any.whl[gui]"
-```
-
-The command and the menu entry keep working: they point to the same environment.
+Run the script again (`bash install.sh`, or with `--release VERSION`). It updates
+KonGUI in the same environment, and the command and the menu entry keep working. If
+the environment stopped working (for example after a Fedora upgrade changed the
+Python version), the script makes it again.
 
 ### 4. Uninstall
 
 ```bash
-rm -r ~/.venvs/kongui
-rm -f ~/.local/bin/kongui ~/.local/share/applications/kongui.desktop
+bash install.sh --uninstall
 ```
 
-Your profiles, safety copies and `conf.yaml` stay where Konsave keeps them
-(`~/.config/konsave`, including `kongui-backups/`), and KonGUI's preferences in
-`~/.config/kongui/`; delete them by hand only if you no longer want them.
+It removes the environment, the command and the menu entry. Your profiles, safety
+copies and `conf.yaml` stay where Konsave keeps them (`~/.config/konsave`, including
+`kongui-backups/`), and KonGUI's preferences in `~/.config/kongui/`; delete them by
+hand only if you no longer want them.
+
+<details>
+<summary>Installing by hand, without the script</summary>
+
+The same steps the script does, for a wheel and `SHA256SUMS` downloaded from the
+release page into the current folder:
+
+```bash
+sha256sum -c --ignore-missing SHA256SUMS
+python3 -m venv ~/.venvs/kongui
+~/.venvs/kongui/bin/pip install "./kongui-0.1.0a1-py3-none-any.whl[gui]"
+mkdir -p ~/.local/bin ~/.local/share/applications
+ln -sf ~/.venvs/kongui/bin/kongui ~/.local/bin/kongui
+printf '[Desktop Entry]\nType=Application\nName=KonGUI\nExec=%s\nTerminal=false\nCategories=Settings;DesktopSettings;Utility;\n' \
+  "$HOME/.venvs/kongui/bin/kongui" > ~/.local/share/applications/kongui.desktop
+```
+
+To update, install the new wheel with `pip install --upgrade` into the same
+environment; to uninstall, delete `~/.venvs/kongui`, `~/.local/bin/kongui` and
+`~/.local/share/applications/kongui.desktop`.
+
+</details>
 
 ### Reporting
 

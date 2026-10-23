@@ -79,9 +79,24 @@ jobs:
           cd /tmp   # not the checkout: the installed package must be the one tested
           /tmp/clean/bin/python "$GITHUB_WORKSPACE/tools/smoke_test.py" --no-gui --expect-version "$VERSION"
 
-      - name: Write the checksums
+      - name: Install the wheel with install.sh in a clean home, then remove it
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
+          home="$(mktemp -d)"
+          # Without PySide6 here (KONGUI_EXTRAS=""): the GUI part is covered by
+          # the smoke test of a user's machine, not by the runner.
+          HOME="$home" KONGUI_EXTRAS="" bash install.sh --wheel "dist/kongui-${VERSION}-py3-none-any.whl"
+          test -L "$home/.local/bin/kongui"
+          grep -q "^Exec=$home/.venvs/kongui/bin/kongui$" "$home/.local/share/applications/kongui.desktop"
+          HOME="$home" bash install.sh --uninstall
+          test ! -e "$home/.venvs/kongui"
+
+      - name: Write the checksums (install.sh is published with the release)
+        run: |
+          set -euo pipefail
+          cp install.sh dist/
           cd dist
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
