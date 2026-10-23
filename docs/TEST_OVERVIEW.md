@@ -69,7 +69,7 @@ end to end and repeating it would add time, not information:
 | Every text translated, catalogs up to date, live language switch on every page | `tests.test_i18n` |
 | Theme contrast, icons, adaptive grid | `tests.test_gui_widgets`, `tests.test_gui_startup` |
 | Refusal to run as root, name rules | `tests.test_safety`, `tests.test_engine`, `tests.test_gui_startup` |
-| Packaging, version, smoke test | `tests.test_packaging`, `tests.test_version`, `tests.test_smoke` |
+| Packaging, version, smoke test, user install script | `tests.test_packaging`, `tests.test_version`, `tests.test_smoke`, `tests.test_install_script` |
 
 ## 3. What the overview found
 
