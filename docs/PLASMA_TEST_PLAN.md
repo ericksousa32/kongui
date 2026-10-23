@@ -44,6 +44,8 @@ Mark each one *ok*, *problem* (describe it) or *not tested*.
 4. Fractional scaling (125% / 150%): no cut-off text or overlapping controls.
 5. Language: with the system in Portuguese the interface is in Portuguese; *Settings
    → Language* switches it live.
+6. Icon (releases after `0.1.0a2`): the menu entry, the window and the task manager
+   show the KonGUI icon, not a generic one; pinning it to the panel keeps it.
 
 ### 2. Save and apply (the part no automated test can cover)
 

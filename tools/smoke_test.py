@@ -11,9 +11,11 @@ real profiles, and it needs no display (Qt's ``offscreen`` platform). The checks
 1. the version of the package (and, with ``--expect-version``, that it is the one
    expected, which is how a release proves that the tag and the build agree);
 2. the bundled ``konsave`` command starts and prints its version;
-3. the translation catalogs were packaged and Qt can load them;
-4. the main window opens in demo mode, shows its five pages and closes;
-5. the process then **exits normally** (the caller checks the exit status, so a
+3. the application icon was packaged (every size and the scalable one);
+4. the translation catalogs were packaged and Qt can load them;
+5. the main window opens in demo mode with the application icon, shows its five
+   pages and closes;
+6. the process then **exits normally** (the caller checks the exit status, so a
    crash while the interpreter shuts down fails the run).
 
 With ``--no-gui`` the translation and window checks are skipped (a machine without
@@ -72,6 +74,23 @@ def check_konsave(home: str, problems: List[str]) -> None:
         problems.append(f"`konsave -v` failed (status {result.returncode})")
 
 
+ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
+
+
+def check_icon_files(problems: List[str]) -> None:
+    """Checks that the application icon files were packaged (no Qt needed)."""
+    import kongui
+
+    folder = Path(kongui.__file__).parent / "gui" / "data" / "icons" / "hicolor"
+    expected = [f"{size}x{size}/apps/kongui.png" for size in ICON_SIZES]
+    expected.append("scalable/apps/kongui.svg")
+    missing = [name for name in expected if not (folder / name).is_file()]
+    if missing:
+        problems.append(f"application icon files missing: {', '.join(missing)}")
+    else:
+        print(f"icon: {len(expected)} files packaged")
+
+
 def check_translations(problems: List[str]) -> None:
     """Checks that the packaged catalogs exist and load."""
     from PySide6.QtCore import QTranslator
@@ -98,6 +117,10 @@ def check_window(problems: List[str]) -> None:
     from kongui.gui.state import AppSettings
 
     app = create_app(["kongui-smoke-test"])
+    if app.windowIcon().isNull():
+        problems.append("the application has no window icon")
+    else:
+        print(f"icon: window icon set ({len(app.windowIcon().availableSizes())} sizes)")
     window = MainWindow(AppSettings(None), FakeBackend(latency=0))
     window.show()
     QTest.qWait(300)
@@ -152,6 +175,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else:
             check_version(args.expect_version, problems)
             check_konsave(home, problems)
+        check_icon_files(problems)
         if args.no_gui:
             print("--no-gui: translation and window checks skipped")
         else:

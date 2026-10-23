@@ -90,8 +90,12 @@ jobs:
           HOME="$home" KONGUI_EXTRAS="" bash install.sh --wheel "dist/kongui-${VERSION}-py3-none-any.whl"
           test -L "$home/.local/bin/kongui"
           grep -q "^Exec=$home/.venvs/kongui/bin/kongui$" "$home/.local/share/applications/kongui.desktop"
+          grep -qx "Icon=kongui" "$home/.local/share/applications/kongui.desktop"
+          test -f "$home/.local/share/icons/hicolor/scalable/apps/kongui.svg"
+          test -f "$home/.local/share/icons/hicolor/48x48/apps/kongui.png"
           HOME="$home" bash install.sh --uninstall
           test ! -e "$home/.venvs/kongui"
+          test ! -e "$home/.local/share/icons/hicolor/scalable/apps/kongui.svg"
 
       - name: Write the checksums (install.sh is published with the release)
         run: |

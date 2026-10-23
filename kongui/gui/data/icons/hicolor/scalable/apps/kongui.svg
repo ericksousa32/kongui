@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Kongui</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a3652"/>
+      <stop offset="1" stop-color="#2a2740"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+  <g fill="#ffffff" transform="translate(128 128) scale(2.05) translate(-55 -51)">
+    <polygon points="40,24 55,24 50.5,44 68,24 84,24 52,59 37,78 26,64"/>
+    <polygon points="57,59 66,51.5 84,78 68,78"/>
+  </g>
+</svg>
