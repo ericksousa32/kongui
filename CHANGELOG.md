@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0a1] - TBD
+First KonGUI release (alpha, GitHub pre-release). The date is the day the tag
+`v0.1.0a1` is created; until then this heading says TBD. Versions below 0.1.0a1
+are those of the original Konsave.
+
 ### Added
 - (KonGUI) Interface language: English and Brazilian Portuguese with Qt translations, first-run detection from the system locale, a *Settings → Language* selector and live switching. See `docs/GUI_PROTOTYPE.md`
 - (KonGUI patch) Cross-process lock, `konsave/lock.py` + `konsave/__main__.py`: commands wait for other Konsave operations (`KONSAVE_LOCK_TIMEOUT`, exit code 75 on timeout). See `docs/KONSAVE_PATCHES.md`
@@ -253,4 +259,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.0.2]: https://github.com/Prayag2/konsave/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Prayag2/konsave/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Prayag2/konsave/compare/6b4a0c0bbf8c29684cc2a334065314bc8e4ea529...v1.0.0
-[Unreleased]: https://github.com/Prayag2/konsave/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ericksousa32/kongui/compare/v0.1.0a1...HEAD
+[0.1.0a1]: https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1

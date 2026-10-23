@@ -4,7 +4,7 @@
 A graphical interface for managing KDE Plasma configuration profiles, built as an independent fork of <a href="https://github.com/Prayag2/konsave">Konsave</a>.
 </p>
 
-> **Status: early development, preparing the first alpha pre-release.** No version has been tagged yet (no installable package or AppImage), and testing on a live Plasma session is in progress. When the alpha is published it will be a GitHub *pre-release*: see [Installing the pre-release](#installing-the-pre-release). Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
+> **Status: early development. The first alpha, `0.1.0a1`, is prepared but not tagged yet** (no installable package or AppImage until then); it will be tagged after the testing on a live Plasma session is recorded. When the alpha is published it will be a GitHub *pre-release*: see [Installing the pre-release](#installing-the-pre-release). Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
 
 ## Overview
 
