@@ -160,7 +160,8 @@ Before tagging the first alpha:
 * [ ] `dev` is merged into `master`, and `master` passes the whole suite on the
   system Python and in a virtual environment (§3, step 1). The suite also ran on
   Python 3.9 to 3.14 ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
-* [ ] `CHANGELOG.md` has the release under its own heading and the README status line
+* [ ] `CHANGELOG.md` has the release under its own heading, with the date of the tag
+  in place of `TBD`, and the README status line
   is up to date.
 * [ ] **Repository settings** (they cannot be set from the code): *Settings → Actions
   → General → Workflow permissions* must allow `GITHUB_TOKEN` to create releases
