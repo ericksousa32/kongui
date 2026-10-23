@@ -4,7 +4,7 @@
 A graphical interface for managing KDE Plasma configuration profiles, built as an independent fork of <a href="https://github.com/Prayag2/konsave">Konsave</a>.
 </p>
 
-> **Status: early development. The first alpha, `0.1.0a1`, is prepared but not tagged yet** (no installable package or AppImage until then). A first quick test on a real Plasma session (Fedora 44, Wayland) found no blocker; some checks are still to be done. When the alpha is published it will be a GitHub *pre-release*: see [Installing the pre-release](#installing-the-pre-release). Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
+> **Status: early development. The first alpha, [`0.1.0a1`](https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1), is out as a GitHub *pre-release* (2026-10-22)**: see [Installing the pre-release](#installing-the-pre-release). A first quick test on a real Plasma session (Fedora 44, Wayland) found no blocker; some checks are still to be done. Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
 
 ## Overview
 
@@ -60,7 +60,6 @@ Konsave writes the global `conf.yaml` into the `.knsv` when exporting, even if t
 ### Planned
 
 - Progress reporting and cancelling of long operations that have already started. The original engine cannot be interrupted today.
-- The first tagged alpha pre-release. Everything is prepared (package name, version from the tag, release workflow `.github/workflows/release.yml`, smoke test, the first real-session report), but no tag, wheel or AppImage has been published yet.
 
 ### Known limitations
 
@@ -90,9 +89,10 @@ The detailed status of each requirement is in [`docs/FINAL_AUDIT.md`](docs/FINAL
 > read [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). Help with the real-session checks
 > is very welcome: [`docs/PLASMA_TEST_PLAN.md`](docs/PLASMA_TEST_PLAN.md).
 
-When the first pre-release exists, it is on the
-[Releases](https://github.com/ericksousa32/kongui/releases) page (marked *Pre-release*)
-with the wheel, the sdist and a `SHA256SUMS` file. On Fedora KDE:
+The pre-releases are on the
+[Releases](https://github.com/ericksousa32/kongui/releases) page (marked *Pre-release*;
+the first one is [`0.1.0a1`](https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1)), each with the wheel, the sdist and a
+`SHA256SUMS` file. On Fedora KDE:
 
 ```bash
 sudo dnf install python3 python3-pip       # usually already there
@@ -222,11 +222,10 @@ Known limits: the fictitious data of `--demo` (profile names, descriptions and a
 No dates are promised. In rough order of priority:
 
 1. More real Plasma session testing (X11, SELinux, Flatpak, quitting during an operation), the small layout adjustments the first test asked for, and fixes for what users report.
-2. A first tagged pre-release (alpha) on GitHub. The release workflow and the package name are ready; the first real-session report found no blocker; the tag is created by the owner (steps in [`docs/RELEASING.md`](docs/RELEASING.md) §3).
-3. AppImage packaging, only after a working, tested build exists.
-4. Progress and cancellation for operations already running, if the engine allows it.
+2. AppImage packaging, only after a working, tested build exists.
+3. Progress and cancellation for operations already running, if the engine allows it.
 
-Done so far: safety copies, cross-process lock, import and export limits, profile descriptions and sections.
+Done so far: safety copies, cross-process lock, import and export limits, profile descriptions and sections, and the first alpha pre-release, `0.1.0a1` (2026-10-22).
 
 ## Compatibility
 
