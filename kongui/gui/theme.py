@@ -311,7 +311,6 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
 
 #Sidebar {{ background: {c['sidebar']}; border-right: 1px solid {c['border']}; }}
-#BrandMark {{ background: transparent; }}
 QLabel[role="brand"] {{ color: {c['text']}; }}
 QToolButton#NavButton {{
     text-align: left; padding: 9px 12px; border: 1px solid transparent;

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Iterable, List, Optional, Tuple
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QIcon
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPaintEvent
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -291,6 +291,38 @@ class IconTile(QFrame):
         """
         self._icon_name = name
         self._refresh()
+
+
+class AppLogo(QWidget):
+    """The application icon at a fixed size (side bar, About page).
+
+    It is painted from the packaged icon files, so Qt picks the best one for the
+    size and the screen's pixel ratio (sharp at 125 % or 200 %).
+    """
+
+    def __init__(self, size: int) -> None:
+        """Creates the logo.
+
+        Args:
+            size: Side of the logo in pixels.
+        """
+        super().__init__()
+        self.setObjectName("AppLogo")
+        self.setFixedSize(size, size)
+        self.setAccessibleName("KonGUI")
+        self._icon = icons.app_icon()
+
+    def is_empty(self) -> bool:
+        """Whether there is no icon to paint (files missing from the package)."""
+        return self._icon.isNull()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # pylint: disable=invalid-name
+        """Paints the icon over the whole widget."""
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        self._icon.paint(painter, self.rect())
+        painter.end()
 
 
 class Separator(QFrame):

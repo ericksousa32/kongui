@@ -58,10 +58,10 @@ size of 900 × 600.
 | `actions.py` | confirmation dialogs and calls to the controller; notice and activity for each result |
 | `validation.py` | name rules (reuses `kongui.core.safety.validate_profile_name`) |
 | `theme.py` | color tokens, Qt palette, style sheet and `ThemeManager` |
-| `icons.py` | SVG icons drawn in code and colored by the theme; `app_icon()`, the application icon read from `data/icons/hicolor` (window icon, set in `app.py`, and the mark at the top of the side bar) |
+| `icons.py` | SVG icons drawn in code and colored by the theme; `app_icon()`, the application icon read from `data/icons/hicolor` (window icon, set in `app.py`; drawn in the pages by `widgets.common.AppLogo`) |
 | `data/icons/hicolor/` | the application icon (`kongui.png` in 8 sizes, 16–512 px, and `scalable/apps/kongui.svg`), packaged with the wheel; `install.sh` copies it into the user's icon theme for the menu entry |
 | `formatting.py` | sizes, dates and relative dates in the language in use |
-| `widgets/` | reusable pieces: `common` (button, label, badge, card, segmented control), `grid` (adaptive grid), `cards`, `shell` (side and top bars), `states` (empty state), `search`, `toast`, `dialogs`, `dropzone`, `rows`, `feedback` (busy bar, wait banner and error strip) |
+| `widgets/` | reusable pieces: `common` (button, label, badge, card, segmented control, `AppLogo`: the application icon at the top of the side bar and on the About page), `grid` (adaptive grid), `cards`, `shell` (side and top bars), `states` (empty state), `search`, `toast`, `dialogs`, `dropzone`, `rows`, `feedback` (busy bar, wait banner and error strip) |
 | `pages/` | one class per page, on top of `pages/base.py` |
 
 Rules followed: colors only come from `Tokens`; icons are rebuilt when
