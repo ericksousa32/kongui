@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Collection, List, Optional, Sequence, Tuple
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -17,8 +17,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from kongui.core import MAX_DESCRIPTION_CHARS
 from kongui.gui.formatting import format_datetime, format_kib
-from kongui.gui.validation import group_name_problem, profile_name_problem
+from kongui.gui.validation import profile_name_problem
 from kongui.gui.widgets.common import Button, Label, repolish
 
 
@@ -224,6 +225,7 @@ class ProfileDialog(BaseDialog):
         title: str = "",
         confirm_text: str = "",
         ask_details: bool = True,
+        ask_sections: Optional[bool] = None,
     ) -> None:
         """Creates the dialog.
 
@@ -233,8 +235,11 @@ class ProfileDialog(BaseDialog):
             sections: Section names offered as check boxes (all start checked).
             title: Heading; defaults to "Save current profile".
             confirm_text: Label of the confirm button; defaults to "Save".
-            ask_details: Show the description and the section check boxes. Off
-                when the backend cannot store them (only the name is asked).
+            ask_details: Show the description box. Off when the backend cannot
+                store descriptions.
+            ask_sections: Show the section check boxes. ``None`` (the default)
+                follows ``ask_details``; real backends cannot choose what a
+                profile contains, so they pass ``False``.
         """
         super().__init__(
             parent,
@@ -257,6 +262,8 @@ class ProfileDialog(BaseDialog):
         if ask_details:
             self.body.addWidget(Label(self.tr("Description (optional)"), "muted"))
             self.body.addWidget(self.description_edit)
+            self.description_edit.textChanged.connect(self._update)
+        if ask_details if ask_sections is None else ask_sections:
             self.body.addWidget(Label(self.tr("What to include"), "muted"))
             for section in sections:
                 check = QCheckBox(section)
@@ -273,6 +280,8 @@ class ProfileDialog(BaseDialog):
         problem = profile_name_problem(self.name_edit.text(), self._existing)
         if problem:
             return problem
+        if description_problem(self.description_edit.toPlainText()):
+            return description_problem(self.description_edit.toPlainText())
         if self._no_section_chosen():
             return self.tr("Choose at least one section.")
         return None
@@ -288,7 +297,16 @@ class ProfileDialog(BaseDialog):
         error = self.validation_error()
         typed = bool(self.name_edit.text())
         # Do not scold before the user typed anything.
-        shown = error if error and (typed or self._no_section_chosen()) else ""
+        shown = (
+            error
+            if error
+            and (
+                typed
+                or self._no_section_chosen()
+                or description_problem(self.description_edit.toPlainText())
+            )
+            else ""
+        )
         self.error_label.setText(shown)
         self.error_label.setVisible(bool(shown))
         self.name_edit.setProperty("invalid", bool(error and typed))
@@ -321,138 +339,67 @@ class ProfileDialog(BaseDialog):
         super().keyPressEvent(event)
 
 
-class ChoiceDialog(BaseDialog):
-    """Offers a few named ways forward and a cancel.
+def description_problem(text: str) -> Optional[str]:
+    """Returns what is wrong with a profile description, or ``None``.
 
-    After ``exec()``, :attr:`choice` is the key of the button pressed, or
-    ``"cancel"``.
+    Args:
+        text: The text typed by the user.
+
+    Returns:
+        Optional[str]: A sentence in the interface language when the text is
+        longer than :data:`~kongui.core.MAX_DESCRIPTION_CHARS` characters.
     """
+    if len(text.strip()) > MAX_DESCRIPTION_CHARS:
+        return QCoreApplication.translate(
+            "ProfileDialog",
+            "The description is too long (at most {limit} characters).",
+        ).format(limit=MAX_DESCRIPTION_CHARS)
+    return None
+
+
+class DetailsDialog(BaseDialog):
+    """Edits the description of an existing profile."""
 
     def __init__(
-        self,
-        parent: Optional[QWidget],
-        title: str,
-        message: str,
-        choices: Sequence[Tuple[str, str, str]],
+        self, parent: Optional[QWidget], profile_name: str, description: str = ""
     ) -> None:
         """Creates the dialog.
 
         Args:
             parent: Parent window.
-            title: Heading.
-            message: Explanation.
-            choices: ``(key, label, variant)`` buttons, left to right.
-        """
-        super().__init__(parent, title, "", "primary")
-        self.choice = "cancel"
-        self.body.addWidget(Label(message, wrap=True))
-        self.confirm_button.hide()
-        self.choice_buttons = {}
-        for key, label, variant in choices:
-            button = Button(label, variant=variant)
-            button.clicked.connect(lambda _checked=False, k=key: self._pick(k))
-            self.button_row.insertWidget(self.button_row.count() - 1, button)
-            self.choice_buttons[key] = button
-        self.cancel_button.setFocus()
-
-    def _pick(self, key: str) -> None:
-        """Records the choice and closes."""
-        self.choice = key
-        self.accept()
-
-    @classmethod
-    def ask(
-        cls,
-        parent: Optional[QWidget],
-        title: str,
-        message: str,
-        choices: Sequence[Tuple[str, str, str]],
-    ) -> str:
-        """Shows the dialog and waits.
-
-        Returns:
-            str: The key of the chosen button, or ``cancel``.
-        """
-        dialog = cls(parent, title, message, choices)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return "cancel"
-        return dialog.choice
-
-
-class GroupNameDialog(BaseDialog):
-    """Asks for the name of a new ``save``/``export`` group."""
-
-    def __init__(
-        self,
-        parent: Optional[QWidget],
-        existing: Collection[str],
-        *,
-        title: str = "",
-        confirm_text: str = "",
-    ) -> None:
-        """Creates the dialog.
-
-        Args:
-            parent: Parent window.
-            existing: Names already used in the section.
-            title: Heading; defaults to "New group".
-            confirm_text: Label of the confirm button; defaults to "Add".
+            profile_name: Profile being edited (shown, not editable).
+            description: Current description.
         """
         super().__init__(
             parent,
-            title or self.tr("New group"),
-            confirm_text or self.tr("Add"),
+            self.tr("Edit details"),
+            self.tr("Save"),
             "primary",
         )
-        self._existing = set(existing)
-        self.body.addWidget(
-            Label(
-                self.tr(
-                    "The group name is also the name of the folder inside the "
-                    "saved profile."
-                ),
-                "muted",
-                wrap=True,
-            )
-        )
-        self.name_edit = QLineEdit()
-        self.name_edit.setAccessibleName(self.tr("Group name"))
-        self.name_edit.setPlaceholderText(self.tr("E.g.: configs"))
-        self.body.addWidget(self.name_edit)
+        self.profile_name = profile_name
+        self.body.addWidget(Label(profile_name, "h2"))
+        self.body.addWidget(Label(self.tr("Description"), "muted"))
+        self.description_edit = QPlainTextEdit()
+        self.description_edit.setFixedHeight(96)
+        self.description_edit.setAccessibleName(self.tr("Profile description"))
+        self.description_edit.setPlainText(description)
+        self.body.addWidget(self.description_edit)
         self.error_label = Label("", "danger", wrap=True)
         self.body.addWidget(self.error_label)
-        self.name_edit.textChanged.connect(self._update)
+        self.description_edit.textChanged.connect(self._update)
         self._update()
-        self.name_edit.setFocus()
+        self.description_edit.setFocus()
 
     def _update(self) -> None:
-        """Refreshes the error text and the confirm button."""
-        error = group_name_problem(self.name_edit.text(), self._existing)
-        typed = bool(self.name_edit.text())
-        self.error_label.setText(error if error and typed else "")
-        self.error_label.setVisible(bool(error and typed))
-        self.confirm_button.setEnabled(error is None)
+        """Refreshes the error text and the save button."""
+        problem = description_problem(self.description_edit.toPlainText())
+        self.error_label.setText(problem or "")
+        self.error_label.setVisible(bool(problem))
+        self.confirm_button.setEnabled(problem is None)
 
-    def keyPressEvent(self, event) -> None:  # pylint: disable=invalid-name
-        """Ignores Enter while the name is invalid."""
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not (
-            self.confirm_button.isEnabled()
-        ):
-            event.ignore()
-            return
-        super().keyPressEvent(event)
-
-    @classmethod
-    def ask(cls, parent: Optional[QWidget], existing: Collection[str]) -> Optional[str]:
-        """Shows the dialog and waits.
-
-        Returns:
-            Optional[str]: The name, or ``None`` if cancelled.
-        """
-        dialog = cls(parent, existing)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return None
-        return dialog.name_edit.text()
+    def value(self) -> str:
+        """Returns the text the user typed (surrounding blanks removed)."""
+        return self.description_edit.toPlainText().strip()
 
 
 class SafetyCopiesDialog(BaseDialog):
@@ -591,123 +538,3 @@ class SafetyCopiesDialog(BaseDialog):
         copy = self.selected()
         if copy is not None and not self._busy:
             self._on_delete(copy)
-
-
-class BackupsDialog(BaseDialog):
-    """Lists the saved previous versions of ``conf.yaml`` and previews them.
-
-    After ``exec()``, :attr:`chosen` is the backup to restore, or ``None``.
-    """
-
-    def __init__(
-        self,
-        parent: Optional[QWidget],
-        backups: Sequence[Any],
-        loader: Callable[
-            [str, Callable[[Optional[str], Optional[BaseException]], None]], None
-        ],
-    ) -> None:
-        """Creates the dialog.
-
-        Args:
-            parent: Parent window.
-            backups: ``BackupInfo`` items, newest first.
-            loader: ``loader(name, on_done)`` reads a backup in the background
-                and calls ``on_done(text, error)`` in the interface thread.
-        """
-        super().__init__(
-            parent,
-            self.tr("conf.yaml backups"),
-            self.tr("Restore this backup"),
-            "primary",
-        )
-        self.cancel_button.setText(self.tr("Close"))
-        self.setMinimumWidth(640)
-        self.chosen: Optional[str] = None
-        self._loader = loader
-        self._token = 0
-        self._names: List[str] = []
-        self.body.addWidget(
-            Label(
-                self.tr(
-                    "Each time conf.yaml is saved or restored, the previous "
-                    "version is kept next to it. Restoring also keeps the "
-                    "current version."
-                ),
-                "muted",
-                wrap=True,
-            )
-        )
-        self.list_widget = QListWidget()
-        self.list_widget.setAccessibleName(self.tr("Available backups"))
-        self.list_widget.setMaximumHeight(150)
-        self.body.addWidget(self.list_widget)
-        self.empty_label = Label(self.tr("There are no backups yet."), "muted")
-        self.body.addWidget(self.empty_label)
-        self.preview = QPlainTextEdit()
-        self.preview.setReadOnly(True)
-        self.preview.setMinimumHeight(200)
-        self.preview.setAccessibleName(self.tr("Backup contents"))
-        self.body.addWidget(self.preview)
-        self.status_label = Label("", "danger", wrap=True)
-        self.body.addWidget(self.status_label)
-        for info in backups:
-            item = QListWidgetItem(
-                self.tr("{when}  ·  {size}  ·  {name}").format(
-                    when=format_datetime(info.created),
-                    size=format_kib(info.size_bytes),
-                    name=info.name,
-                )
-            )
-            self.list_widget.addItem(item)
-            self._names.append(info.name)
-        self.list_widget.setVisible(bool(self._names))
-        self.empty_label.setVisible(not self._names)
-        self.preview.setVisible(bool(self._names))
-        self.confirm_button.setEnabled(False)
-        self.list_widget.currentRowChanged.connect(self._select)
-        self.confirm_button.clicked.disconnect()
-        self.confirm_button.clicked.connect(self._restore)
-        if self._names:
-            self.list_widget.setCurrentRow(0)
-
-    def selected_name(self) -> Optional[str]:
-        """The backup highlighted in the list, if any."""
-        row = self.list_widget.currentRow()
-        return self._names[row] if 0 <= row < len(self._names) else None
-
-    def _select(self, row: int) -> None:
-        """Loads the preview of the highlighted backup."""
-        self._token += 1
-        token = self._token
-        self.status_label.setText("")
-        self.preview.setPlainText("")
-        self.confirm_button.setEnabled(False)
-        if not 0 <= row < len(self._names):
-            return
-        name = self._names[row]
-        self.preview.setPlainText(self.tr("Loading…"))
-        self._loader(name, lambda text, error: self._loaded(token, text, error))
-
-    def _loaded(
-        self, token: int, text: Optional[str], error: Optional[BaseException]
-    ) -> None:
-        """Shows the preview unless the selection moved on."""
-        if token != self._token:
-            return
-        if error is not None or text is None:
-            self.preview.setPlainText("")
-            self.status_label.setText(
-                self.tr("Could not read this backup: {reason}").format(
-                    reason=str(error) or self.tr("unknown error")
-                )
-            )
-            return
-        self.preview.setPlainText(text)
-        self.confirm_button.setEnabled(True)
-
-    def _restore(self) -> None:
-        """Records the backup to restore and closes."""
-        self.chosen = self.selected_name()
-        if self.chosen is not None:
-            self.accept()

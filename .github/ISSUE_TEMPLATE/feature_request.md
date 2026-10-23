@@ -1,20 +1,19 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
-title: '[Feature Request]'
+about: Suggest an idea for KonGUI
+title: '[Feature] '
 labels: 'enhancement'
-assignees: 'prayag2'
-
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+> Before asking, please look at [`docs/LIMITATIONS.md`](../../docs/LIMITATIONS.md):
+> it lists what was decided on purpose (for example, choosing what a profile includes
+> is done in *Edit .YAML*) and what is still open.
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+**The problem you are trying to solve**
+For example: "I always have to … when …".
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+**What you would like to happen**
+
+**Alternatives you have considered**
 
 **Additional context**
-Add any other context or screenshots about the feature request here.

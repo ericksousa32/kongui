@@ -21,7 +21,6 @@ from kongui.gui.context import AppContext
 from kongui.gui.controller import ProfileController
 from kongui.gui.mock_data import demo_activity
 from kongui.gui.pages.about import AboutPage
-from kongui.gui.pages.config import ConfigPage
 from kongui.gui.pages.base import Page
 from kongui.gui.pages.dashboard import DashboardPage
 from kongui.gui.pages.profiles import ProfilesPage
@@ -39,7 +38,6 @@ PAGE_CLASSES: List[Type[Page]] = [
     ProfilesPage,
     TransferPage,
     SettingsPage,
-    ConfigPage,
     AboutPage,
 ]
 
@@ -47,7 +45,7 @@ PAGE_CLASSES: List[Type[Page]] = [
 class MainWindow(QMainWindow):
     """The application window.
 
-    Shortcuts: ``Ctrl+1`` … ``Ctrl+6`` switch pages, ``Ctrl+F`` focuses the
+    Shortcuts: ``Ctrl+1`` … ``Ctrl+5`` switch pages, ``Ctrl+F`` focuses the
     profile search, ``Ctrl+N`` / ``Ctrl+S`` open the "save profile" dialog
     while the matching page is visible.
     """
@@ -220,7 +218,7 @@ class MainWindow(QMainWindow):
 
         Args:
             key: Page key (``dashboard``, ``profiles``, ``transfer``,
-                ``config``, ``settings`` or ``about``).
+                ``settings`` or ``about``).
 
         Returns:
             Page: The page now visible.

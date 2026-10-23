@@ -19,7 +19,15 @@ from kongui.gui.controller import LoadState, ProfileController
 from kongui.gui.state import AppSettings, ProfileStore
 from kongui.gui.tasks import InlineExecutor
 from tests.gui_helpers import GuiTestCase
-from tests.helpers import BASE_CONF, make_knsv, non_root, really_root, write
+from tests.helpers import (
+    install_conf,
+    BASE_CONF,
+    make_knsv,
+    no_logs,
+    non_root,
+    really_root,
+    write,
+)
 
 
 def snapshot_dir(folder):
@@ -47,7 +55,7 @@ class RealBackendCase(GuiTestCase):
         (self.root / ".local/share").mkdir(parents=True, exist_ok=True)
         engine = KonsaveEngine(self.root, euid_provider=non_root)
         self.config = ConfigService(engine)
-        self.config.write_text(BASE_CONF)
+        install_conf(self.config, BASE_CONF)
         self.engine = engine
         self.service = ProfileService(engine, self.config)
         self.backend = ServiceBackend(self.service)
@@ -100,7 +108,7 @@ class RealListTests(RealBackendCase):
 
         self.service.list_profiles = boom
         try:
-            with self.assertNoLogs(level="ERROR"):
+            with no_logs(self, "ERROR"):
                 self.controller.refresh()
         finally:
             self.service.list_profiles = original
@@ -192,6 +200,18 @@ class RealApplyTests(RealBackendCase):
         self.assertTrue(self.last().ok, self.last().details)
         self.assertEqual((self.root / ".config/kdeglobals").read_text(), "kdeglobals-A")
         self.assertEqual(self.store.active().name, "work")
+
+    def test_a_refused_apply_says_why(self):
+        # Found by tests.test_gui_overview: the refusal reached the interface
+        # with an empty explanation.
+        self.controller.save("work")
+        conf = self.folder("work") / "conf.yaml"
+        conf.write_text(
+            conf.read_text().replace('"$HOME/.config"', '"$HOME/gone/deeper"')
+        )
+        self.controller.apply("work", confirmed=True)
+        self.assertFalse(self.last().ok)
+        self.assertIn("nor its parent exists", " ".join(self.last().details))
 
     def test_applying_a_missing_profile_is_an_error_and_changes_nothing(self):
         write(self.root / ".config/kdeglobals", "KEEP")

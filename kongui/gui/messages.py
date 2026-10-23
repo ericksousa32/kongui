@@ -17,15 +17,15 @@ from PySide6.QtCore import QCoreApplication as Q
 from PySide6.QtCore import QT_TRANSLATE_NOOP
 
 from kongui.core import (
-    CONF_DIFFERS_PREFIX,
+    DESCRIPTION_NOT_REMOVED,
+    DESCRIPTION_NOT_SAVED,
+    MAX_DESCRIPTION_CHARS,
     KEPT_PREFIX,
     UNDO_PREFIX,
     ArchiveExistsError,
     ArchiveLimitError,
-    BackupNotFoundError,
-    ConfigConflictError,
+    ConfigError,
     ConfigMissingError,
-    ConfigValidationError,
     ConfirmationRequiredError,
     InsufficientSpaceError,
     KonGuiError,
@@ -35,7 +35,6 @@ from kongui.core import (
     LockUnavailableError,
     OperationFailedError,
     OperationResult,
-    Problem,
     ProfileExistsError,
     ProfileInvalidError,
     ProfileNotFoundError,
@@ -56,6 +55,9 @@ FAILURE_TITLES_WITH_NAME = {
     "duplicate": QT_TRANSLATE_NOOP("messages", "Could not duplicate profile “{name}”"),
     "import": QT_TRANSLATE_NOOP("messages", "Could not import profile “{name}”"),
     "export": QT_TRANSLATE_NOOP("messages", "Could not export profile “{name}”"),
+    "set_description": QT_TRANSLATE_NOOP(
+        "messages", "Could not update the details of “{name}”"
+    ),
 }
 
 #: Failure headline of each operation (no profile name).
@@ -69,11 +71,10 @@ FAILURE_TITLES = {
     "duplicate": QT_TRANSLATE_NOOP("messages", "Could not duplicate the profile"),
     "import": QT_TRANSLATE_NOOP("messages", "Could not import the profile"),
     "export": QT_TRANSLATE_NOOP("messages", "Could not export the profile"),
-    "reset": QT_TRANSLATE_NOOP("messages", "Could not restore the data"),
-    "save_config": QT_TRANSLATE_NOOP("messages", "Could not save conf.yaml"),
-    "restore_config": QT_TRANSLATE_NOOP(
-        "messages", "Could not restore the conf.yaml backup"
+    "set_description": QT_TRANSLATE_NOOP(
+        "messages", "Could not update the profile details"
     ),
+    "reset": QT_TRANSLATE_NOOP("messages", "Could not restore the data"),
     "restore_backup": QT_TRANSLATE_NOOP(
         "messages", "Could not restore the safety copy"
     ),
@@ -90,9 +91,8 @@ SUCCESS = {
     "duplicate": QT_TRANSLATE_NOOP("messages", "Profile “{name}” duplicated"),
     "import": QT_TRANSLATE_NOOP("messages", "Profile “{name}” imported"),
     "export": QT_TRANSLATE_NOOP("messages", "Profile “{name}” exported"),
+    "set_description": QT_TRANSLATE_NOOP("messages", "Details of “{name}” updated"),
     "reset": QT_TRANSLATE_NOOP("messages", "Fictitious profiles restored"),
-    "save_config": QT_TRANSLATE_NOOP("messages", "conf.yaml saved"),
-    "restore_config": QT_TRANSLATE_NOOP("messages", "conf.yaml backup restored"),
     "restore_backup": QT_TRANSLATE_NOOP("messages", "Safety copy restored"),
     "delete_backup": QT_TRANSLATE_NOOP("messages", "Safety copy deleted"),
 }
@@ -127,6 +127,52 @@ def success_title(operation: str, name: str) -> str:
         "messages", "Operation completed"
     )
     return Q.translate("messages", source).format(name=name)
+
+
+def partial_title(operation: str, name: str) -> str:
+    """Returns the headline of an operation that worked only in part.
+
+    Args:
+        operation: Operation key.
+        name: Profile name.
+
+    Returns:
+        str: For example ``Profile “Work” saved, but not its description``.
+    """
+    del operation  # only saving can end this way for now
+    return Q.translate(
+        "messages", "Profile “{name}” saved, but not its description"
+    ).format(name=name)
+
+
+def is_partial(result: Optional[OperationResult]) -> bool:
+    """Tells whether a successful result carries a "description not saved" note."""
+    return result is not None and any(
+        line.startswith(DESCRIPTION_NOT_SAVED) for line in result.warnings
+    )
+
+
+#: Friendly names of the ``save`` groups of the default Konsave configuration.
+#: Any other group keeps its own name (it is whatever the user wrote).
+SECTION_LABELS = {
+    "configs": QT_TRANSLATE_NOOP("messages", "Desktop settings"),
+    "app_layouts": QT_TRANSLATE_NOOP("messages", "App layouts"),
+    "autostart": QT_TRANSLATE_NOOP("messages", "Startup apps"),
+}
+
+
+def section_label(name: str) -> str:
+    """Returns the name shown for a profile section (a ``save`` group).
+
+    Args:
+        name: Group name as written in ``conf.yaml``.
+
+    Returns:
+        str: The friendly name in the interface language for the groups of the
+        default configuration, otherwise ``name`` unchanged.
+    """
+    source = SECTION_LABELS.get(name)
+    return Q.translate("messages", source) if source else name
 
 
 def _limit(lines, count: int = 4) -> Tuple[str, ...]:
@@ -234,6 +280,23 @@ def describe_note(line: str) -> str:
     )
 
 
+def _describe_description_warning(line: str) -> Optional[str]:
+    """Translates the warnings about the description file, or returns ``None``."""
+    if line.startswith(DESCRIPTION_NOT_SAVED):
+        return Q.translate(
+            "messages",
+            "The profile was saved, but its description could not be written: "
+            "{reason}",
+        ).format(reason=line[len(DESCRIPTION_NOT_SAVED) :])
+    if line.startswith(DESCRIPTION_NOT_REMOVED):
+        return Q.translate(
+            "messages",
+            "The description that came inside the archive could not be removed: "
+            "{reason}",
+        ).format(reason=line[len(DESCRIPTION_NOT_REMOVED) :])
+    return None
+
+
 def describe_warning(line: str) -> str:
     """Translates a non-blocking warning of the services.
 
@@ -244,16 +307,6 @@ def describe_warning(line: str) -> str:
         str: Text in the interface language; warnings it does not know are
         returned unchanged.
     """
-    if line.startswith(CONF_DIFFERS_PREFIX):
-        found = line.rsplit("): ", 1)[-1]
-        return Q.translate(
-            "messages",
-            "The .knsv carries Konsave's current conf.yaml, which differs from "
-            "the conf.yaml stored in this profile. Groups: {found} (+ only in "
-            "the current one, − only in the profile, ~ changed). On another "
-            "computer, a new group prevents applying the profile and a group "
-            "that disappeared is ignored without warning.",
-        ).format(found=found)
     match = _KEPT.match(line)
     if match:
         return Q.translate(
@@ -265,6 +318,9 @@ def describe_warning(line: str) -> str:
         return Q.translate(
             "messages", "The state before the restore was stored in {id}."
         ).format(id=match.group(1))
+    described = _describe_description_warning(line)
+    if described:
+        return described
     match = _NO_DATA_FOLDER.match(line)
     if match:
         return Q.translate(
@@ -318,6 +374,12 @@ def _failure_reason(text: str) -> Optional[str]:
     """
     if "[Errno 28]" in text or "No space left on device" in text:
         return _no_space_text()
+    if "description could not be carried over" in text:
+        return Q.translate(
+            "messages",
+            "The profile was not replaced because its description could not be "
+            "copied to the new version. The previous profile is intact.",
+        )
     if "BadZipFile" in text or "Bad CRC-32" in text:
         return Q.translate(
             "messages",
@@ -384,6 +446,12 @@ _VALIDATION_TEXTS = (
         QT_TRANSLATE_NOOP("messages", "No write permission in the destination folder."),
     ),
     (
+        "description too long",
+        QT_TRANSLATE_NOOP(
+            "messages", "The description is too long (at most {limit} characters)."
+        ),
+    ),
+    (
         "stale import folder",
         QT_TRANSLATE_NOOP(
             "messages",
@@ -391,168 +459,6 @@ _VALIDATION_TEXTS = (
         ),
     ),
 )
-
-
-#: English source of the explanation of each kind of ``conf.yaml`` finding
-#: (``Problem.code``). ``{…}`` fields are taken from ``Problem.args``.
-PROBLEM_TEXTS = {
-    "file-missing": QT_TRANSLATE_NOOP("messages", "The conf.yaml file does not exist."),
-    "file-too-large": QT_TRANSLATE_NOOP(
-        "messages", "The file is too large to be a Konsave configuration."
-    ),
-    "file-unreadable": QT_TRANSLATE_NOOP(
-        "messages", "The file could not be read: {detail}"
-    ),
-    "yaml-syntax": QT_TRANSLATE_NOOP(
-        "messages",
-        "The YAML is malformed: {problem}. Fix the syntax (indentation, quotes, "
-        "colons or brackets) at this point.",
-    ),
-    "root-not-mapping": QT_TRANSLATE_NOOP(
-        "messages",
-        "The file must be a map with the “save” and “export” sections at the root.",
-    ),
-    "missing-top-key": QT_TRANSLATE_NOOP(
-        "messages",
-        "The “{key}” section is missing. Konsave requires both sections, “save” "
-        "and “export”; use “{key}: {{}}” if it should stay empty.",
-    ),
-    "section-not-mapping": QT_TRANSLATE_NOOP(
-        "messages",
-        "“{key}” must be a map of groups. Leaving it empty (“{key}:”) makes "
-        "Konsave fail; write “{key}: {{}}”.",
-    ),
-    "unknown-top-mapping": QT_TRANSLATE_NOOP(
-        "messages",
-        "The key “{key}” is unknown and is ignored when saving and exporting. "
-        "It was kept in the file.",
-    ),
-    "unknown-top-scalar": QT_TRANSLATE_NOOP(
-        "messages",
-        "The unknown key “{key}” must be a map of groups; Konsave goes through "
-        "every key at the root and would fail here.",
-    ),
-    "duplicate-key": QT_TRANSLATE_NOOP(
-        "messages",
-        "The key “{key}” appears more than once. YAML keeps only the last one "
-        "and the other would be silently lost.",
-    ),
-    "group-name-invalid": QT_TRANSLATE_NOOP(
-        "messages",
-        "The group name “{name}” must be a plain folder name: no “/”, not "
-        "empty, “.” or “..”.",
-    ),
-    "group-not-mapping": QT_TRANSLATE_NOOP(
-        "messages", "The group must have “location” and “entries”."
-    ),
-    "group-unknown-keys": QT_TRANSLATE_NOOP(
-        "messages",
-        "Unknown keys in this group are ignored by Konsave: {keys_text}. They "
-        "were kept in the file.",
-    ),
-    "location-invalid": QT_TRANSLATE_NOOP(
-        "messages", "“location” must be a non-empty text (the source folder)."
-    ),
-    "placeholder-unsupported": QT_TRANSLATE_NOOP(
-        "messages",
-        "The placeholder ${name} does not exist in Konsave. The recognized ones "
-        "are: {supported}.",
-    ),
-    "function-unsupported": QT_TRANSLATE_NOOP(
-        "messages",
-        "The function ${{{name}=...}} does not exist in Konsave. Recognized: "
-        "{supported}.",
-    ),
-    "function-multiple": QT_TRANSLATE_NOOP(
-        "messages",
-        "Only the last placeholder function has an effect in the original Konsave.",
-    ),
-    "entries-missing": QT_TRANSLATE_NOOP(
-        "messages",
-        "“entries” is missing. Use an empty list (“entries: []”) if the group "
-        "has no items.",
-    ),
-    "entries-not-list": QT_TRANSLATE_NOOP(
-        "messages", "“entries” must be a list of names."
-    ),
-    "entry-invalid": QT_TRANSLATE_NOOP(
-        "messages",
-        "The item {value_text} must be a single file or folder name, without "
-        "“/”. Nested paths make Konsave abort the whole save.",
-    ),
-    "entry-duplicate": QT_TRANSLATE_NOOP(
-        "messages", "The item {value_text} is repeated."
-    ),
-    "location-unresolved": QT_TRANSLATE_NOOP(
-        "messages",
-        "The placeholder was not resolved ({resolved}). Without a matching "
-        "folder, Konsave would use this text as a relative path.",
-    ),
-    "location-relative": QT_TRANSLATE_NOOP(
-        "messages", "The resolved folder is not an absolute path: {resolved}."
-    ),
-    "location-missing-dir": QT_TRANSLATE_NOOP(
-        "messages",
-        "The folder {resolved} does not exist on this computer; the items of "
-        "this group will be silently ignored.",
-    ),
-    "comments-lost": QT_TRANSLATE_NOOP(
-        "messages",
-        "The file's comments could not be kept in this edit; when saving, they "
-        "will be lost (the previous file is kept as a backup).",
-    ),
-    "konsave-failed": QT_TRANSLATE_NOOP(
-        "messages", "Konsave could not interpret the file: {detail}"
-    ),
-}
-
-
-def describe_problem(problem: Problem) -> str:
-    """Explains one ``conf.yaml`` finding, with its position.
-
-    Args:
-        problem: A finding from the validation report.
-
-    Returns:
-        str: For example
-        ``line 12, column 9 · save.configs.entries[3]: The item … must …``.
-    """
-    return f"{problem_place(problem)}: {problem_text(problem)}"
-
-
-def problem_text(problem: Problem) -> str:
-    """Explains one ``conf.yaml`` finding, without its position."""
-    args = dict(problem.args)
-    args["keys_text"] = ", ".join(str(key) for key in args.get("keys", ()))
-    args["value_text"] = repr(args.get("value", ""))
-    source = PROBLEM_TEXTS.get(problem.code)
-    try:
-        return (
-            Q.translate("messages", source).format(**args)
-            if source
-            else problem.message
-        )
-    except (KeyError, IndexError):
-        return problem.message
-
-
-def problem_place(problem: Problem) -> str:
-    """Writes where a finding is, as ``line 3, column 5 · save.a.location``."""
-    parts = []
-    if problem.line is not None:
-        if problem.column is not None:
-            parts.append(
-                Q.translate("messages", "line {line}, column {column}").format(
-                    line=problem.line, column=problem.column
-                )
-            )
-        else:
-            parts.append(
-                Q.translate("messages", "line {line}").format(line=problem.line)
-            )
-    if problem.dotted_path:
-        parts.append(problem.dotted_path)
-    return " · ".join(parts) or Q.translate("messages", "file")
 
 
 def _translate_validation(text: str) -> str:
@@ -565,6 +471,8 @@ def _translate_validation(text: str) -> str:
                 return Q.translate("messages", "{text} Folder: {path}").format(
                     text=translation, path=text.rsplit(": ", 1)[-1]
                 )
+            if fragment == "description too long":
+                return translation.format(limit=MAX_DESCRIPTION_CHARS)
             return translation
     return Q.translate("messages", "Invalid input: {text}").format(text=text)
 
@@ -629,6 +537,25 @@ def _describe_limit(error: ArchiveLimitError) -> str:
     ).format(limit=format_size(error.limit / 1048576))
 
 
+def _config_error_title(text: str) -> str:
+    """The first line for a :class:`~kongui.core.ConfigError`.
+
+    The service explains the reasons in English (the following lines); this
+    says, in the interface language, what was refused.
+    """
+    if "applied safely" in text:
+        return Q.translate("messages", "The profile cannot be applied safely:")
+    if "outside the home" in text:
+        return Q.translate(
+            "messages",
+            "The file would write outside your home folder, so it was not used:",
+        )
+    return Q.translate(
+        "messages",
+        "Konsave could not read this conf.yaml. Fix it in a text editor:",
+    )
+
+
 def describe_error(  # pylint: disable=too-many-return-statements
     error: BaseException,
 ) -> Tuple[str, ...]:
@@ -686,26 +613,8 @@ def describe_error(  # pylint: disable=too-many-return-statements
                 "confirmed.",
             ),
         )
-    if isinstance(error, ConfigValidationError):
-        report = error.report
-        if report is not None and report.problems:
-            return _limit(
-                describe_problem(problem)
-                for problem in report.problems
-                if problem.is_error
-            )
-        lines = [str(error)]
-        if report is not None:
-            lines += list(report.errors)
-        return _limit(lines)
-    if isinstance(error, ConfigConflictError):
-        return (
-            Q.translate(
-                "messages",
-                "conf.yaml was changed by another program after being opened "
-                "here. Nothing was written.",
-            ),
-        )
+    if isinstance(error, ConfigError):
+        return _limit([_config_error_title(str(error))] + list(error.details))
     if isinstance(error, LockBusyError):
         if isinstance(error, LockTimeoutError):
             first = Q.translate(
@@ -753,12 +662,6 @@ def describe_error(  # pylint: disable=too-many-return-statements
                 "was not done (or not completed).",
             ),
             Q.translate("messages", "Detail: {error}").format(error=error),
-        )
-    if isinstance(error, BackupNotFoundError):
-        return (
-            Q.translate(
-                "messages", "That backup no longer exists. The list was refreshed."
-            ),
         )
     if isinstance(error, InsufficientSpaceError):
         return (

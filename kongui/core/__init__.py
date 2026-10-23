@@ -1,26 +1,16 @@
-"""Integration layer between a future GUI and the original Konsave engine."""
+"""Integration layer between the GUI and the original Konsave engine."""
 
 # pylint: disable=duplicate-code
 
 from kongui.core.cli import READ_ONLY_FLAGS, CliRunner
 from kongui.core.config import ConfigService
-from kongui.core.confedit import (
-    ConfigModel,
-    ConfigParseError,
-    EditResult,
-    Group,
-    apply_model,
-    parse_model,
-)
 from kongui.core.engine import EngineCall, KonsaveEngine
 from kongui.core.errors import (
     ArchiveExistsError,
     ArchiveLimitError,
-    BackupNotFoundError,
     CliExecutionError,
-    ConfigConflictError,
+    ConfigError,
     ConfigMissingError,
-    ConfigValidationError,
     ConfirmationRequiredError,
     EngineLoadError,
     InsufficientSpaceError,
@@ -35,11 +25,14 @@ from kongui.core.errors import (
     SnapshotNotFoundError,
     ValidationError,
 )
-from kongui.core.profiles import (
-    CONF_DIFFERS_PREFIX,
-    NOT_IMPLEMENTED_OPERATIONS,
-    ProfileService,
+from kongui.core.profilemeta import (
+    DESCRIPTION_NOT_REMOVED,
+    DESCRIPTION_NOT_SAVED,
+    MAX_DESCRIPTION_CHARS,
+    ProfileDetails,
+    clean_description,
 )
+from kongui.core.profiles import NOT_IMPLEMENTED_OPERATIONS, ProfileService
 from kongui.core.lock import (
     EngineLock,
     LockBusyError,
@@ -59,15 +52,17 @@ from kongui.core.snapshot import (
 )
 from kongui.core.results import (
     ArchiveInspection,
-    BackupInfo,
     CliResult,
     OperationResult,
     ProfileInfo,
-    Problem,
-    ValidationReport,
 )
 
 __all__ = [
+    "DESCRIPTION_NOT_REMOVED",
+    "DESCRIPTION_NOT_SAVED",
+    "MAX_DESCRIPTION_CHARS",
+    "clean_description",
+    "ProfileDetails",
     "EngineLock",
     "LockBusyError",
     "LockCancelledError",
@@ -87,23 +82,12 @@ __all__ = [
     "ArchiveLimitError",
     "InsufficientSpaceError",
     "ArchiveInspection",
-    "BackupInfo",
-    "BackupNotFoundError",
-    "ConfigConflictError",
-    "ConfigModel",
-    "ConfigParseError",
-    "EditResult",
-    "Group",
-    "Problem",
-    "apply_model",
-    "parse_model",
-    "CONF_DIFFERS_PREFIX",
     "CliExecutionError",
     "CliResult",
     "CliRunner",
+    "ConfigError",
     "ConfigMissingError",
     "ConfigService",
-    "ConfigValidationError",
     "ConfirmationRequiredError",
     "EngineCall",
     "EngineLoadError",
@@ -121,5 +105,4 @@ __all__ = [
     "READ_ONLY_FLAGS",
     "RunningAsRootError",
     "ValidationError",
-    "ValidationReport",
 ]

@@ -67,7 +67,12 @@ class Label(QLabel):
     """A label with a typographic role (``title``, ``h2``, ``muted`` ...)."""
 
     def __init__(
-        self, text: Text = "", role: str = "body", *, wrap: bool = False
+        self,
+        text: Text = "",
+        role: str = "body",
+        *,
+        wrap: bool = False,
+        plain: bool = False,
     ) -> None:
         """Creates the label.
 
@@ -77,8 +82,13 @@ class Label(QLabel):
             role: One of ``body``, ``muted``, ``caption``, ``title``, ``h2``,
                 ``stat``, ``brand``, ``danger``.
             wrap: Whether long text wraps.
+            plain: Show the text exactly as given. Without it Qt may read
+                ``<b>`` or ``<img>`` in the text as markup; use it for anything
+                a user typed or an archive supplied.
         """
         super().__init__(resolve_text(text))
+        if plain:
+            self.setTextFormat(Qt.TextFormat.PlainText)
         if callable(text):
             i18n.bind(self, lambda: self.setText(text()), now=False)
         self.setProperty("role", role)
@@ -106,6 +116,7 @@ class Badge(QLabel):
         super().__init__(resolve_text(text))
         if callable(text):
             i18n.bind(self, lambda: self.setText(text()), now=False)
+        self.setTextFormat(Qt.TextFormat.PlainText)
         self.setProperty("role", "badge")
         self.setProperty("tone", tone)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)

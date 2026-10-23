@@ -1,5 +1,7 @@
 """Shared fixtures for the KonGUI tests."""
 
+import contextlib
+import logging
 import os
 import shutil
 import tempfile
@@ -11,6 +13,41 @@ from unittest import mock
 
 from kongui.core import ConfigService, KonsaveEngine, ProfileService
 from kongui.core.engine import EngineCall
+
+
+@contextlib.contextmanager
+def no_logs(case: unittest.TestCase, level: str = "ERROR"):
+    """Fails the test if anything is logged at ``level`` or above.
+
+    ``unittest.TestCase.assertNoLogs`` only exists from Python 3.10 and the project
+    supports 3.9.
+
+    Args:
+        case: The running test.
+        level: Lowest level that counts.
+    """
+    records = []
+
+    class Collector(logging.Handler):
+        """Keeps every record it receives."""
+
+        def emit(self, record):
+            records.append(record)
+
+    collector = Collector(level=logging.getLevelName(level))
+    root = logging.getLogger()
+    previous = root.level
+    root.addHandler(collector)
+    root.setLevel(min(previous or logging.WARNING, collector.level))
+    try:
+        yield
+    finally:
+        root.removeHandler(collector)
+        root.setLevel(previous)
+    case.assertEqual(
+        [record.getMessage() for record in records], [], "unexpected log records"
+    )
+
 
 BASE_CONF = """---
 save:
@@ -26,6 +63,27 @@ export:
             - icons
 ...
 """
+
+
+def install_conf(config, text: str) -> Path:
+    """Writes the active ``conf.yaml`` the way a user would: by hand.
+
+    KonGUI no longer writes ``conf.yaml`` files, so the tests put the text in
+    place themselves.
+
+    Args:
+        config: The ``ConfigService`` whose active file is written.
+        text: YAML text.
+
+    Returns:
+        Path: The file written.
+    """
+    # A real home already has ~/.cache and the profiles folder (every engine
+    # call creates them if missing), as the removed ConfigService.write_text did.
+    config._engine.ensure_runtime_dirs()  # pylint: disable=protected-access
+    path = config.config_path
+    path.write_text(text, encoding="utf-8")
+    return path
 
 
 def small_conf(location: str = "$HOME/.config", entries=("kdeglobals",)) -> str:
@@ -242,7 +300,7 @@ class IsolatedHomeTestCase(unittest.TestCase):
         engine = self.new_engine(home)
         config = ConfigService(engine)
         if conf is not None:
-            config.write_text(conf)
+            install_conf(config, conf)
         return engine, config, ProfileService(engine, config)
 
     def populate_live(self, home: Optional[Path] = None) -> Path:

@@ -18,15 +18,15 @@ GUI_SOURCES = sorted((ROOT / "kongui" / "gui").rglob("*.py"))
 class StartupTests(GuiTestCase):
     """The main window and its fixed structure."""
 
-    def test_window_opens_with_six_pages_in_order(self):
+    def test_window_opens_with_five_pages_in_order(self):
         window = self.make_window()
         self.assertTrue(window.isVisible())
         self.assertEqual(
             list(window.pages),
-            ["dashboard", "profiles", "transfer", "settings", "config", "about"],
+            ["dashboard", "profiles", "transfer", "settings", "about"],
         )
         self.assertEqual(window.sidebar.keys(), list(window.pages))
-        self.assertEqual(window.stack.count(), 6)
+        self.assertEqual(window.stack.count(), 5)
 
     def test_starts_on_the_dashboard(self):
         window = self.make_window()
@@ -44,7 +44,6 @@ class StartupTests(GuiTestCase):
                 "Perfis",
                 "Importar / Exportar",
                 "Configurações",
-                "Editar .YAML",
                 "Sobre",
             ],
         )
@@ -114,7 +113,6 @@ class DocumentationTests(unittest.TestCase):
             "`dashboard`",
             "`profiles`",
             "`transfer`",
-            "`config`",
             "`settings`",
             "`about`",
             "Ctrl+1",
@@ -122,7 +120,6 @@ class DocumentationTests(unittest.TestCase):
             "Ctrl+3",
             "Ctrl+4",
             "Ctrl+5",
-            "Ctrl+6",
             "Ctrl+F",
             "Ctrl+N",
             "Ctrl+S",
@@ -327,7 +324,6 @@ class IsolationTests(unittest.TestCase):
             "profiles",
             "config",
             "results",
-            "confedit",
         }
         self.assertLessEqual(set(used), allowed)
         for module in ("engine", "profiles", "config"):

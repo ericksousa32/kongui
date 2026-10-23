@@ -12,13 +12,20 @@ import zipfile
 
 from kongui.core import (
     ArchiveExistsError,
-    ConfigValidationError,
+    ConfigError,
     ConfirmationRequiredError,
     ProfileExistsError,
     ProfileInvalidError,
     ValidationError,
 )
-from tests.helpers import BASE_CONF, IsolatedHomeTestCase, make_knsv, small_conf, write
+from tests.helpers import (
+    install_conf,
+    BASE_CONF,
+    IsolatedHomeTestCase,
+    make_knsv,
+    small_conf,
+    write,
+)
 
 
 def tree(root):
@@ -70,7 +77,9 @@ class SaveIntegrationTests(IntegrationCase):
             ],
         )
         self.assertEqual((folder / "configs/kdeglobals").read_text(), "kdeglobals-A")
-        self.assertEqual((folder / "conf.yaml").read_text(), self.config.read_text())
+        self.assertEqual(
+            (folder / "conf.yaml").read_text(), self.config.config_path.read_text()
+        )
         self.assertIn("saving profile", result.stdout)
         self.assertEqual(result.errors, ())
 
@@ -133,25 +142,34 @@ class SaveIntegrationTests(IntegrationCase):
         saved = tree(self.engine.profiles_dir / "work/configs/gtk-3.0")
         self.assertEqual(saved, ["new.ini", "settings.ini"])
 
-    def test_nested_entry_is_refused_instead_of_leaving_a_partial_profile(self):
+    def test_a_nested_entry_fails_as_in_konsave_and_leaves_no_partial_profile(self):
+        # No validation beforehand: Konsave aborts the save, KonGUI reports its
+        # reason and removes the folder it had started.
         write(self.home / ".config/Code - OSS/User/settings.json")
-        self.config.write_text(small_conf(entries=["kdeglobals"]))
         self.engine.config_file.write_text(
             small_conf(entries=['"Code - OSS/User/settings.json"', "kdeglobals"])
         )
-        with self.assertRaises(ConfigValidationError):
-            self.profiles.save("work")
+        result = self.profiles.save("work")
+        self.assertFalse(result.ok)
+        self.assertIn("FileNotFoundError", " ".join(result.errors))
         self.assertEqual(os.listdir(self.engine.profiles_dir), [])
 
-    def test_unmatched_function_placeholder_creates_nothing_anywhere(self):
+    def test_a_broken_conf_yaml_fails_with_konsave_s_reason(self):
+        self.engine.config_file.write_text("save: [not, a, mapping]\n")
+        result = self.profiles.save("work")
+        self.assertFalse(result.ok)
+        self.assertTrue(result.errors)
+        self.assertEqual(os.listdir(self.engine.profiles_dir), [])
+
+    def test_unmatched_function_placeholder_saves_as_konsave_and_creates_nothing(self):
         (self.home / "ff" / "abc.other").mkdir(parents=True)
         self.engine.config_file.write_text(
             small_conf(location="$HOME/ff/${ENDS_WITH='.default-release'}")
         )
-        with self.assertRaises(ConfigValidationError):
-            self.profiles.save("work")
+        result = self.profiles.save("work")
+        self.assertTrue(result.ok, result.message)  # the group is simply empty
         self.assertEqual(os.listdir(self.work), [])
-        self.assertEqual(os.listdir(self.engine.profiles_dir), [])
+        self.assertEqual(os.listdir(self.home / "ff"), ["abc.other"])
 
     def test_matched_function_placeholder_works_end_to_end(self):
         write(self.home / "ff/abc.default-release/chrome/userChrome.css", "css")
@@ -233,7 +251,7 @@ class ApplyIntegrationTests(IntegrationCase):
         import shutil
 
         shutil.rmtree(self.home / ".local/share/a")
-        with self.assertRaises(ConfigValidationError):
+        with self.assertRaises(ConfigError):
             self.profiles.apply("deep", confirmed=True)
 
     def test_vanished_placeholder_target_leaves_no_literal_folder(self):
@@ -245,7 +263,7 @@ class ApplyIntegrationTests(IntegrationCase):
         )
         self.profiles.save("ff").raise_for_status()
         os.rename(self.home / "ff/abc.default-release", self.home / "ff/abc.renamed")
-        with self.assertRaises(ConfigValidationError):
+        with self.assertRaises(ConfigError):
             self.profiles.apply("ff", confirmed=True)
         self.assertEqual(os.listdir(self.work), [])
 
@@ -459,7 +477,7 @@ class InspectArchiveIntegrationTests(IntegrationCase):
             "export: {}\n"
         )
         archive = make_knsv(self.out / "etc.knsv", {"conf.yaml": conf, "save/a": "x"})
-        with self.assertRaises(ConfigValidationError):
+        with self.assertRaises(ConfigError):
             self.profiles.inspect_archive(archive)
         info = self.profiles.inspect_archive(archive, allow_outside_home=True)
         self.assertEqual(info.name, "etc")
@@ -476,11 +494,9 @@ class HostileArchiveIntegrationTests(IntegrationCase):
             f'export:\n    x:\n        location: "{outside}"\n        entries: [marker.txt]\n'
         )
         archive = self.archive_with_export(conf, {"export/x/marker.txt": "m"})
-        with self.assertRaises(ConfigValidationError) as caught:
+        with self.assertRaises(ConfigError) as caught:
             self.profiles.import_profile(archive, confirmed=True)
-        self.assertTrue(
-            any("outside the home" in e for e in caught.exception.report.errors)
-        )
+        self.assertTrue(any("outside the home" in e for e in caught.exception.details))
         self.assertEqual(os.listdir(outside), [])
         self.assertEqual(self.profiles.list_profiles(), [])
 
@@ -507,7 +523,7 @@ class HostileArchiveIntegrationTests(IntegrationCase):
             'export:\n    x:\n        location: "$HOME/escape"\n        entries: [marker.txt]\n'
         )
         archive = self.archive_with_export(conf, {"export/x/marker.txt": "m"})
-        with self.assertRaises(ConfigValidationError):
+        with self.assertRaises(ConfigError):
             self.profiles.import_profile(archive, confirmed=True)
         self.assertEqual(os.listdir(outside), [])
 
@@ -602,8 +618,8 @@ class ReplaceIntegrationTests(IntegrationCase):
         self.profiles.save("work").raise_for_status()
         before = tree(self.engine.profiles_dir / "work")
         write(self.engine.config_file, "save: [not, a, mapping]\n")
-        with self.assertRaises(ConfigValidationError):
-            self.profiles.replace("work", confirmed=True)
+        result = self.profiles.replace("work", confirmed=True)
+        self.assertFalse(result.ok)
         self.assertEqual(tree(self.engine.profiles_dir / "work"), before)
         self.assertEqual(self.engine.profile_names(), ["work"])
 

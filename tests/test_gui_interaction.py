@@ -359,11 +359,12 @@ class AboutPageTests(GuiTestCase):
     def test_shows_versions_and_prototype_notice(self):
         import PySide6
 
-        from kongui import __version__
+        import kongui
 
         window = self.make_window()
         page = window.pages["about"]
-        self.assertEqual(page.info_values["Versão do KonGUI"], __version__)
+        expected = kongui.__version__ if kongui.short_version() else "dev"
+        self.assertEqual(page.info_values["Versão do KonGUI"], expected)
         self.assertEqual(page.info_values["PySide6"], PySide6.__version__)
         self.assertIn("GPL", page.info_values["Licença"])
 

@@ -45,6 +45,25 @@ class MessagesTests(unittest.TestCase):
             with self.subTest(error=type(error).__name__):
                 self.assertIn(fragment, " ".join(messages.describe_error(error)))
 
+    def test_a_refusal_says_what_was_refused_and_why(self):
+        # Found by tests.test_gui_overview: a refusal used to reach the notice
+        # with no reason at all. The reasons come from the service (English).
+        from kongui.core import ConfigError
+
+        cases = (
+            ("the profile cannot be applied safely", "aplicado com segurança"),
+            ("the archive writes outside the home folder", "fora da sua pasta"),
+            ("Konsave could not read the configuration", "não conseguiu ler"),
+        )
+        for summary, title in cases:
+            with self.subTest(summary=summary):
+                lines = messages.describe_error(
+                    ConfigError(summary, ["save.a: neither '/x' nor its parent exists"])
+                )
+                self.assertIn(title, lines[0])
+                self.assertEqual(lines[1], "save.a: neither '/x' nor its parent exists")
+        self.assertEqual(len(messages.describe_error(ConfigError("x"))), 1)
+
     def test_unknown_errors_show_their_type(self):
         text = " ".join(messages.describe_error(ZeroDivisionError("zero")))
         self.assertIn("ZeroDivisionError", text)

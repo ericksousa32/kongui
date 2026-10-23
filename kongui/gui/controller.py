@@ -34,11 +34,8 @@ from kongui.gui.tasks import Executor
 
 LOG = logging.getLogger(__name__)
 
-#: Operations on the ``conf.yaml``; they never touch the profile list.
 #: Operations that cannot change the profile list: it is not reloaded after them.
-_CONFIG_OPERATIONS = (
-    "save_config",
-    "restore_config",
+_LIST_UNCHANGED = (
     "restore_backup",
     "delete_backup",
 )
@@ -59,13 +56,16 @@ class Outcome:
 
     Attributes:
         operation: ``list``, ``save``, ``overwrite``, ``apply``, ``remove``,
-            ``wipe_all``, ``duplicate``, ``import`` or ``reset``.
+            ``wipe_all``, ``duplicate``, ``set_description``, ``import`` or ``reset``.
         name: Profile concerned, or ``""``.
         ok: Whether the operation succeeded.
         title: Headline for a notification.
         details: Extra lines (engine errors, hints).
         result: The service result, when there was one.
         error: The exception, when the service raised one.
+        warning: The operation worked, but only in part (for example the
+            profile was saved and its description was not); it is shown as a
+            warning, not as a plain success.
     """
 
     operation: str
@@ -75,6 +75,7 @@ class Outcome:
     details: Tuple[str, ...] = ()
     result: Optional[OperationResult] = None
     error: Optional[BaseException] = None
+    warning: bool = False
 
 
 @dataclass(frozen=True)
@@ -305,6 +306,22 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         self._need(confirmed, "wipe_all")
         return self._run("wipe_all", "", lambda: self._backend.wipe_all(confirmed=True))
 
+    def set_description(self, name: str, description: str) -> bool:
+        """Sets, changes or clears the description of a profile.
+
+        Args:
+            name: Existing profile.
+            description: New text; empty clears it.
+
+        Returns:
+            bool: ``False`` if another operation is running.
+        """
+        return self._run(
+            "set_description",
+            name,
+            lambda: self._backend.set_description(name, description),
+        )
+
     def duplicate(self, name: str) -> bool:
         """Duplicates a profile (backends with ``capabilities.duplicate`` only).
 
@@ -447,46 +464,6 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         """
         self._executor.submit(work, on_done)
 
-    def save_config(
-        self, text: str, expected_digest: Optional[str], *, force: bool = False
-    ) -> bool:
-        """Writes the ``conf.yaml`` (validated first, previous file kept).
-
-        Args:
-            text: The new contents.
-            expected_digest: Digest the text was loaded with.
-            force: Write even if the file changed on disk meanwhile.
-
-        Returns:
-            bool: ``False`` if another operation is running.
-        """
-        return self._run(
-            "save_config",
-            "",
-            lambda: self._backend.save_config(text, expected_digest, force=force),
-            reload_profiles=False,
-        )
-
-    def restore_config(
-        self, name: str, expected_digest: Optional[str], *, force: bool = False
-    ) -> bool:
-        """Puts a ``conf.yaml`` backup back.
-
-        Args:
-            name: Backup file name.
-            expected_digest: Digest of the file the user last saw.
-            force: Write even if the file changed on disk meanwhile.
-
-        Returns:
-            bool: ``False`` if another operation is running.
-        """
-        return self._run(
-            "restore_config",
-            name,
-            lambda: self._backend.restore_config(name, expected_digest, force=force),
-            reload_profiles=False,
-        )
-
     def restore_backup(self, backup_id: str, *, confirmed: bool = False) -> bool:
         """Puts the files of a safety copy back (destructive).
 
@@ -566,7 +543,7 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         """Starts an operation unless another one is running.
 
         ``reload_profiles=False`` is for operations that cannot change the
-        profile list (the ``conf.yaml`` ones).
+        profile list (the safety copy ones).
         """
         if self.busy:
             return False
@@ -575,7 +552,7 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         self._cancelling = False
         self._cancel.clear()
         if operation == "list" or (
-            self._state is LoadState.IDLE and operation not in _CONFIG_OPERATIONS
+            self._state is LoadState.IDLE and operation not in _LIST_UNCHANGED
         ):
             self._state = LoadState.LOADING
         self.operation_started.emit(operation, name)
@@ -636,7 +613,7 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         elif operation == "list" and error is not None:
             self._state = LoadState.ERROR
             self._error_cause = error
-        elif self._state is LoadState.LOADING and operation not in _CONFIG_OPERATIONS:
+        elif self._state is LoadState.LOADING and operation not in _LIST_UNCHANGED:
             self._state = LoadState.READY if self._store.profiles() else LoadState.ERROR
             if self._state is LoadState.ERROR:
                 self._error_cause = error
@@ -644,7 +621,7 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
             not name
             and result is not None
             and result.path is not None
-            and operation not in _CONFIG_OPERATIONS
+            and operation not in _LIST_UNCHANGED
         ):
             name = result.path.name
         outcome = self._outcome(operation, name, result, error, list_error)
@@ -709,13 +686,6 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
         details: List[str] = []
         if operation == "export" and result is not None and result.path is not None:
             details.append(str(result.path))
-        if operation in ("save_config", "restore_config") and result is not None:
-            if result.backup is not None:
-                details.append(
-                    QCoreApplication.translate(
-                        "ProfileController", "Copy of the previous file: {name}"
-                    ).format(name=result.backup.name)
-                )
         hint = messages.outcome_hint(operation, True)
         if hint:
             details.append(hint)
@@ -728,13 +698,19 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
                     "The profile list could not be refreshed: {reason}",
                 ).format(reason=" ".join(messages.describe_error(list_error)))
             )
+        partial = messages.is_partial(result)
         return Outcome(
             operation,
             name,
             True,
-            messages.success_title(operation, name),
+            (
+                messages.partial_title(operation, name)
+                if partial
+                else messages.success_title(operation, name)
+            ),
             tuple(details),
             result=result,
+            warning=partial,
         )
 
 

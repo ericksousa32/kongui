@@ -5,18 +5,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0a1] - TBD
+First KonGUI release (alpha, GitHub pre-release). The date is the day the tag
+`v0.1.0a1` is created; until then this heading says TBD. Versions below 0.1.0a1
+are those of the original Konsave.
+
 ### Added
 - (KonGUI) Interface language: English and Brazilian Portuguese with Qt translations, first-run detection from the system locale, a *Settings → Language* selector and live switching. See `docs/GUI_PROTOTYPE.md`
 - (KonGUI patch) Cross-process lock, `konsave/lock.py` + `konsave/__main__.py`: commands wait for other Konsave operations (`KONSAVE_LOCK_TIMEOUT`, exit code 75 on timeout). See `docs/KONSAVE_PATCHES.md`
 - (KonGUI) Protections for `.knsv` import and export: size (512 MiB), real decompressed size (2 GiB), entry count (10,000), free-space check before import and export, clear messages for corrupted archives and full disks. The format and the engine are unchanged. See `docs/INTEGRATION.md` §10
+- (KonGUI) Profile description (a small file inside the profile folder, not part of the `.knsv`) and sections read from each profile's `conf.yaml`, with friendly names for the default groups and an *Edit details…* action. See `docs/INTEGRATION.md` §11
 - (KonGUI) Interface screenshots (demo mode, Fedora 44) in `screenshots/`, shown in the README
+- (KonGUI) `docs/LIMITATIONS.md`: one document with the open requirements, the decisions of the project owner and the known limits (including those of the import and export protections); README section on choosing what a profile includes (manual: `conf.yaml` edited by hand)
+- (KonGUI) `tests/test_packaging.py`: package name and metadata, no `setuptools` at runtime, version of the bundled engine
+- (KonGUI) `docs/RELEASING.md` and `tests/test_version.py`: how the version is defined (git tag), what it looks like between tags, and the release steps
+
+- (KonGUI) Release workflow `.github/workflows/release.yml` (replaces `deploy.yml`, which published to PyPI): on a tag `v*` it checks that the tag is a PEP 440 version on `master`, builds the sdist and wheel, installs the wheel in a clean environment, runs `tools/smoke_test.py`, writes `SHA256SUMS` and creates a GitHub *pre-release* (for `a`, `b`, `rc`). `.github/release-notes.md` is the alpha warning. Not yet run on real GitHub Actions. See `docs/RELEASING.md` §5
+- (KonGUI) `tools/smoke_test.py` and `tests/test_smoke.py`: version, bundled `konsave` command, translation catalogs and main window of an installed build, and a normal exit of the process
+- (KonGUI) `docs/PLASMA_TEST_PLAN.md`: script and report template for the real Plasma session (B-3); README section *Installing the pre-release*; pre-release checklist in `docs/RELEASING.md` §6
+- (KonGUI) Issue templates for this repository (KonGUI version, Python and PySide6, Plasma, Wayland or X11, demo or real, safety copy), replacing the ones inherited from Konsave
+
+- (KonGUI) `tests/test_gui_overview.py`: four tests that chain every feature through the real interface and dialogs down to the real services in a temporary home (save, apply, safety copy restore, details, overwrite, export with conflict, remove, import by drag and drop, clear all, a `conf.yaml` edited by hand, the `kongui` command's assembly with its worker thread, preferences after a restart); `docs/TEST_OVERVIEW.md` maps each feature to its tests and records the review of the suite
+
+- (KonGUI) First report of a real Plasma session (Fedora 44, Plasma 6.7.5, Wayland, 2026-10-22): no blocker; X11, SELinux and Flatpak not tested yet. `docs/reports/2026-10-22-plasma-session.md`, summarized in `docs/FINAL_AUDIT.md` §7. New *Plasma test report* issue template so users can send theirs (`docs/PLASMA_TEST_PLAN.md`)
 
 ### Changed
+- (KonGUI) The `gui` extra limits PySide6 to 6.8–6.9 on Python older than 3.12 (PySide6 6.10 and newer segfault or abort there); Python 3.12 or newer takes the newest PySide6. See `docs/LIMITATIONS.md` §5
+- (KonGUI) `Makefile`: `black` and `pylint` now cover `kongui`, `tests` and `tools` (they covered only `konsave`); new `smoke` and `dist` targets
+- (KonGUI) The test suite no longer needs Python 3.10's `assertNoLogs`, and the Qt windows are released before the interpreter shuts down
+- (KonGUI) `kongui.__version__` is no longer a constant (`0.1.0.dev0`): it is the version of the installed package, taken from the git tag by `setuptools_scm`. A checkout that was never installed reports `0+unknown`, shown as `dev`. The badge in *About* and the sidebar caption show the short form (no commit part); *About → KonGUI version* shows the whole version. The sidebar caption texts changed (`{version} · real profiles`, `{version} · fictitious data`)
+- (KonGUI) `setuptools_scm` is declared as a build requirement in a new `pyproject.toml` (`[build-system]`) instead of `setup_requires`; `.git_archival.txt` and `.gitattributes` let a `git archive` (GitHub's "Source code" files of a tag) be built without `.git` and still get the version of the tag. `requirements_dev.txt` lists `setuptools_scm`. See `docs/RELEASING.md` §4
+- (KonGUI) The distribution is now called `kongui` (it was `Konsave`); author, URL and project links in `setup.py` point to this repository and credit Konsave. The `konsave` and `kongui` commands are both still installed
+- (KonGUI patch) `konsave/__init__.py`: when the package is installed as `kongui`, `konsave.__version__` is `2.2.0+kongui` instead of missing (without it the `konsave` command failed to start). See `docs/KONSAVE_PATCHES.md` §3.5
+- (KonGUI) `setuptools` removed from `requirements.txt`: nothing imports it at runtime (checked by `tests.test_packaging` and by running the suite with it made unimportable); it stays a build tool
 - (KonGUI) The fictitious data of `--demo` mode (profile names, descriptions, areas, activity) is now always English and no longer part of the translation catalogs; the interface stays translated
 - (KonGUI) The interface texts are now written in English in the code and translated to Portuguese through `kongui/gui/translations`; `Makefile` has a `translations` target
 - (KonGUI patch) `python_requires` is now `>=3.9`
 - Reorganized CLI arguments into logical groups (Profile Management, Import & Export, Options, Miscellaneous) for better readability
 - Improved all help messages with clearer and more descriptive text
+
+### Removed
+- (KonGUI) Everything that managed `conf.yaml`, to stay within Konsave's scope: the *Edit .YAML* page (so the pages are now five and `Ctrl+5` opens *About*), the comment-preserving editor (`kongui/core/confedit.py`, `kongui/core/yamlmap.py`), the `conf.yaml.bak-*` backups and their restore, KonGUI's own validation of the file (errors with line and column, duplicate keys, placeholder checks) and the warning about a `.knsv` whose `conf.yaml` differs from the profile's. `ConfigService` keeps only `ensure_default_config` and `resolve` (reading through Konsave); `ConfigValidationError` became `ConfigError` (with `details`). The user edits `~/.config/konsave/conf.yaml` by hand, as with Konsave; a mistake is reported when saving, with Konsave's reason. The safety copies, the free-space checks, the sections and the refusal of archives or profiles that would write outside the home are unchanged. See `docs/LIMITATIONS.md` §2 and §4
+
+### Fixed
+- (KonGUI) A refused apply or import could be reported with no reason: errors the service adds after validating the `conf.yaml` (a destination whose parent folder does not exist, a destination outside the home) were dropped from the notice when the file only had warnings. They are now listed. See `docs/TEST_OVERVIEW.md` §3
 
 ## [2.2.0] - 2023-01-31
 ### Added
@@ -228,4 +261,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.0.2]: https://github.com/Prayag2/konsave/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Prayag2/konsave/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Prayag2/konsave/compare/6b4a0c0bbf8c29684cc2a334065314bc8e4ea529...v1.0.0
-[Unreleased]: https://github.com/Prayag2/konsave/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ericksousa32/kongui/compare/v0.1.0a1...HEAD
+[0.1.0a1]: https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1
