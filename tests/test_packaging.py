@@ -68,6 +68,21 @@ class SetupMetadataTests(unittest.TestCase):
         self.assertIn("\"PySide6>=6.8; python_version >= '3.12'\"", self.setup)
         self.assertNotIn('"gui": ["PySide6>=6.8"]', self.setup)
 
+    def test_the_application_icon_is_packaged(self):
+        # setup.py's pattern must match every icon file (and the window, the
+        # menu entry of install.sh and the smoke test use them all).
+        self.assertIn('"data/icons/hicolor/*/apps/*"', self.setup)
+        gui = ROOT / "kongui" / "gui"
+        on_disk = sorted(
+            str(p.relative_to(gui)) for p in (gui / "data").rglob("*") if p.is_file()
+        )
+        matched = sorted(
+            str(p.relative_to(gui)) for p in gui.glob("data/icons/hicolor/*/apps/*")
+        )
+        self.assertEqual(on_disk, matched, "every data file is packaged")
+        self.assertIn("data/icons/hicolor/scalable/apps/kongui.svg", matched)
+        self.assertEqual(len(matched), 9, "8 PNG sizes and the SVG")
+
     def test_both_commands_are_installed(self):
         self.assertIn("konsave = konsave.__main__:main", self.setup)
         self.assertIn("kongui = kongui.gui.app:main", self.setup)

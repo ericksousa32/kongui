@@ -9,7 +9,8 @@
 #      (~/.venvs/kongui), because KonGUI ships its own copy of the `konsave`
 #      Python package and must not replace an existing Konsave;
 #   3. links the `kongui` command into ~/.local/bin (never `konsave`);
-#   4. adds KonGUI to the application menu (~/.local/share/applications).
+#   4. adds KonGUI to the application menu (~/.local/share/applications), with
+#      its icon (~/.local/share/icons/hicolor) when the release has one.
 # Running it again updates KonGUI in place. --uninstall undoes 2-4 and keeps your
 # profiles, safety copies and conf.yaml (~/.config/konsave).
 #
@@ -27,6 +28,8 @@ VENV="${KONGUI_VENV:-$HOME/.venvs/kongui}"
 EXTRAS="${KONGUI_EXTRAS-gui}"   # the tests install without PySide6 (empty value)
 BIN_DIR="$HOME/.local/bin"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+ICON_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
+ICON_NAME="kongui"
 LINK="$BIN_DIR/kongui"
 DESKTOP="$APPS_DIR/kongui.desktop"
 MARKER="X-KonGUI-Installed-By=install.sh"
@@ -53,8 +56,9 @@ Installs or updates KonGUI for the current user, or removes it.
   --uninstall         remove KonGUI (keeps ~/.config/konsave)
   -h, --help          show this help
 
-KonGUI goes to ~/.venvs/kongui, the `kongui` command to ~/.local/bin and the
-menu entry to ~/.local/share/applications. Nothing needs root.
+KonGUI goes to ~/.venvs/kongui, the `kongui` command to ~/.local/bin, the
+menu entry to ~/.local/share/applications and its icon to
+~/.local/share/icons/hicolor. Nothing needs root.
 EOF
 }
 
@@ -116,10 +120,79 @@ if [ "$(uname -s)" != "Linux" ]; then
 fi
 [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not set to an existing folder"
 
-# A folder is KonGUI's environment only if it is a virtual environment with the
-# kongui command in it; nothing else is ever deleted or replaced.
+# A folder is KonGUI's environment only if this script made it (it leaves a
+# marker file in it before creating the environment, so an installation that
+# stopped halfway, for example when pip had no network, is still recognised),
+# or if it is a virtual environment with the kongui command in it (made by an
+# older version of this script). Nothing else is ever deleted or replaced.
+VENV_MARKER_NAME=".kongui-install"
 is_kongui_venv() {
-    [ -f "$1/pyvenv.cfg" ] && [ -e "$1/bin/kongui" ]
+    [ -f "$1/$VENV_MARKER_NAME" ] || { [ -f "$1/pyvenv.cfg" ] && [ -e "$1/bin/kongui" ]; }
+}
+mark_venv() {
+    printf '%s\n' "Made by KonGUI's install.sh; removed by: bash install.sh --uninstall" \
+        >"$VENV/$VENV_MARKER_NAME"
+}
+
+# The folder of icons shipped inside the installed package
+# (kongui/gui/data/icons/hicolor), found without importing KonGUI. Prints
+# nothing for a release without icons (0.1.0a1 and 0.1.0a2 have none).
+packaged_icon_dir() {
+    local dir
+    [ -x "$VENV/bin/python" ] || return 0
+    dir="$("$VENV/bin/python" -I -c '
+import importlib.util, os
+spec = importlib.util.find_spec("kongui")
+print(os.path.join(os.path.dirname(spec.origin), "gui", "data", "icons", "hicolor"))
+' 2>/dev/null)" || return 0
+    if [ -d "$dir" ]; then
+        printf '%s\n' "$dir"
+    fi
+}
+
+# The icon files of a hicolor folder, as SIZE/apps/kongui.EXT, one per line.
+icon_files() { # DIR
+    (cd "$1" && find . -path "./*/apps/$ICON_NAME.*" -type f | sed 's|^\./||' | sort)
+}
+
+refresh_icons() {
+    [ -d "$ICON_ROOT" ] || return 0
+    touch "$ICON_ROOT" 2>/dev/null || true # tells icon loaders that the theme changed
+    # A GTK cache that already exists must be kept in step, or it hides the icon.
+    if [ -f "$ICON_ROOT/icon-theme.cache" ] && command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache --quiet --force --ignore-theme-index "$ICON_ROOT" >/dev/null 2>&1 || true
+    fi
+}
+
+# Removes the installed icons that are the ones of the installed package (same
+# bytes); any other kongui icon is left and reported. Runs before the
+# environment is deleted, since that is where the originals are.
+remove_icons() {
+    local src rel why gone=0
+    src="$(packaged_icon_dir)"
+    if [ -n "$src" ]; then
+        while IFS= read -r rel; do
+            if [ -f "$ICON_ROOT/$rel" ] && cmp -s "$src/$rel" "$ICON_ROOT/$rel"; then
+                rm -f "$ICON_ROOT/$rel"
+                # SIZE/apps and SIZE, only if left empty
+                rmdir "$ICON_ROOT/${rel%/*}" "$ICON_ROOT/${rel%%/*}" 2>/dev/null || true
+                gone=1
+            fi
+        done < <(icon_files "$src")
+        why="is not the icon this script installed"
+    else
+        why="cannot be checked without KonGUI's environment"
+    fi
+    if [ -d "$ICON_ROOT" ]; then
+        while IFS= read -r rel; do
+            warn "$ICON_ROOT/$rel $why; left as it is"
+        done < <(icon_files "$ICON_ROOT")
+    fi
+    if [ "$gone" = 1 ]; then
+        say "removed the icons from $ICON_ROOT"
+        refresh_icons
+    fi
+    [ "$gone" = 1 ]
 }
 
 # --------------------------------------------------------------- uninstall
@@ -147,6 +220,9 @@ uninstall() {
             warn "$DESKTOP was not made by this script; left as it is"
         fi
     fi
+    if remove_icons; then
+        removed=1
+    fi
     if [ -d "$VENV" ]; then
         if is_kongui_venv "$VENV"; then
             rm -rf "$VENV"
@@ -154,7 +230,7 @@ uninstall() {
             say "removed $VENV"
             removed=1
         else
-            die "$VENV is not KonGUI's environment; refusing to delete it"
+            die "$VENV is not KonGUI's environment; refusing to delete it (if it is, delete it by hand)"
         fi
     fi
     refresh_menu
@@ -260,16 +336,23 @@ fi
 # The environment: reused when it works, made again when it does not (for
 # example after a Fedora upgrade replaced the Python it was made with).
 if [ -e "$VENV" ] && ! is_kongui_venv "$VENV" && [ -n "$(ls -A "$VENV" 2>/dev/null)" ]; then
-    die "$VENV exists and is not KonGUI's environment; move it away or set KONGUI_VENV"
+    die "$VENV exists and is not KonGUI's environment; move it away or set KONGUI_VENV (if it is what is left of a failed KonGUI installation, delete it: rm -rf $VENV)"
 fi
 if is_kongui_venv "$VENV" && ! "$VENV/bin/python" -c 'import sys' >/dev/null 2>&1; then
-    say "the environment in $VENV no longer works (was Python upgraded?); making it again"
+    if [ -e "$VENV/bin/python" ] || [ -L "$VENV/bin/python" ]; then
+        say "the environment in $VENV no longer works (was Python upgraded?); making it again"
+    else
+        say "the environment in $VENV is incomplete (an earlier installation stopped); making it again"
+    fi
     rm -rf "$VENV"
 fi
 if [ ! -x "$VENV/bin/python" ]; then
     say "creating the environment $VENV"
-    mkdir -p "$(dirname "$VENV")"
-    python3 -m venv "$VENV" || die "could not create $VENV"
+    mkdir -p "$VENV"
+    mark_venv # first, so that a failure from here on leaves a folder known as ours
+    python3 -m venv "$VENV" || die "could not create $VENV; run this script again to retry"
+elif [ ! -f "$VENV/$VENV_MARKER_NAME" ]; then
+    mark_venv # an environment made by an older version of this script
 fi
 
 TARGET="$WHEEL"
@@ -278,7 +361,7 @@ if [ -n "$EXTRAS" ]; then
 fi
 say "installing $WHEEL_NAME${EXTRAS:+ with [$EXTRAS]} (this can take a few minutes the first time)"
 "$VENV/bin/python" -m pip install --disable-pip-version-check --upgrade "$TARGET" ||
-    die "pip could not install KonGUI (see the messages above)"
+    die "pip could not install KonGUI (see the messages above); run this script again to retry"
 
 INSTALLED="$("$VENV/bin/python" -I -c 'import importlib.metadata as m; print(m.version("kongui"))' 2>/dev/null)" ||
     die "KonGUI is not importable after the installation"
@@ -299,7 +382,24 @@ else
     LINK_OK=0
 fi
 
-# The menu entry. No icon yet: Plasma shows a generic one.
+# The icon, from the installed package into the user's hicolor theme. A release
+# without icons still installs; its menu entry just has no Icon= line.
+ICON_LINE=""
+ICON_SRC="$(packaged_icon_dir)"
+if [ -n "$ICON_SRC" ] && [ -n "$(icon_files "$ICON_SRC")" ]; then
+    while IFS= read -r rel; do
+        mkdir -p "$(dirname "$ICON_ROOT/$rel")"
+        cp -f "$ICON_SRC/$rel" "$ICON_ROOT/$rel"
+    done < <(icon_files "$ICON_SRC")
+    refresh_icons
+    ICON_LINE="Icon=$ICON_NAME"
+    say "installed the icon into $ICON_ROOT"
+else
+    say "this release has no icon; the menu shows a generic one"
+fi
+
+# The menu entry. StartupWMClass and the desktop file name (set by the app) tie
+# the window to this entry, so the panel shows the same name and icon.
 mkdir -p "$APPS_DIR"
 EXEC="$VENV/bin/kongui"
 case "$EXEC" in
@@ -315,7 +415,9 @@ Name=KonGUI
 GenericName=Plasma profiles
 Comment=Save, apply, export and import KDE Plasma configuration profiles (Konsave)
 Exec=$EXEC
-Terminal=false
+${ICON_LINE:+$ICON_LINE
+}Terminal=false
+StartupWMClass=kongui
 Categories=Settings;DesktopSettings;Utility;
 Keywords=konsave;profile;plasma;backup;theme;
 $MARKER

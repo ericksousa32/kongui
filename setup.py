@@ -53,8 +53,13 @@ setup(
     packages=find_packages(exclude=["tests", "tests.*"]),
     package_data={
         "config": ["conf.yaml"],
-        # Interface translations: sources (.ts) and compiled catalogs (.qm).
-        "kongui.gui": ["translations/*.qm", "translations/*.ts"],
+        # Interface translations: sources (.ts) and compiled catalogs (.qm);
+        # the application icon, in the freedesktop "hicolor" layout.
+        "kongui.gui": [
+            "translations/*.qm",
+            "translations/*.ts",
+            "data/icons/hicolor/*/apps/*",
+        ],
     },
     include_package_data=True,
     python_requires=">=3.9",

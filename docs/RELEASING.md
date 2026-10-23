@@ -129,11 +129,12 @@ Job `build`:
    `fetch-depth: 0`) and checks that their file names carry the version of the tag;
 4. installs the wheel in a clean virtual environment and runs
    `tools/smoke_test.py --no-gui --expect-version <version>` from another folder:
-   the package reports the tag's version and the bundled `konsave` command starts
-   (the window and translation checks are left out because a CI runner has no Qt
+   the package reports the tag's version, the bundled `konsave` command starts and
+   the application icon files were packaged (the window and translation checks are left out because a CI runner has no Qt
    system libraries);
 5. installs the wheel with `install.sh --wheel` in a temporary home (without
-   PySide6), checks the `kongui` link and the menu entry, and uninstalls it;
+   PySide6), checks the `kongui` link, the menu entry, its `Icon=kongui` line and the
+   copied icons, and uninstalls it (the icons go too);
 6. copies `install.sh` into `dist/`, writes `SHA256SUMS` (which lists it too) and
    uploads `dist/` as a workflow artifact.
 
@@ -185,6 +186,8 @@ After the workflow ends:
   to the owner for `0.1.0a1`).
 * [ ] From `0.1.0a2` on: the release also lists `install.sh`, `SHA256SUMS` covers it,
   and `bash install.sh --release <version>` installs that release on a desktop.
+* [ ] From the first release after `0.1.0a2` on: after `install.sh`, the menu entry,
+  the window and the task manager show the KonGUI icon.
 * [x] Download GitHub's own *Source code (zip)*, unpack it where there is no `.git`,
   run `pip wheel --no-deps .` and check the version (`0.1.0a1`, §4).
 
@@ -225,12 +228,19 @@ fake wheels with a `kongui` command, a fake GitHub served through `file://` URLs
 (`KONGUI_DOWNLOAD_BASE`, `KONGUI_API_URL`), no PySide6 (`KONGUI_EXTRAS=""`). It checks
 the options, the refusal to run as root, checksum mismatches, the newest-release
 lookup (drafts and odd tags skipped), install → open through the link → update →
-repair of a broken environment → uninstall (data kept), and that a file, a menu entry
-or a folder the script did not make is never replaced or deleted. When the script was
+repair of a broken environment → uninstall (data kept), an installation that
+stopped halfway (pip failing after the environment was created, or the environment
+left without Python) finished by running the script again or removed by
+`--uninstall`, the icons (copied into the
+hicolor theme, updated with the release, `Icon=kongui` in the menu entry, removed on
+uninstall unless the user changed them; a release without icons installs without an
+`Icon=` line), and that a file, a menu entry or a folder the script did not make is
+never replaced or deleted. When the script was
 written it was also run against the real `0.1.0a1` release, with PySide6.
 
 `tests.test_smoke` runs `tools/smoke_test.py` (the script the workflow uses) in clean
 processes: a healthy checkout passes and the process exits normally; `--no-gui`
-skips Qt; an uninstalled checkout fails the version check; a wrong expected version
-fails; the right one passes. `tests.test_packaging` also checks that the `gui` extra
-limits PySide6 on Python 3.9 ([`LIMITATIONS.md`](LIMITATIONS.md) §5).
+skips Qt (the icon files are still checked); a checkout has the 9 icon files and
+a window icon with 8 sizes; an uninstalled checkout fails the version check; a wrong expected version
+fails; the right one passes. `tests.test_packaging` also checks that `setup.py`
+packages every icon file and that the `gui` extra limits PySide6 on Python 3.9 ([`LIMITATIONS.md`](LIMITATIONS.md) §5).

@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
     QHBoxLayout,
-    QLabel,
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
@@ -20,7 +19,7 @@ import kongui
 from kongui.gui import i18n, icons
 from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.theme import get_theme
-from kongui.gui.widgets.common import Badge, Button, Label
+from kongui.gui.widgets.common import AppLogo, Badge, Button, Label
 
 
 class Sidebar(QFrame):
@@ -55,15 +54,8 @@ class Sidebar(QFrame):
         brand = QHBoxLayout()
         brand.setContentsMargins(6, 0, 6, 0)
         brand.setSpacing(10)
-        mark = QFrame()
-        mark.setObjectName("BrandMark")
-        mark.setFixedSize(34, 34)
-        mark_layout = QHBoxLayout(mark)
-        mark_layout.setContentsMargins(0, 0, 0, 0)
-        self._mark_icon = QLabel()
-        self._mark_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        mark_layout.addWidget(self._mark_icon)
-        brand.addWidget(mark)
+        self.logo = AppLogo(34)
+        brand.addWidget(self.logo)
         names = QVBoxLayout()
         names.setSpacing(0)
         names.addWidget(Label("KonGUI", "brand"))
@@ -191,7 +183,6 @@ class Sidebar(QFrame):
             button.setIcon(
                 icons.icon(self._icon_names[key], tokens.muted, 20, tokens.accent)
             )
-        self._mark_icon.setPixmap(icons.pixmap("profiles", tokens.on_accent, 20))
         self.theme_button.set_icon_name("sun" if tokens.dark else "moon")
 
 

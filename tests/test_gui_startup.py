@@ -92,6 +92,27 @@ class StartupTests(GuiTestCase):
                 )
                 self.assertTrue(visible, f"{name} is blank")
 
+    def test_the_application_icon(self):
+        from PySide6.QtWidgets import QApplication
+
+        from kongui.gui import icons
+
+        names = [str(p.relative_to(icons.APP_ICON_DIR)) for p in icons.app_icon_files()]
+        self.assertEqual(len(names), 9, names)  # 8 PNG sizes and the SVG
+        self.assertIn("scalable/apps/kongui.svg", names)
+        self.assertFalse(icons.app_icon().isNull())
+        app = QApplication.instance()
+        # create_app sets it, with the name the menu entry of install.sh uses
+        self.assertFalse(app.windowIcon().isNull())
+        self.assertEqual(app.desktopFileName(), icons.APP_ICON_NAME)
+        window = self.make_window()
+        # the same logo in the side bar and on the About page
+        for logo in (window.sidebar.logo, window.pages["about"].logo):
+            self.assertFalse(logo.is_empty())
+            self.assertEqual(logo.accessibleName(), "KonGUI")
+            image = logo.grab().toImage()
+            self.assertGreater(image.pixelColor(logo.width() // 2, 4).alpha(), 0)
+
     def test_unknown_icon_is_an_error(self):
         from PySide6.QtGui import QColor
 

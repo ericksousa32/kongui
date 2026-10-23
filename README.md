@@ -1,3 +1,5 @@
+<p align="center"><img src="kongui/gui/data/icons/hicolor/128x128/apps/kongui.png" width="96" alt="KonGUI icon"></p>
+
 <h1 align="center">KonGUI</h1>
 
 <p align="center">
@@ -20,7 +22,7 @@ What it aims to solve:
 
 ## Screenshots
 
-![Dashboard](./screenshots/Captura_de_tela_20261018_124635.png)
+![Dashboard](./screenshots/Captura_de_tela_20261023_124016.png)
 
 The screenshots were taken in demo mode, so every profile shown is fictitious. View more in [screenshots](./screenshots/).
 
@@ -112,11 +114,14 @@ You can read the script before running it (`less install.sh`). It needs no root
    (KonGUI ships its own copy of the `konsave` Python package and must not replace an
    existing Konsave);
 3. it links the `kongui` command into `~/.local/bin` (never `konsave`);
-4. it adds KonGUI to the application menu (`~/.local/share/applications/kongui.desktop`;
-   no icon of its own yet, Plasma shows a generic one).
+4. it adds KonGUI to the application menu (`~/.local/share/applications/kongui.desktop`)
+   with its icon, copied into your icon theme (`~/.local/share/icons/hicolor`).
+   Releases up to `0.1.0a2` have no icon; for them the menu shows a generic one.
 
 The first installation downloads PySide6 (Qt) and can take a few minutes. It needs
-`python3` 3.9 or newer, `curl` and `sha256sum`, all part of Fedora.
+`python3` 3.9 or newer, `curl` and `sha256sum`, all part of Fedora. If it stops
+halfway (no network, for example), run the script again: it picks up the environment
+it had started.
 
 Options: `bash install.sh --release 0.1.0a1` installs a given release;
 `bash install.sh --wheel ./kongui-0.1.0a1-py3-none-any.whl` installs a wheel you
@@ -126,7 +131,9 @@ each release and listed in its `SHA256SUMS`.
 
 The script never replaces a file it did not make: a `~/.local/bin/kongui` that is not a
 link, a different `kongui.desktop`, or a `~/.venvs/kongui` folder that is not KonGUI's
-environment are left alone (with a warning, or an error for the folder).
+environment are left alone (with a warning, or an error for the folder; the script
+recognises its own folder by a `.kongui-install` file it leaves in it). On uninstall
+it only deletes the icon files that are still the ones it installed.
 
 ### 2. Open it (every time)
 
@@ -156,7 +163,7 @@ Python version), the script makes it again.
 bash install.sh --uninstall
 ```
 
-It removes the environment, the command and the menu entry. Your profiles, safety
+It removes the environment, the command, the menu entry and the icon. Your profiles, safety
 copies and `conf.yaml` stay where Konsave keeps them (`~/.config/konsave`, including
 `kongui-backups/`), and KonGUI's preferences in `~/.config/kongui/`; delete them by
 hand only if you no longer want them.
@@ -173,13 +180,17 @@ python3 -m venv ~/.venvs/kongui
 ~/.venvs/kongui/bin/pip install "./kongui-0.1.0a1-py3-none-any.whl[gui]"
 mkdir -p ~/.local/bin ~/.local/share/applications
 ln -sf ~/.venvs/kongui/bin/kongui ~/.local/bin/kongui
-printf '[Desktop Entry]\nType=Application\nName=KonGUI\nExec=%s\nTerminal=false\nCategories=Settings;DesktopSettings;Utility;\n' \
+printf '[Desktop Entry]\nType=Application\nName=KonGUI\nExec=%s\nIcon=kongui\nTerminal=false\nStartupWMClass=kongui\nCategories=Settings;DesktopSettings;Utility;\n' \
   "$HOME/.venvs/kongui/bin/kongui" > ~/.local/share/applications/kongui.desktop
+# the icon (releases after 0.1.0a2), from the installed package into your icon theme
+icons="$(~/.venvs/kongui/bin/python -c 'import kongui, os; print(os.path.join(os.path.dirname(kongui.__file__), "gui", "data", "icons", "hicolor"))')"
+mkdir -p ~/.local/share/icons && cp -r "$icons" ~/.local/share/icons/
 ```
 
 To update, install the new wheel with `pip install --upgrade` into the same
-environment; to uninstall, delete `~/.venvs/kongui`, `~/.local/bin/kongui` and
-`~/.local/share/applications/kongui.desktop`.
+environment (and copy the icon again); to uninstall, delete `~/.venvs/kongui`,
+`~/.local/bin/kongui`, `~/.local/share/applications/kongui.desktop` and
+`~/.local/share/icons/hicolor/*/apps/kongui.*`.
 
 </details>
 

@@ -14,7 +14,14 @@ import kongui
 from kongui.gui.context import AppContext
 from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.pages.base import Page
-from kongui.gui.widgets.common import Badge, Button, Card, IconTile, Label, Separator
+from kongui.gui.widgets.common import (
+    AppLogo,
+    Badge,
+    Button,
+    Card,
+    Label,
+    Separator,
+)
 from kongui.gui.widgets.rows import SettingRow
 
 REPOSITORY_URL = "https://github.com/ericksousa32/kongui"
@@ -40,7 +47,8 @@ class AboutPage(Page):
         row = QHBoxLayout(hero)
         row.setContentsMargins(24, 22, 24, 22)
         row.setSpacing(18)
-        row.addWidget(IconTile("profiles", 64))
+        self.logo = AppLogo(64)
+        row.addWidget(self.logo, 0, Qt.AlignmentFlag.AlignTop)
         texts = QVBoxLayout()
         texts.setSpacing(2)
         heading = QHBoxLayout()
