@@ -1,9 +1,8 @@
 # Versions and releases
 
 How the version of KonGUI is defined, where it is shown, and the steps for a
-release. **No tag has been created yet**; this document describes the rule so the
-first one follows it. The first real Plasma session report (2026-10-22) found no
-blocker; what it did not cover is in [`LIMITATIONS.md`](LIMITATIONS.md) §1.
+release. The first tag is **`v0.1.0a1`** (2026-10-22, [release page](https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1));
+it followed the rules and the checklist below.
 
 ## 1. One source: the git tag
 
@@ -100,9 +99,9 @@ small files fix it:
 | `git archive` of a commit after the tag | `0.1.0a2.dev1+g…` |
 | an archive made *without* the attribute | the build fails (the control of the test) |
 
-GitHub makes its "Source code" files with `git archive`, but a real download from
-GitHub was **not** tested (no tag exists yet): check it after the first pre-release
-(unpack the zip, run `pip wheel --no-deps .` and look at the version).
+GitHub makes its "Source code" files with `git archive`. Checked with a real
+download for `v0.1.0a1`: the zip has `.git_archival.txt` filled in (`describe-name:
+v0.1.0a1`) and `pip wheel --no-deps .` builds `kongui-0.1.0a1`.
 
 `git archive` only fills the file for the commit it is run on. A copy of the
 working tree made by hand (not through `git archive`) still has the placeholders and
@@ -145,10 +144,10 @@ What was tested: the steps of `build` were executed on a scratch repository (a b
 with the version and the commit supplied through the same environment variables the
 runner sets: the good tag built `kongui-0.1.0a1` (wheel and sdist), passed the
 smoke test and produced the checksums; a tag that is not a version, and a tag whose
-commit is not on `master`, were refused. The file also passes `actionlint`. What was
-**not** tested: a run on real GitHub Actions (the `uses:` steps, the permissions, `gh
-release create`), because that needs a tag on the real repository. Expect to fix a
-detail on the first tag; the tag can be deleted and pushed again (§3).
+commit is not on `master`, were refused. The file also passes `actionlint`. Its first
+real run on GitHub Actions, for the tag `v0.1.0a1` (2026-10-22), succeeded with no
+change: both jobs passed and the pre-release was created with the three files. If a
+later run fails, the tag can be deleted and pushed again (§3).
 
 ## 6. Pre-release checklist and post-release checks
 
@@ -172,14 +171,19 @@ Before tagging the first alpha:
 
 After the workflow ends:
 
-* [ ] The release is marked *Pre-release* and lists the wheel, the sdist and
+* [x] The release is marked *Pre-release* and lists the wheel, the sdist and
   `SHA256SUMS`.
-* [ ] Download the files, run `sha256sum -c SHA256SUMS`, install the wheel with
-  `[gui]` in a new virtual environment on Fedora KDE and run `kongui --demo` and
-  `python tools/smoke_test.py --expect-version 0.1.0a1` (without `--no-gui`).
-* [ ] Download GitHub's own *Source code (zip)*, unpack it where there is no `.git`,
-  run `pip wheel --no-deps .` and check the version (§4: this was not tested with a
-  real GitHub download yet).
+* [x] Download the files, run `sha256sum -c SHA256SUMS`, install the wheel with
+  `[gui]` in a new virtual environment and run
+  `python tools/smoke_test.py --expect-version 0.1.0a1` (without `--no-gui`). Done
+  for `0.1.0a1` on Linux with Qt offscreen, on Python 3.11, 3.13 and 3.14
+  ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
+* [ ] The same on a Fedora KDE desktop, with `kongui --demo` in a real window (left
+  to the owner for `0.1.0a1`).
+* [x] Download GitHub's own *Source code (zip)*, unpack it where there is no `.git`,
+  run `pip wheel --no-deps .` and check the version (`0.1.0a1`, §4).
+
+For the next release, copy this checklist and start again with every box empty.
 
 ## 7. Tests
 

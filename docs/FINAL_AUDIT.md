@@ -1,10 +1,12 @@
 # KonGUI final audit
 
-**Verdict: the project is NOT complete, but it is ready for an alpha pre-release.**
+**Verdict: the project is NOT complete; its first alpha pre-release, `0.1.0a1`, is
+published** ([release page](https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1), 2026-10-22).
 The owner's first real Plasma session report (2026-10-22, §7) found no blocker: every
 feature tried worked, including apply with its safety copy and going back from it.
 Package, version from the tag, release workflow, smoke test and installation
-instructions are ready. No tag or release exists yet. The mandatory requirements P-1 (RN-01, safety copy before
+instructions worked: the release workflow published the pre-release on its first
+real run, and the published files passed the post-release checks (§6). The mandatory requirements P-1 (RN-01, safety copy before
 apply/import), P-2 (lock) and P-3 (basic limits and free-space checks on
 import/export) are implemented and tested, and so are the profile descriptions and
 sections (B-2). What remains open is the rest of B-3 (the checks the quick session
@@ -150,7 +152,7 @@ window exists are English only.
 | P-3 | Limits for zip bombs, total size and disk space on import/export | Tested (basic protection) | 512 MiB file, 2 GiB really decompressed (stops at the limit), 10,000 entries, free-space check before import and export, friendly messages, failed export keeps the previous one; `tests.test_transfer_limits`; see `INTEGRATION.md` §10. Limits are fixed constants and estimates, not guarantees (see §4) |
 | B-1 | Progress and cancellation of operations | Blocked | the engine cannot be interrupted, and `konsave/` is only changed for the lock; today there is only "busy" |
 | B-2 | Profile description and sections | Tested (description and read-only sections) | the description is a small file inside the profile folder and the sections come from the profile's `conf.yaml` (`INTEGRATION.md` §11; `tests.test_profile_details`, `tests.test_gui_details`). The description does not travel in the `.knsv`; choosing what to include when saving is not offered (manual, through *Edit .YAML*) |
-| R-1 | First tag / pre-release | **Prepared, not created** | `.github/workflows/release.yml` replaced `deploy.yml` (no PyPI): tag check, build, clean-environment smoke test, checksums, GitHub pre-release; its steps were run on a scratch repository, never on real GitHub Actions (`RELEASING.md` §5). Before the first tag: record the B-3 report and follow the checklist in `RELEASING.md` §6 |
+| R-1 | First tag / pre-release | **Done** (`v0.1.0a1`, 2026-10-22) | `.github/workflows/release.yml` (no PyPI): tag check, build, clean-environment smoke test, checksums, GitHub pre-release. Its first real run on GitHub Actions succeeded with no change; the published files passed the checks of `RELEASING.md` §6 (see §6 below) |
 | B-3 | Validation in a real Plasma session (actually applying, Wayland/drag-and-drop, SELinux, Flatpak) | **Partly validated** (quick test, 2026-10-22) | Fedora 44, Plasma 6.7.5, Qt 6.11.2, Wayland: start, save and apply (with safety copy and restore), export and import, drag and drop on Wayland, `conf.yaml` edited by hand and two operations at once all **ok**; minor layout and text alignment adjustments wanted. **Not tested:** drag and drop on X11, SELinux, Flatpak, quitting during an operation. Report and notes in §7 |
 
 ## 4. Why it is not complete
@@ -259,6 +261,20 @@ to PR #11), as an unprivileged user with a temporary `$HOME`, Qt offscreen, each
   day before the removal and are kept for the record (the Python matrix and the
   PySide6 findings still apply).
 
+**Published pre-release `0.1.0a1` (2026-10-22).** The workflow run of the tag
+succeeded (jobs *Build and check the files* and *Publish the GitHub release*). The
+three published files were downloaded from the release: `sha256sum -c SHA256SUMS`
+passes; the wheel, installed with `[gui]` in clean virtual environments on Python
+3.11 (pip resolved PySide6 6.9.3), 3.13 and 3.14 (6.12.0), passes
+`tools/smoke_test.py --expect-version 0.1.0a1` with the window and translation checks
+(version `0.1.0a1`, `konsave -v` prints `Konsave: 2.2.0+kongui`, five pages); in a
+temporary home it saved, applied, restored the safety copy, exported, removed and
+imported a profile, refused to save with a broken `conf.yaml` (nothing left), saved
+after a group was added by hand and wrote no file next to `conf.yaml`. GitHub's own
+*Source code* zip of the tag has a filled `.git_archival.txt` (`describe-name:
+v0.1.0a1`) and builds `kongui-0.1.0a1`; so does the published sdist. All of this ran
+with Qt offscreen: installing from the release page on a desktop is left to the owner.
+
 Before the removal (2026-10-18 and 2026-10-19, branch `chore/prerelease-readiness`):
 
 * **955 tests, all passing** (`python3 -m unittest discover -s tests -t .`, about 3 minutes; 949 when the Python matrix below was run, before the overview tests of 2026-10-19). With `setuptools_scm` installed all of them run; without it the 3 tests of `SourceArchiveTests` are skipped. The general review of the suite (overview tests through the real interface, the feature map, the static checks of the tests) is in [`TEST_OVERVIEW.md`](TEST_OVERVIEW.md); it found and fixed one defect: a refused apply or import could be reported with no reason (§3 there). Run it **in the foreground**: started as a background job, the shell makes the child processes ignore Ctrl+C and `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails with `-9` instead of `130`; the same test passes alone and in the foreground. Earlier in this work one coverage run reported a single failure whose name was not captured and that was not reproduced; if a test fails once, rerun it alone and in the foreground before treating it as a regression. One more one-off: a run on Python 3.10 that crossed midnight failed `tests.test_i18n...test_switching_back_and_forth_leaves_no_mixed_text` ("3 days ago" against "2 days ago": the demo dates are relative to now); it is time-dependent, not a regression, and that combination passed in the next run.
@@ -281,8 +297,8 @@ Before the removal (2026-10-18 and 2026-10-19, branch `chore/prerelease-readines
   deallocating True or False`), reproducibly with the whole GUI test set (no single
   module or pair of modules triggers it). It is not found in KonGUI's code; it
   follows the PySide6 version and the Python version (3.12 and newer are not affected).
-* The installed application was also checked on 3.11 (PySide6 6.9.3, resolved by pip from the extra) and 3.13 (6.12.0): a wheel built from a tagged scratch copy, installed with `[gui]` in a clean environment, `tools/smoke_test.py --expect-version 0.1.0a1` run from another folder: version `0.1.0a1`, `konsave -v` prints `Konsave: 2.2.0+kongui`, both catalogs load, the window opens with its six pages, exit status 0.
-* **Release workflow:** the steps of its `build` job were run on a scratch repository (branch `master`, local bare remote, tag `v0.1.0a1`): version read, ancestor-of-`master` check, build, file names, clean-environment smoke test and `SHA256SUMS` all passed; a tag that is not a version, a tag whose commit is not on `master` and a tag that disagrees with the build were each refused. `actionlint` passes. **Not tested on real GitHub Actions** (`RELEASING.md` §5).
+* The installed application was also checked on 3.11 (PySide6 6.9.3, resolved by pip from the extra) and 3.13 (6.12.0): a wheel built from a tagged scratch copy, installed with `[gui]` in a clean environment, `tools/smoke_test.py --expect-version 0.1.0a1` run from another folder: version `0.1.0a1`, `konsave -v` prints `Konsave: 2.2.0+kongui`, both catalogs load, the window opens with its six pages (five since the editor was removed), exit status 0.
+* **Release workflow:** the steps of its `build` job were run on a scratch repository (branch `master`, local bare remote, tag `v0.1.0a1`): version read, ancestor-of-`master` check, build, file names, clean-environment smoke test and `SHA256SUMS` all passed; a tag that is not a version, a tag whose commit is not on `master` and a tag that disagrees with the build were each refused. `actionlint` passes. On real GitHub Actions it ran for the first time with the tag `v0.1.0a1` (2026-10-22) and both jobs succeeded.
 * The same suite also passed (912 tests, before `tests.test_packaging` existed) with `setuptools`, `pkg_resources` and `distutils` made unimportable (§5, item 3).
 * Coverage of `kongui/` with `coverage run --branch --source=kongui`: **96%**
   (6948 statements, 219 not run; 1668 branches, 127 partly covered; 2026-10-19, 955 tests). The four overview tests alone reach 73%. `konsave/` was

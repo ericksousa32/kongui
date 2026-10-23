@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- (KonGUI) README, *Installing the pre-release*: rewritten as install once / open every time / update / uninstall. The install block now also links the `kongui` command into `~/.local/bin` and adds a Plasma menu entry, so the app opens later without activating the virtual environment (before, it only opened in the terminal where it was installed). The release notes point to it
+- (KonGUI) Documentation records the publication of `0.1.0a1` and its post-release checks (`docs/FINAL_AUDIT.md` §6, `docs/RELEASING.md` §6)
 
 ## [0.1.0a1] - 2026-10-22
 First KonGUI release (alpha, GitHub pre-release). Versions below 0.1.0a1 are those of

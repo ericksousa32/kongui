@@ -4,9 +4,10 @@ One place for what KonGUI does **not** do, what was decided on purpose, and what
 still open. Details of each item are in the document linked next to it; the status
 of every requirement is in [`FINAL_AUDIT.md`](FINAL_AUDIT.md).
 
-Written on 2026-10-18, before the first tag or pre-release (how versions and releases work: [`RELEASING.md`](RELEASING.md)). Nothing here is a
-promise of a future feature. The release is **ready to be tagged**: the first real
-Plasma session report (2026-10-22) found no blocker; what it did not cover is in B-3 below.
+Written on 2026-10-18 and kept up to date; it applies to the first alpha, [`0.1.0a1`](https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1)
+(2026-10-22). How versions and releases work: [`RELEASING.md`](RELEASING.md). Nothing
+here is a promise of a future feature. The first real Plasma session report found no
+blocker; what it did not cover is in B-3 below.
 
 ## 1. Required and still open
 
@@ -118,9 +119,8 @@ Before **exporting** a profile, make sure the global file and the profile's agre
 * **KonGUI is not published to PyPI.** The old `.github/workflows/deploy.yml` (any
   `v*` tag → PyPI) was replaced by `.github/workflows/release.yml`, which builds the
   wheel and the sdist, tests the wheel in a clean environment and creates a GitHub
-  *pre-release* with the files and `SHA256SUMS`. It was tested step by step on a
-  scratch repository but **never on real GitHub Actions**; see
-  [`RELEASING.md`](RELEASING.md) §5.
+  *pre-release* with the files and `SHA256SUMS`. Its first real run, for `0.1.0a1`,
+  succeeded; see [`RELEASING.md`](RELEASING.md) §5.
 * The build prints two warnings that do not fail it: the licence classifier is
   deprecated in favour of an SPDX expression, and `kongui.gui.translations` is "absent
   from `packages`" (it holds only the `.ts` and `.qm` files, which are included

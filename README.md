@@ -4,7 +4,7 @@
 A graphical interface for managing KDE Plasma configuration profiles, built as an independent fork of <a href="https://github.com/Prayag2/konsave">Konsave</a>.
 </p>
 
-> **Status: early development. The first alpha, `0.1.0a1`, is prepared but not tagged yet** (no installable package or AppImage until then). A first quick test on a real Plasma session (Fedora 44, Wayland) found no blocker; some checks are still to be done. When the alpha is published it will be a GitHub *pre-release*: see [Installing the pre-release](#installing-the-pre-release). Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
+> **Status: early development. The first alpha, [`0.1.0a1`](https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1), is out as a GitHub *pre-release* (2026-10-22)**: see [Installing the pre-release](#installing-the-pre-release). A first quick test on a real Plasma session (Fedora 44, Wayland) found no blocker; some checks are still to be done. Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
 
 ## Overview
 
@@ -60,7 +60,6 @@ Konsave writes the global `conf.yaml` into the `.knsv` when exporting, even if t
 ### Planned
 
 - Progress reporting and cancelling of long operations that have already started. The original engine cannot be interrupted today.
-- The first tagged alpha pre-release. Everything is prepared (package name, version from the tag, release workflow `.github/workflows/release.yml`, smoke test, the first real-session report), but no tag, wheel or AppImage has been published yet.
 
 ### Known limitations
 
@@ -90,29 +89,98 @@ The detailed status of each requirement is in [`docs/FINAL_AUDIT.md`](docs/FINAL
 > read [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). Help with the real-session checks
 > is very welcome: [`docs/PLASMA_TEST_PLAN.md`](docs/PLASMA_TEST_PLAN.md).
 
-When the first pre-release exists, it is on the
-[Releases](https://github.com/ericksousa32/kongui/releases) page (marked *Pre-release*)
-with the wheel, the sdist and a `SHA256SUMS` file. On Fedora KDE:
+The pre-releases are on the
+[Releases](https://github.com/ericksousa32/kongui/releases) page (marked *Pre-release*;
+the first one is [`0.1.0a1`](https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1)), each with the wheel, the sdist and a
+`SHA256SUMS` file. There is no RPM, Flatpak or AppImage yet: KonGUI is installed in a
+Python virtual environment, and two small extra steps make it open like any other
+application.
+
+### 1. Install (once)
+
+Copy the whole block into a terminal on Fedora KDE. Change `VERSION` for a later
+release.
 
 ```bash
-sudo dnf install python3 python3-pip       # usually already there
-python3 -m venv ~/.venvs/kongui            # a virtual environment is required, see below
-. ~/.venvs/kongui/bin/activate
-sha256sum -c --ignore-missing SHA256SUMS   # in the folder where you downloaded the files
-pip install "./kongui-0.1.0a1-py3-none-any.whl[gui]"   # use the real file name
-kongui --demo
+VERSION=0.1.0a1
+
+# Download the wheel and the checksums, and check them
+mkdir -p ~/Downloads/kongui-$VERSION && cd ~/Downloads/kongui-$VERSION
+base=https://github.com/ericksousa32/kongui/releases/download/v$VERSION
+curl -LO "$base/kongui-$VERSION-py3-none-any.whl" -LO "$base/SHA256SUMS"
+sha256sum -c --ignore-missing SHA256SUMS
+
+# Install KonGUI (with PySide6, the "[gui]" part) in its own environment
+python3 -m venv ~/.venvs/kongui
+~/.venvs/kongui/bin/pip install "./kongui-$VERSION-py3-none-any.whl[gui]"
+
+# Make `kongui` a command that works in any terminal...
+mkdir -p ~/.local/bin
+ln -sf ~/.venvs/kongui/bin/kongui ~/.local/bin/kongui
+
+# ...and add KonGUI to the Plasma application menu
+mkdir -p ~/.local/share/applications
+cat > ~/.local/share/applications/kongui.desktop <<EOF
+[Desktop Entry]
+Type=Application
+Name=KonGUI
+Comment=Save and apply KDE Plasma configuration profiles
+Exec=$HOME/.venvs/kongui/bin/kongui
+Icon=preferences-desktop
+Terminal=false
+Categories=Settings;Utility;
+EOF
+kbuildsycoca6 >/dev/null 2>&1 || true   # refresh the menu now (optional)
 ```
 
-* The `[gui]` part installs PySide6 (Qt). Without it `kongui` stops with an
-  `ImportError`.
-* A virtual environment is needed because KonGUI ships its own copy of the `konsave`
-  Python package and would replace an existing Konsave installation.
-* To remove it: delete the environment (`rm -r ~/.venvs/kongui`). KonGUI's data stays
-  where Konsave keeps it (`~/.config/konsave`, including `kongui-backups/`) and is not
-  deleted.
-* To report a problem, open an issue and include the version shown in *About*. To tell
-  how it went on your Plasma session (even if all went well), use the *Plasma test
-  report* issue template.
+* `python3` is part of Fedora; if it is missing, `sudo dnf install python3`.
+* The virtual environment is needed because KonGUI ships its own copy of the
+  `konsave` Python package and would replace an existing Konsave installation. Only
+  the `kongui` command is linked, never `konsave`.
+* The menu icon is a generic one from the Plasma theme: KonGUI has no icon of its
+  own yet.
+
+### 2. Open it (every time)
+
+No command has to be repeated:
+
+* from the **application menu**: search for *KonGUI* (you can pin it to the panel or
+  the task manager);
+* or in **any terminal**: `kongui` (real profiles) or `kongui --demo` (fictitious
+  data, nothing is read or written).
+
+If a terminal says `kongui: command not found`, open a new terminal. On Fedora,
+`~/.local/bin` is in the `PATH` of bash; with zsh add
+`export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc`, with fish run
+`fish_add_path ~/.local/bin`. The full path always works:
+`~/.venvs/kongui/bin/kongui`.
+
+### 3. Update to a new pre-release
+
+Download the new wheel as in step 1 (with the new `VERSION`) and, in that folder:
+
+```bash
+~/.venvs/kongui/bin/pip install --upgrade "./kongui-$VERSION-py3-none-any.whl[gui]"
+```
+
+The command and the menu entry keep working: they point to the same environment.
+
+### 4. Uninstall
+
+```bash
+rm -r ~/.venvs/kongui
+rm -f ~/.local/bin/kongui ~/.local/share/applications/kongui.desktop
+```
+
+Your profiles, safety copies and `conf.yaml` stay where Konsave keeps them
+(`~/.config/konsave`, including `kongui-backups/`), and KonGUI's preferences in
+`~/.config/kongui/`; delete them by hand only if you no longer want them.
+
+### Reporting
+
+To report a problem, open an issue and include the version shown in *About*. To tell
+how it went on your Plasma session (even if all went well), use the *Plasma test
+report* issue template.
 
 ## Installation (development)
 
@@ -131,6 +199,10 @@ Use a virtual environment: the package is called `kongui` and installs the `kong
 Linux only. The install and launch commands above were checked with Python 3.13 in a fresh virtual environment (Qt offscreen), installing from a local clone of this repository.
 
 ## Running
+
+Installed from a pre-release, KonGUI opens from the application menu or with `kongui`
+in any terminal ([Open it](#2-open-it-every-time)). From a clone, activate the clone's
+virtual environment first (`. .venv/bin/activate`), then:
 
 ```bash
 kongui --demo            # fictitious data; nothing is read from or written to your profiles
@@ -222,11 +294,10 @@ Known limits: the fictitious data of `--demo` (profile names, descriptions and a
 No dates are promised. In rough order of priority:
 
 1. More real Plasma session testing (X11, SELinux, Flatpak, quitting during an operation), the small layout adjustments the first test asked for, and fixes for what users report.
-2. A first tagged pre-release (alpha) on GitHub. The release workflow and the package name are ready; the first real-session report found no blocker; the tag is created by the owner (steps in [`docs/RELEASING.md`](docs/RELEASING.md) §3).
-3. AppImage packaging, only after a working, tested build exists.
-4. Progress and cancellation for operations already running, if the engine allows it.
+2. AppImage packaging, only after a working, tested build exists.
+3. Progress and cancellation for operations already running, if the engine allows it.
 
-Done so far: safety copies, cross-process lock, import and export limits, profile descriptions and sections.
+Done so far: safety copies, cross-process lock, import and export limits, profile descriptions and sections, and the first alpha pre-release, `0.1.0a1` (2026-10-22).
 
 ## Compatibility
 
