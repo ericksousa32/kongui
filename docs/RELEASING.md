@@ -132,7 +132,10 @@ Job `build`:
    the package reports the tag's version and the bundled `konsave` command starts
    (the window and translation checks are left out because a CI runner has no Qt
    system libraries);
-5. writes `SHA256SUMS` and uploads `dist/` as a workflow artifact.
+5. installs the wheel with `install.sh --wheel` in a temporary home (without
+   PySide6), checks the `kongui` link and the menu entry, and uninstalls it;
+6. copies `install.sh` into `dist/`, writes `SHA256SUMS` (which lists it too) and
+   uploads `dist/` as a workflow artifact.
 
 Job `release` (the only one with `contents: write`): creates the GitHub release
 (`gh release create --verify-tag`) with the files of `dist/`, the text of
@@ -180,6 +183,8 @@ After the workflow ends:
   ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
 * [ ] The same on a Fedora KDE desktop, with `kongui --demo` in a real window (left
   to the owner for `0.1.0a1`).
+* [ ] From `0.1.0a2` on: the release also lists `install.sh`, `SHA256SUMS` covers it,
+  and `bash install.sh --release <version>` installs that release on a desktop.
 * [x] Download GitHub's own *Source code (zip)*, unpack it where there is no `.git`,
   run `pip wheel --no-deps .` and check the version (`0.1.0a1`, §4).
 
@@ -214,6 +219,15 @@ wheel was `kongui-0.1.0a1-py3-none-any.whl`, `kongui.__version__` was `0.1.0a1` 
 `konsave -v` printed `Konsave: 2.2.0+kongui`; an sdist built from the tag, unpacked where there is no `.git`, built a wheel with the same version; after one more commit the wheel was
 `kongui-0.1.0a2.dev1+g…` and the interface label `v0.1.0a2.dev1`. The release workflow (§5, step 4)
 repeats the version check for every real release.
+
+`tests.test_install_script` runs `install.sh` for real in temporary homes, offline:
+fake wheels with a `kongui` command, a fake GitHub served through `file://` URLs
+(`KONGUI_DOWNLOAD_BASE`, `KONGUI_API_URL`), no PySide6 (`KONGUI_EXTRAS=""`). It checks
+the options, the refusal to run as root, checksum mismatches, the newest-release
+lookup (drafts and odd tags skipped), install → open through the link → update →
+repair of a broken environment → uninstall (data kept), and that a file, a menu entry
+or a folder the script did not make is never replaced or deleted. When the script was
+written it was also run against the real `0.1.0a1` release, with PySide6.
 
 `tests.test_smoke` runs `tools/smoke_test.py` (the script the workflow uses) in clean
 processes: a healthy checkout passes and the process exits normally; `--no-gui`

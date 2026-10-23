@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- (KonGUI) `install.sh`: installs KonGUI for the current user (no root): downloads the newest release, or `--release VERSION`, or takes `--wheel FILE`; checks it against `SHA256SUMS`; installs it with PySide6 in `~/.venvs/kongui`; links the `kongui` command into `~/.local/bin` (never `konsave`) and adds a menu entry (no icon yet). Running it again updates (and remakes a broken environment); `--uninstall` removes it and keeps `~/.config/konsave`. It never replaces a file, menu entry or folder it did not make. The release workflow tests it and attaches it to each release (in `SHA256SUMS`). Tests: `tests/test_install_script.py`
+
 ### Changed
 - (KonGUI) README, *Installing the pre-release*: rewritten as install once / open every time / update / uninstall. The install block now also links the `kongui` command into `~/.local/bin` and adds a Plasma menu entry, so the app opens later without activating the virtual environment (before, it only opened in the terminal where it was installed). The release notes point to it
 - (KonGUI) Documentation records the publication of `0.1.0a1` and its post-release checks (`docs/FINAL_AUDIT.md` §6, `docs/RELEASING.md` §6)
