@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- (KonGUI) Application icon: `kongui/gui/data/icons/hicolor` (`kongui.png` in 8 sizes, 16–512 px, and `kongui.svg`), packaged with the wheel. It is the window icon and the mark at the top of the side bar (`icons.app_icon()`). See `docs/GUI_PROTOTYPE.md` §3
+- (KonGUI) Application icon: `kongui/gui/data/icons/hicolor` (`kongui.png` in 8 sizes, 16–512 px, and `kongui.svg`), packaged with the wheel. It is the window icon, the mark at the top of the side bar and the logo of the About page (`icons.app_icon()`, drawn by `widgets.common.AppLogo` at the screen's pixel ratio). See `docs/GUI_PROTOTYPE.md` §3
 
 ### Changed
 - (KonGUI) `install.sh` copies the icon into `~/.local/share/icons/hicolor` and the menu entry gets `Icon=kongui` and `StartupWMClass=kongui`; `--uninstall` removes the icon files that are still the installed ones. Releases without an icon (0.1.0a1, 0.1.0a2) still install, with a generic icon

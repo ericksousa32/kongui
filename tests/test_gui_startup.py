@@ -105,8 +105,13 @@ class StartupTests(GuiTestCase):
         # create_app sets it, with the name the menu entry of install.sh uses
         self.assertFalse(app.windowIcon().isNull())
         self.assertEqual(app.desktopFileName(), icons.APP_ICON_NAME)
-        mark = self.make_window().sidebar._mark_icon  # pylint: disable=protected-access
-        self.assertFalse(mark.pixmap().isNull())
+        window = self.make_window()
+        # the same logo in the side bar and on the About page
+        for logo in (window.sidebar.logo, window.pages["about"].logo):
+            self.assertFalse(logo.is_empty())
+            self.assertEqual(logo.accessibleName(), "KonGUI")
+            image = logo.grab().toImage()
+            self.assertGreater(image.pixelColor(logo.width() // 2, 4).alpha(), 0)
 
     def test_unknown_icon_is_an_error(self):
         from PySide6.QtGui import QColor
