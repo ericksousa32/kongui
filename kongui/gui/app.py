@@ -10,7 +10,7 @@ from PySide6.QtCore import QStandardPaths
 from PySide6.QtWidgets import QApplication
 
 from kongui.core.errors import EngineLoadError, RunningAsRootError
-from kongui.gui import i18n
+from kongui.gui import i18n, icons
 from kongui.core.safety import ensure_not_root
 from kongui.gui.backend import FakeBackend, ProfileBackend, ServiceBackend
 from kongui.gui.main_window import MainWindow
@@ -51,7 +51,8 @@ def create_app(argv: Optional[Sequence[str]] = None) -> QApplication:
         app = QApplication(list(argv if argv is not None else sys.argv))
     app.setApplicationName("kongui")
     app.setApplicationDisplayName("KonGUI")
-    app.setDesktopFileName("kongui")
+    app.setDesktopFileName("kongui")  # the menu entry install.sh writes
+    app.setWindowIcon(icons.app_icon())
     return app  # type: ignore[return-value]
 
 

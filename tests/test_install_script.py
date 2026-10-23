@@ -8,6 +8,10 @@ the network (``PIP_NO_INDEX``). Each real installation creates a virtual
 environment with the system ``python3``, so the tests that need one are skipped
 when it cannot.
 
+The fake wheels carry two fake icons where the real package keeps them
+(``kongui/gui/data/icons/hicolor``), except when a test needs a release without
+icons, like ``0.1.0a1`` and ``0.1.0a2``.
+
 The same script was also run against the real ``0.1.0a1`` release (with PySide6)
 when it was written; see ``docs/RELEASING.md``.
 """
@@ -44,9 +48,15 @@ def _can_make_venvs() -> bool:
 
 
 CAN_INSTALL = bool(BASH) and sys.platform.startswith("linux") and _can_make_venvs()
+ICONS = ("48x48/apps/kongui.png", "scalable/apps/kongui.svg")
 
 
-def fake_wheel(folder: Path, version: str) -> Path:
+def fake_icon(rel: str, version: str) -> str:
+    """The content of a fake icon; it changes with the version."""
+    return f"fake icon {rel} of {version}\n"
+
+
+def fake_wheel(folder: Path, version: str, *, icons: bool = True) -> Path:
     """Builds a tiny installable ``kongui`` wheel with two console scripts."""
     name = f"kongui-{version}-py3-none-any.whl"
     info = f"kongui-{version}.dist-info"
@@ -69,6 +79,9 @@ def fake_wheel(folder: Path, version: str) -> Path:
             "konsave = kongui.fake:main\n"
         ),
     }
+    if icons:
+        for rel in ICONS:
+            files[f"kongui/gui/data/icons/hicolor/{rel}"] = fake_icon(rel, version)
     record = []
     for path, text in files.items():
         data = text.encode()
@@ -111,6 +124,7 @@ class ScriptCase(unittest.TestCase):
         self.venv = self.home / ".venvs" / "kongui"
         self.link = self.home / ".local/bin/kongui"
         self.desktop = self.home / ".local/share/applications/kongui.desktop"
+        self.icons = self.home / ".local/share/icons/hicolor"
 
     def run_script(self, *args, extra_env=None):
         env = {
@@ -137,10 +151,10 @@ class ScriptCase(unittest.TestCase):
             check=False,
         )
 
-    def publish(self, version, *, tamper=False):
+    def publish(self, version, *, tamper=False, icons=True):
         """Puts a release on the fake GitHub, as the workflow would."""
         folder = self.github / f"v{version}"
-        fake_wheel(folder, version)
+        fake_wheel(folder, version, icons=icons)
         write_sums(folder)
         if tamper:
             with zipfile.ZipFile(
@@ -239,12 +253,16 @@ class InstallTests(ScriptCase):
             self.run_kongui("--demo").stdout.strip(), "fake kongui 1.0.0 --demo"
         )
         self.assertFalse((self.home / ".local/bin/konsave").exists(), "never konsave")
-        # the menu entry: absolute command, no icon (none yet), marked as ours
+        # the menu entry: absolute command, the icon, marked as ours
         entry = self.desktop.read_text()
         self.assertIn(f"Exec={self.venv}/bin/kongui\n", entry)
         self.assertIn("Name=KonGUI\n", entry)
-        self.assertNotIn("Icon=", entry)
+        self.assertIn("Icon=kongui\n", entry)
+        self.assertIn("StartupWMClass=kongui\n", entry)
         self.assertIn("X-KonGUI-Installed-By=install.sh", entry)
+        # the icons, copied from the installed package into the hicolor theme
+        for rel in ICONS:
+            self.assertEqual((self.icons / rel).read_text(), fake_icon(rel, "1.0.0"))
 
         # running it again updates in place (here from the fake GitHub)
         self.publish("1.0.1")
@@ -254,6 +272,8 @@ class InstallTests(ScriptCase):
         self.assertIn("newest release: 1.0.1", result.stdout)
         self.assertNotIn("creating the environment", result.stdout)
         self.assertEqual(self.run_kongui().stdout.strip(), "fake kongui 1.0.1")
+        for rel in ICONS:
+            self.assertEqual((self.icons / rel).read_text(), fake_icon(rel, "1.0.1"))
 
         # an environment that stopped working (Python upgraded) is made again
         python = self.venv / "bin/python"
@@ -272,8 +292,34 @@ class InstallTests(ScriptCase):
         self.assertFalse(self.link.exists() or self.link.is_symlink())
         self.assertFalse(self.desktop.exists())
         self.assertFalse((self.home / ".venvs").exists())
+        self.assertEqual(list(self.icons.iterdir()), [], "icon folders left empty")
         self.assertTrue(data.is_dir())
         self.assertIn("nothing to do", self.run_script("--uninstall").stdout)
+
+    def test_a_release_without_icons_and_icons_it_did_not_make(self):
+        # 0.1.0a1 and 0.1.0a2 have no icons: they still install, without Icon=
+        folder = self.publish("0.1.0a2", icons=False)
+        result = self.run_script(
+            "--wheel", str(folder / "kongui-0.1.0a2-py3-none-any.whl")
+        )
+        self.assert_ok(result)
+        self.assertIn("has no icon", result.stdout)
+        entry = self.desktop.read_text()
+        self.assertNotIn("Icon=", entry)
+        self.assertIn("StartupWMClass=kongui\n", entry)
+        self.assertFalse(self.icons.exists())
+        # an icon of the user's own (not the packaged bytes) is never deleted
+        self.publish("1.0.0")
+        result = self.run_script("--release", "1.0.0")
+        self.assert_ok(result)
+        self.assertIn("Icon=kongui\n", self.desktop.read_text())
+        changed = self.icons / ICONS[0]
+        changed.write_text("my own icon")
+        result = self.run_script("--uninstall")
+        self.assert_ok(result)
+        self.assertIn("is not the icon this script installed", result.stderr)
+        self.assertEqual(changed.read_text(), "my own icon")
+        self.assertFalse((self.icons / ICONS[1]).exists())
 
     def test_newest_release_skips_drafts_and_odd_tags(self):
         self.publish("2.0.0")

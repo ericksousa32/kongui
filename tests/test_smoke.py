@@ -55,6 +55,8 @@ class SmokeScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("5 pages", result.stdout)
         self.assertIn("kongui_pt_BR.qm loaded", result.stdout)
+        self.assertIn("icon: 9 files packaged", result.stdout)
+        self.assertIn("icon: window icon set (8 sizes)", result.stdout)
         self.assertIn("smoke test: ok", result.stdout)
 
     def test_no_gui_skips_qt_and_still_checks_the_rest(self):
@@ -62,6 +64,7 @@ class SmokeScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("translation and window checks skipped", result.stdout)
         self.assertNotIn("pages", result.stdout)
+        self.assertIn("icon: 9 files packaged", result.stdout)
         self.assertIn("konsave -v: Konsave: 2.2.0+kongui", result.stdout)
 
     def test_an_uninstalled_checkout_fails_the_version_check(self):

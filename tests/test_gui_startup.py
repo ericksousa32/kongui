@@ -92,6 +92,22 @@ class StartupTests(GuiTestCase):
                 )
                 self.assertTrue(visible, f"{name} is blank")
 
+    def test_the_application_icon(self):
+        from PySide6.QtWidgets import QApplication
+
+        from kongui.gui import icons
+
+        names = [str(p.relative_to(icons.APP_ICON_DIR)) for p in icons.app_icon_files()]
+        self.assertEqual(len(names), 9, names)  # 8 PNG sizes and the SVG
+        self.assertIn("scalable/apps/kongui.svg", names)
+        self.assertFalse(icons.app_icon().isNull())
+        app = QApplication.instance()
+        # create_app sets it, with the name the menu entry of install.sh uses
+        self.assertFalse(app.windowIcon().isNull())
+        self.assertEqual(app.desktopFileName(), icons.APP_ICON_NAME)
+        mark = self.make_window().sidebar._mark_icon  # pylint: disable=protected-access
+        self.assertFalse(mark.pixmap().isNull())
+
     def test_unknown_icon_is_an_error(self):
         from PySide6.QtGui import QColor
 

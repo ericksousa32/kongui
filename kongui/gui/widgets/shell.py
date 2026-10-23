@@ -191,7 +191,9 @@ class Sidebar(QFrame):
             button.setIcon(
                 icons.icon(self._icon_names[key], tokens.muted, 20, tokens.accent)
             )
-        self._mark_icon.setPixmap(icons.pixmap("profiles", tokens.on_accent, 20))
+        self._mark_icon.setPixmap(
+            icons.app_icon().pixmap(QSize(34, 34), self.devicePixelRatioF())
+        )
         self.theme_button.set_icon_name("sun" if tokens.dark else "moon")
 
 

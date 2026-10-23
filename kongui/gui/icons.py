@@ -7,7 +7,8 @@ another name raises ``KeyError``.
 
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from pathlib import Path
+from typing import Dict, List, Tuple
 
 from PySide6.QtCore import QByteArray, QRectF, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QImage, QPainter, QPixmap
@@ -165,4 +166,34 @@ def icon(
     result.addPixmap(pixmap(name, color, size), QIcon.Mode.Normal, QIcon.State.Off)
     on_color = checked_color or color
     result.addPixmap(pixmap(name, on_color, size), QIcon.Mode.Normal, QIcon.State.On)
+    return result
+
+
+#: KonGUI's own application icon, packaged with the interface in the freedesktop
+#: "hicolor" layout (``<size>/apps/kongui.png`` and ``scalable/apps/kongui.svg``),
+#: so ``install.sh`` can copy it to ``~/.local/share/icons/hicolor`` as it is.
+APP_ICON_DIR = Path(__file__).resolve().parent / "data" / "icons" / "hicolor"
+
+#: Icon name used by the menu entry (``Icon=kongui``) and the theme folders.
+APP_ICON_NAME = "kongui"
+
+
+def app_icon_files() -> List[Path]:
+    """Lists the packaged files of the application icon.
+
+    Returns:
+        List[Path]: The scalable SVG and the PNG sizes found, in a stable order.
+    """
+    return sorted(APP_ICON_DIR.glob(f"*/apps/{APP_ICON_NAME}.*"))
+
+
+def app_icon() -> QIcon:
+    """The application icon (window, task bar, sidebar), from the packaged files.
+
+    Returns:
+        QIcon: The icon; null only if the files are missing from the package.
+    """
+    result = QIcon()
+    for path in app_icon_files():
+        result.addFile(str(path))
     return result
