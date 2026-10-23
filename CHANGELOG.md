@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0a2] - 2026-10-23
+Second alpha (GitHub pre-release). **The program is the same as in 0.1.0a1**: this
+release adds `install.sh` to the release files (listed in `SHA256SUMS`) and brings the
+updated documentation into the source distribution.
+
 ### Added
 - (KonGUI) `install.sh`: installs KonGUI for the current user (no root): downloads the newest release, or `--release VERSION`, or takes `--wheel FILE`; checks it against `SHA256SUMS`; installs it with PySide6 in `~/.venvs/kongui`; links the `kongui` command into `~/.local/bin` (never `konsave`) and adds a menu entry (no icon yet). Running it again updates (and remakes a broken environment); `--uninstall` removes it and keeps `~/.config/konsave`. It never replaces a file, menu entry or folder it did not make. The release workflow tests it and attaches it to each release (in `SHA256SUMS`). Tests: `tests/test_install_script.py`
 
@@ -266,5 +272,6 @@ the original Konsave.
 [1.0.2]: https://github.com/Prayag2/konsave/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Prayag2/konsave/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Prayag2/konsave/compare/6b4a0c0bbf8c29684cc2a334065314bc8e4ea529...v1.0.0
-[Unreleased]: https://github.com/ericksousa32/kongui/compare/v0.1.0a1...HEAD
+[Unreleased]: https://github.com/ericksousa32/kongui/compare/v0.1.0a2...HEAD
+[0.1.0a2]: https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a2
 [0.1.0a1]: https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1
