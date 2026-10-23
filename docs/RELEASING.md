@@ -228,7 +228,10 @@ fake wheels with a `kongui` command, a fake GitHub served through `file://` URLs
 (`KONGUI_DOWNLOAD_BASE`, `KONGUI_API_URL`), no PySide6 (`KONGUI_EXTRAS=""`). It checks
 the options, the refusal to run as root, checksum mismatches, the newest-release
 lookup (drafts and odd tags skipped), install → open through the link → update →
-repair of a broken environment → uninstall (data kept), the icons (copied into the
+repair of a broken environment → uninstall (data kept), an installation that
+stopped halfway (pip failing after the environment was created, or the environment
+left without Python) finished by running the script again or removed by
+`--uninstall`, the icons (copied into the
 hicolor theme, updated with the release, `Icon=kongui` in the menu entry, removed on
 uninstall unless the user changed them; a release without icons installs without an
 `Icon=` line), and that a file, a menu entry or a folder the script did not make is

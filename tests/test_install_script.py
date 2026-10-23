@@ -56,8 +56,14 @@ def fake_icon(rel: str, version: str) -> str:
     return f"fake icon {rel} of {version}\n"
 
 
-def fake_wheel(folder: Path, version: str, *, icons: bool = True) -> Path:
-    """Builds a tiny installable ``kongui`` wheel with two console scripts."""
+def fake_wheel(
+    folder: Path, version: str, *, icons: bool = True, requires: str = ""
+) -> Path:
+    """Builds a tiny installable ``kongui`` wheel with two console scripts.
+
+    ``requires`` adds a dependency; with ``PIP_NO_INDEX`` one that does not exist
+    makes pip fail after the environment was created, as without network.
+    """
     name = f"kongui-{version}-py3-none-any.whl"
     info = f"kongui-{version}.dist-info"
     files = {
@@ -69,6 +75,7 @@ def fake_wheel(folder: Path, version: str, *, icons: bool = True) -> Path:
         ),
         f"{info}/METADATA": (
             f"Metadata-Version: 2.1\nName: kongui\nVersion: {version}\n"
+            + (f"Requires-Dist: {requires}\n" if requires else "")
         ),
         f"{info}/WHEEL": (
             "Wheel-Version: 1.0\nGenerator: tests\nRoot-Is-Purelib: true\n"
@@ -151,10 +158,10 @@ class ScriptCase(unittest.TestCase):
             check=False,
         )
 
-    def publish(self, version, *, tamper=False, icons=True):
+    def publish(self, version, *, tamper=False, icons=True, requires=""):
         """Puts a release on the fake GitHub, as the workflow would."""
         folder = self.github / f"v{version}"
-        fake_wheel(folder, version, icons=icons)
+        fake_wheel(folder, version, icons=icons, requires=requires)
         write_sums(folder)
         if tamper:
             with zipfile.ZipFile(
@@ -329,6 +336,44 @@ class InstallTests(ScriptCase):
         self.assertIn("newest release: 2.0.0", result.stdout)
         self.assertEqual(self.run_kongui().stdout.strip(), "fake kongui 2.0.0")
 
+    def test_an_installation_that_stopped_halfway_can_be_retried(self):
+        marker = self.venv / ".kongui-install"
+        # pip fails (a dependency it cannot get, as without network): the
+        # environment is left without the kongui command, but marked as ours
+        broken = self.publish("1.0.0", requires="kongui-test-missing-dependency")
+        result = self.run_script(
+            "--wheel", str(broken / "kongui-1.0.0-py3-none-any.whl")
+        )
+        self.assert_fails(result, "run this script again to retry")
+        self.assertTrue(marker.is_file())
+        self.assertFalse((self.venv / "bin/kongui").exists())
+        # running it again reuses that environment and finishes
+        self.publish("1.0.1")
+        result = self.run_script("--release", "1.0.1")
+        self.assert_ok(result)
+        self.assertNotIn("creating the environment", result.stdout)
+        self.assertEqual(self.run_kongui().stdout.strip(), "fake kongui 1.0.1")
+        # an environment of an older install.sh (no marker) gets one
+        marker.unlink()
+        self.assert_ok(self.run_script("--release", "1.0.1"))
+        self.assertTrue(marker.is_file())
+        # the venv module stopped before making Python: the folder is made again
+        shutil.rmtree(self.venv)
+        self.venv.mkdir(parents=True)
+        marker.write_text("x")
+        result = self.run_script("--release", "1.0.1")
+        self.assert_ok(result)
+        self.assertIn("is incomplete", result.stdout)
+        self.assertEqual(self.run_kongui().stdout.strip(), "fake kongui 1.0.1")
+        # and a failed installation can also simply be removed
+        shutil.rmtree(self.venv)
+        self.assert_fails(
+            self.run_script("--wheel", str(broken / "kongui-1.0.0-py3-none-any.whl")),
+            "pip could not install",
+        )
+        self.assert_ok(self.run_script("--uninstall"))
+        self.assertFalse((self.home / ".venvs").exists())
+
     def test_never_replaces_or_deletes_what_it_did_not_make(self):
         folder = self.publish("1.0.0")
         wheel = str(folder / "kongui-1.0.0-py3-none-any.whl")
@@ -359,6 +404,15 @@ class InstallTests(ScriptCase):
             self.run_script("--uninstall", extra_env=env), "refusing to delete"
         )
         self.assertEqual((foreign / "important.txt").read_text(), "keep")
+        # nor is another virtual environment without KonGUI in it
+        (foreign / "pyvenv.cfg").write_text("home = /usr/bin\n")
+        result = self.run_script("--wheel", wheel, extra_env=env)
+        self.assert_fails(result, f"rm -rf {foreign}")
+        self.assert_fails(
+            self.run_script("--uninstall", extra_env=env), "refusing to delete"
+        )
+        self.assertEqual((foreign / "important.txt").read_text(), "keep")
+        self.assertFalse((foreign / ".kongui-install").exists())
 
 
 if __name__ == "__main__":
