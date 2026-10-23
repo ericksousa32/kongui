@@ -157,11 +157,12 @@ Before tagging the first alpha:
 * [x] The owner's report of the real Plasma session is recorded in
   [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §7 (script: [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md)),
   and has no blocker (2026-10-22, quick test).
-* [ ] `dev` is merged into `master`, and `master` passes the whole suite on the
-  system Python and in a virtual environment (§3, step 1). The suite also ran on
+* [x] `dev` is merged into `master`, and `master` passes the whole suite on the
+  system Python and in a virtual environment (§3, step 1; PR #15, 805 tests OK on
+  2026-10-22). The suite also ran on
   Python 3.9 to 3.14 ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
-* [ ] `CHANGELOG.md` has the release under its own heading, with the date of the tag
-  in place of `TBD`, and the README status line
+* [x] `CHANGELOG.md` has the release under its own heading, with the date of the tag
+  in place of `TBD` (2026-10-22), and the README status line
   is up to date.
 * [x] **Repository settings** (they cannot be set from the code; confirmed by the owner
   on 2026-10-22): *Settings → Actions
