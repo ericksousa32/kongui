@@ -1,6 +1,6 @@
 **Early test build. Read this before installing.**
 
-KonGUI is a graphical interface for [Konsave](https://github.com/Prayag2/konsave) (KDE Plasma profiles). This release is meant for people who want to try it and report problems; it has **not** been validated in a full real Plasma session yet.
+KonGUI is a graphical interface for [Konsave](https://github.com/Prayag2/konsave) (KDE Plasma profiles). This release is meant for people who want to try it and report problems. It was only tested quickly on a real Plasma session (Fedora 44, Plasma 6.7.5, Wayland: every feature tried worked); X11, SELinux and Flatpak were not tested yet. Reports are welcome: open an issue with the *Plasma test report* template.
 
 - Applying a profile rewrites real configuration files. KonGUI copies the files it will overwrite first (*Settings → Safety copies*), but make your own backup of `~/.config` before trying it, and try `kongui --demo` first.
 - Install it in a virtual environment: it ships its own `konsave` package and replaces an existing Konsave installation.

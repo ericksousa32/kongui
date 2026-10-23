@@ -127,9 +127,9 @@ profile "Minimalist" without checking "Substituir" (Replace).
 
 ## 7. Limitations and next steps
 
-* Testing in a real Plasma 6 session is in progress: accent color, switching color
-  scheme with the app open, fractional scaling and Wayland need manual
-  verification.
+* A first quick test in a real Plasma session (Fedora 44, Plasma 6.7.5, Wayland,
+  2026-10-22) passed, with minor layout and text alignment adjustments wanted;
+  X11, SELinux and Flatpak were not tested ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §7).
 * Accessibility: accessible names, keyboard focus and contrast were handled, but
   there was no test with a screen reader.
 * Language limits are listed in [section 8](#8-language-i18n).
