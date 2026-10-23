@@ -181,15 +181,26 @@ After the workflow ends:
   `[gui]` in a new virtual environment and run
   `python tools/smoke_test.py --expect-version 0.1.0a1` (without `--no-gui`). Done
   for `0.1.0a1` on Linux with Qt offscreen, on Python 3.11, 3.13 and 3.14
-  ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
+  ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6); repeated for `0.1.0a3` (2026-10-23,
+  cloud container, Qt offscreen): checksums ok, the smoke test printed the 9 icon
+  files, both translations, an 8-size window icon and the 5 pages.
 * [ ] The same on a Fedora KDE desktop, with `kongui --demo` in a real window (left
-  to the owner for `0.1.0a1`).
-* [ ] From `0.1.0a2` on: the release also lists `install.sh`, `SHA256SUMS` covers it,
+  to the owner for `0.1.0a1`; the same is left open for `0.1.0a3`, to also confirm
+  the icon in the window, the menu and the task manager on a real session).
+* [x] From `0.1.0a2` on: the release also lists `install.sh`, `SHA256SUMS` covers it,
   and `bash install.sh --release <version>` installs that release on a desktop.
-* [ ] From the first release after `0.1.0a2` on: after `install.sh`, the menu entry,
-  the window and the task manager show the KonGUI icon.
+  `--release 0.1.0a3` was run for real against GitHub (2026-10-23, cloud container,
+  unprivileged user): it downloaded, checked the checksum, installed `[gui]`,
+  copied the icon, wrote `Icon=kongui` and `StartupWMClass=kongui`, `kongui --demo`
+  started, and `--uninstall` removed everything (profiles kept). Not yet run on a
+  real desktop.
+* [x] From the first release after `0.1.0a2` on: after `install.sh`, the menu entry,
+  the window and the task manager show the KonGUI icon. Confirmed for `0.1.0a3`
+  (2026-10-23): the menu entry and the window icon (the task manager needs a real
+  Plasma session, left to the owner with the item above).
 * [x] Download GitHub's own *Source code (zip)*, unpack it where there is no `.git`,
-  run `pip wheel --no-deps .` and check the version (`0.1.0a1`, §4).
+  run `pip wheel --no-deps .` and check the version (`0.1.0a1`, §4); repeated for
+  `0.1.0a3` (2026-10-23): the sdist built a wheel of the same version.
 
 For the next release, copy this checklist and start again with every box empty.
 
