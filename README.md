@@ -22,7 +22,7 @@ What it aims to solve:
 
 ## Screenshots
 
-![Dashboard](./screenshots/Captura_de_tela_20261018_124635.png)
+![Dashboard](./screenshots/Captura_de_tela_20261023_124016.png)
 
 The screenshots were taken in demo mode, so every profile shown is fictitious. View more in [screenshots](./screenshots/).
 
