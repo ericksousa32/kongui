@@ -6,10 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0a1] - TBD
-First KonGUI release (alpha, GitHub pre-release). The date is the day the tag
-`v0.1.0a1` is created; until then this heading says TBD. Versions below 0.1.0a1
-are those of the original Konsave.
+## [0.1.0a1] - 2026-10-22
+First KonGUI release (alpha, GitHub pre-release). Versions below 0.1.0a1 are those of
+the original Konsave.
 
 ### Added
 - (KonGUI) Interface language: English and Brazilian Portuguese with Qt translations, first-run detection from the system locale, a *Settings → Language* selector and live switching. See `docs/GUI_PROTOTYPE.md`
