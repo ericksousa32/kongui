@@ -5,13 +5,14 @@ still open. Details of each item are in the document linked next to it; the stat
 of every requirement is in [`FINAL_AUDIT.md`](FINAL_AUDIT.md).
 
 Written on 2026-10-18, before the first tag or pre-release (how versions and releases work: [`RELEASING.md`](RELEASING.md)). Nothing here is a
-promise of a future feature. The release is **ready to be tagged** except for B-3 below.
+promise of a future feature. The release is **ready to be tagged**: the first real
+Plasma session report (2026-10-22) found no blocker; what it did not cover is in B-3 below.
 
 ## 1. Required and still open
 
 | Id | What is missing | Why | Where |
 |---|---|---|---|
-| B-3 | Validation in a real Fedora KDE / Plasma session: actually applying a profile, Wayland and drag-and-drop, SELinux, Flatpak, fractional scaling | being tested by the project owner; the result is not recorded yet. The automated tests never apply anything to a real session, and the screenshots only show that the interface renders. The script and the report template are in [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md) | [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §3.5 and §7 |
+| B-3 | The rest of the validation in a real Fedora KDE / Plasma session: drag and drop on **X11**, **SELinux**, **Flatpak**, **quitting during an operation**, and more thorough testing in general; minor layout and text alignment adjustments | a first quick test (Fedora 44, Plasma 6.7.5, Wayland, 2026-10-22) passed: start, save and apply with safety copy and restore, export and import, drag and drop on Wayland, `conf.yaml` edited by hand, two operations at once. The automated tests never apply anything to a real session. Script and report template: [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md) | [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §3.5 and §7 |
 | B-1 | Progress and cancellation of an operation that has already started | the original engine cannot be interrupted and `konsave/` is only changed for the lock and the package rename; the interface only shows "busy" (waiting for the lock *can* be cancelled) | [`INTEGRATION.md`](INTEGRATION.md) §8 |
 
 The other mandatory requirements are implemented and tested: safety copy before

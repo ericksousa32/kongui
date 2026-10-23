@@ -220,7 +220,8 @@ CLI.
   serialized by the cross-process lock; the interface shows the wait and lets you
   cancel it (see [`CONCURRENCY.md`](CONCURRENCY.md) §4).
 * The engine redirects `stdout` globally during each call.
-* Testing in a real Plasma session is in progress.
+* Only a first quick test in a real Plasma session was done (no blocker; X11,
+  SELinux and Flatpak not tested): [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §7.
 
 ## 7. Safety copies (RN-01)
 

@@ -2,8 +2,8 @@
 
 How the version of KonGUI is defined, where it is shown, and the steps for a
 release. **No tag has been created yet**; this document describes the rule so the
-first one follows it. What is still open before the first tag (the real Plasma
-session report) is in [`LIMITATIONS.md`](LIMITATIONS.md) §1.
+first one follows it. The first real Plasma session report (2026-10-22) found no
+blocker; what it did not cover is in [`LIMITATIONS.md`](LIMITATIONS.md) §1.
 
 ## 1. One source: the git tag
 
@@ -154,16 +154,17 @@ detail on the first tag; the tag can be deleted and pushed again (§3).
 
 Before tagging the first alpha:
 
-* [ ] The owner's report of the real Plasma session is recorded in
+* [x] The owner's report of the real Plasma session is recorded in
   [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §7 (script: [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md)),
-  and has no blocker.
+  and has no blocker (2026-10-22, quick test).
 * [ ] `dev` is merged into `master`, and `master` passes the whole suite on the
   system Python and in a virtual environment (§3, step 1). The suite also ran on
   Python 3.9 to 3.14 ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
 * [ ] `CHANGELOG.md` has the release under its own heading, with the date of the tag
   in place of `TBD`, and the README status line
   is up to date.
-* [ ] **Repository settings** (they cannot be set from the code): *Settings → Actions
+* [x] **Repository settings** (they cannot be set from the code; confirmed by the owner
+  on 2026-10-22): *Settings → Actions
   → General → Workflow permissions* must allow `GITHUB_TOKEN` to create releases
   (or at least not be blocked by an organisation policy). The workflow declares
   its own permissions.

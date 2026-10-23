@@ -28,6 +28,8 @@ are those of the original Konsave.
 
 - (KonGUI) `tests/test_gui_overview.py`: four tests that chain every feature through the real interface and dialogs down to the real services in a temporary home (save, apply, safety copy restore, details, overwrite, export with conflict, remove, import by drag and drop, clear all, a `conf.yaml` edited by hand, the `kongui` command's assembly with its worker thread, preferences after a restart); `docs/TEST_OVERVIEW.md` maps each feature to its tests and records the review of the suite
 
+- (KonGUI) First report of a real Plasma session (Fedora 44, Plasma 6.7.5, Wayland, 2026-10-22): no blocker; X11, SELinux and Flatpak not tested yet. `docs/reports/2026-10-22-plasma-session.md`, summarized in `docs/FINAL_AUDIT.md` §7. New *Plasma test report* issue template so users can send theirs (`docs/PLASMA_TEST_PLAN.md`)
+
 ### Changed
 - (KonGUI) The `gui` extra limits PySide6 to 6.8–6.9 on Python older than 3.12 (PySide6 6.10 and newer segfault or abort there); Python 3.12 or newer takes the newest PySide6. See `docs/LIMITATIONS.md` §5
 - (KonGUI) `Makefile`: `black` and `pylint` now cover `kongui`, `tests` and `tools` (they covered only `konsave`); new `smoke` and `dist` targets

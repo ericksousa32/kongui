@@ -1,12 +1,15 @@
 # Test plan for a real Plasma session (B-3)
 
 A script for trying KonGUI on a real Fedora KDE / Plasma session, and a template to
-report the result. It exists because the automated tests never apply anything to a
+report the result. **Anyone can use it**: the project owner used it for the first
+report (2026-10-22), and users are asked to send theirs, especially for what that
+first test did not cover (X11, SELinux, Flatpak, quitting during an operation). It exists because the automated tests never apply anything to a
 real session ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6): what they prove is that the
 code behaves in a temporary home, not that Plasma ends up looking right.
 
-The results go to [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §7. Requirement B-3 changes
-status only when a report has been recorded there.
+How to send a report: open an issue with the **Plasma test report** template
+(*New issue → Plasma test report*), which holds the template below. Reports are kept
+in [`reports/`](reports/) and summarized in [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §7.
 
 ## Before you start
 
@@ -91,7 +94,9 @@ KonGUI has no editor for it (as in Konsave). Keep a copy of the file first.
 
 ## Report template
 
-Copy this into an issue (or send it to the owner) and fill it in.
+Use the *Plasma test report* issue template (it has these same lines), or copy this
+into any issue and fill it in. Mark only what you really tried; "not tested" is a
+useful answer.
 
 ```
 KonGUI version:

@@ -4,7 +4,7 @@
 A graphical interface for managing KDE Plasma configuration profiles, built as an independent fork of <a href="https://github.com/Prayag2/konsave">Konsave</a>.
 </p>
 
-> **Status: early development. The first alpha, `0.1.0a1`, is prepared but not tagged yet** (no installable package or AppImage until then); it will be tagged after the testing on a live Plasma session is recorded. When the alpha is published it will be a GitHub *pre-release*: see [Installing the pre-release](#installing-the-pre-release). Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
+> **Status: early development. The first alpha, `0.1.0a1`, is prepared but not tagged yet** (no installable package or AppImage until then). A first quick test on a real Plasma session (Fedora 44, Wayland) found no blocker; some checks are still to be done. When the alpha is published it will be a GitHub *pre-release*: see [Installing the pre-release](#installing-the-pre-release). Known limitations and decisions are listed in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). It is an independent fork and is **not** affiliated with, endorsed by, or maintained by the Konsave authors.
 
 ## Overview
 
@@ -30,7 +30,7 @@ You can preview the interface without touching any real data using the demo mode
 
 ### Working today
 
-Everything below is covered by the automated test suite (run in temporary home directories with Qt in offscreen mode). Testing on a real Plasma session is in progress.
+Everything below is covered by the automated test suite (run in temporary home directories with Qt in offscreen mode). A first quick test on a real Plasma session (Fedora 44, Plasma 6.7.5, Wayland) found every feature working; see [`docs/FINAL_AUDIT.md`](docs/FINAL_AUDIT.md) §7.
 
 - **Profiles:** list, save, overwrite, apply, remove, and remove all. Destructive actions require confirmation.
 - **Import / export:** `.knsv` archives. When the destination file already exists, the interface asks what to do instead of overwriting silently.
@@ -55,18 +55,18 @@ Konsave writes the global `conf.yaml` into the `.knsv` when exporting, even if t
 
 ### In progress
 
-- Testing on a real Fedora KDE / Plasma session (applying profiles, Wayland, SELinux, Flatpak). Results will be recorded in [`docs/FINAL_AUDIT.md`](docs/FINAL_AUDIT.md).
+- More testing on real Plasma sessions: X11, SELinux, Flatpak and quitting during an operation were not tested yet, and small layout and text alignment adjustments are planned. Reports are welcome: use the *Plasma test report* issue template ([`docs/PLASMA_TEST_PLAN.md`](docs/PLASMA_TEST_PLAN.md)).
 
 ### Planned
 
 - Progress reporting and cancelling of long operations that have already started. The original engine cannot be interrupted today.
-- The first tagged alpha pre-release. Everything is prepared (package name, version from the tag, release workflow `.github/workflows/release.yml`, smoke test), but no tag, wheel or AppImage has been published yet. The tag waits for the owner's Plasma session report ([`docs/PLASMA_TEST_PLAN.md`](docs/PLASMA_TEST_PLAN.md)).
+- The first tagged alpha pre-release. Everything is prepared (package name, version from the tag, release workflow `.github/workflows/release.yml`, smoke test, the first real-session report), but no tag, wheel or AppImage has been published yet.
 
 ### Known limitations
 
 The complete list, with the decisions behind it, is in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md). The main ones:
 
-- Not validated yet in a real Plasma session (applying, Wayland, SELinux, Flatpak).
+- Only partly validated in a real Plasma session: a quick test on Fedora 44 / Wayland passed; X11, SELinux and Flatpak were not tested.
 - Import and export limits are fixed constants and estimates, not guarantees; the `.knsv` is not signed.
 - `conf.yaml` is edited by hand, as in Konsave: KonGUI does not check it beforehand or keep backups of it; a mistake shows up when saving, with Konsave's reason.
 - The `conf.yaml` stored in a `.knsv` is the global one (a Konsave behaviour); KonGUI does not warn when it differs from the profile's.
@@ -110,7 +110,9 @@ kongui --demo
 * To remove it: delete the environment (`rm -r ~/.venvs/kongui`). KonGUI's data stays
   where Konsave keeps it (`~/.config/konsave`, including `kongui-backups/`) and is not
   deleted.
-* To report a problem, open an issue and include the version shown in *About*.
+* To report a problem, open an issue and include the version shown in *About*. To tell
+  how it went on your Plasma session (even if all went well), use the *Plasma test
+  report* issue template.
 
 ## Installation (development)
 
@@ -219,8 +221,8 @@ Known limits: the fictitious data of `--demo` (profile names, descriptions and a
 
 No dates are promised. In rough order of priority:
 
-1. Finish the real Fedora KDE (Plasma) session testing that is in progress, and fix what it reveals.
-2. A first tagged pre-release (alpha) on GitHub. The release workflow and the package name are ready; the tag is created by the owner after the Plasma session report (steps in [`docs/RELEASING.md`](docs/RELEASING.md) §3).
+1. More real Plasma session testing (X11, SELinux, Flatpak, quitting during an operation), the small layout adjustments the first test asked for, and fixes for what users report.
+2. A first tagged pre-release (alpha) on GitHub. The release workflow and the package name are ready; the first real-session report found no blocker; the tag is created by the owner (steps in [`docs/RELEASING.md`](docs/RELEASING.md) §3).
 3. AppImage packaging, only after a working, tested build exists.
 4. Progress and cancellation for operations already running, if the engine allows it.
 

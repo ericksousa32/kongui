@@ -1,14 +1,16 @@
 # KonGUI final audit
 
-**Verdict: the project is NOT complete, but it is ready for an alpha pre-release as
-soon as the owner records the real Plasma session report (B-3).** Everything that can
-be prepared from here is: package, version from the tag, release workflow, smoke test,
-installation instructions and the test script for the session
-([`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md)). No tag or release exists. The mandatory requirements P-1 (RN-01, safety copy before
+**Verdict: the project is NOT complete, but it is ready for an alpha pre-release.**
+The owner's first real Plasma session report (2026-10-22, §7) found no blocker: every
+feature tried worked, including apply with its safety copy and going back from it.
+Package, version from the tag, release workflow, smoke test and installation
+instructions are ready. No tag or release exists yet. The mandatory requirements P-1 (RN-01, safety copy before
 apply/import), P-2 (lock) and P-3 (basic limits and free-space checks on
 import/export) are implemented and tested, and so are the profile descriptions and
-sections (B-2). What remains open is B-3 (validation in a real Plasma session, in
-progress) and B-1 (progress and cancellation, blocked by the engine) (§3.5, §4).
+sections (B-2). What remains open is the rest of B-3 (the checks the quick session
+test did not cover: X11, SELinux, Flatpak, quitting during an operation; and more
+thorough testing) and B-1 (progress and cancellation, blocked by the engine)
+(§3.5, §4).
 Everything that was provably broken and within reach was fixed. The owner's
 decisions on the open points of the earlier audit are in §5, and all the limits,
 decisions and open items are collected in [`LIMITATIONS.md`](LIMITATIONS.md).
@@ -149,14 +151,14 @@ window exists are English only.
 | B-1 | Progress and cancellation of operations | Blocked | the engine cannot be interrupted, and `konsave/` is only changed for the lock; today there is only "busy" |
 | B-2 | Profile description and sections | Tested (description and read-only sections) | the description is a small file inside the profile folder and the sections come from the profile's `conf.yaml` (`INTEGRATION.md` §11; `tests.test_profile_details`, `tests.test_gui_details`). The description does not travel in the `.knsv`; choosing what to include when saving is not offered (manual, through *Edit .YAML*) |
 | R-1 | First tag / pre-release | **Prepared, not created** | `.github/workflows/release.yml` replaced `deploy.yml` (no PyPI): tag check, build, clean-environment smoke test, checksums, GitHub pre-release; its steps were run on a scratch repository, never on real GitHub Actions (`RELEASING.md` §5). Before the first tag: record the B-3 report and follow the checklist in `RELEASING.md` §6 |
-| B-3 | Validation in a real Plasma session (actually applying, Wayland/drag-and-drop, SELinux, Flatpak) | **In progress** | the project owner is testing in a real Plasma session; results are not recorded here yet. The screenshots in `screenshots/` (Fedora 44, Qt 6.12, demo mode) show that the interface renders there, but they do not validate applying profiles, Wayland, SELinux or Flatpak |
+| B-3 | Validation in a real Plasma session (actually applying, Wayland/drag-and-drop, SELinux, Flatpak) | **Partly validated** (quick test, 2026-10-22) | Fedora 44, Plasma 6.7.5, Qt 6.11.2, Wayland: start, save and apply (with safety copy and restore), export and import, drag and drop on Wayland, `conf.yaml` edited by hand and two operations at once all **ok**; minor layout and text alignment adjustments wanted. **Not tested:** drag and drop on X11, SELinux, Flatpak, quitting during an operation. Report and notes in §7 |
 
 ## 4. Why it is not complete
 
 P-2 (cross-process lock, with wait and cancel in the interface) and P-3 (basic
 limits and free-space checks, `INTEGRATION.md` §10) were implemented and tested. The
 project is still not declared complete: B-1 does not prevent use, but it limits
-what can be claimed, and B-3 (real-session testing) is still in progress. B-2 was
+what can be claimed, and B-3 (real-session testing) is only partly done (§7). B-2 was
 resolved in part (description and read-only sections, `INTEGRATION.md` §11); what
 remains of it is by design: the description does not travel in the `.knsv`, and
 choosing what a profile contains stays manual: the user edits `conf.yaml` by hand
@@ -302,7 +304,23 @@ Before the removal (2026-10-18 and 2026-10-19, branch `chore/prerelease-readines
 
 ## 7. Real Plasma session report
 
-**Pending.** The project owner is testing in a real Fedora KDE / Plasma session
-(applying profiles, Wayland and drag-and-drop, SELinux, Flatpak, fractional scaling,
-switching color scheme with the app open). The report will be added here, and B-3
-changes status only then.
+**First report: 2026-10-22, a quick test by the project owner** (full text and notes
+in [`reports/2026-10-22-plasma-session.md`](reports/2026-10-22-plasma-session.md)).
+
+| | |
+|---|---|
+| Environment | Fedora 44, Plasma 6.7.5, Qt 6.11.2, Wayland; Python 3.14.8 with Fedora's PySide6 6.11.2; run from a clone (version `dev`) |
+| Start and look | ok; **minor adjustments to the layout and alignment of the text** are wanted (not detailed yet) |
+| Save and apply | ok; a safety copy was made and going back from it worked |
+| Export and import | ok; drag and drop ok on Wayland, **X11 not tested** |
+| `conf.yaml` edited by hand | ok |
+| Two operations at once | ok |
+| SELinux, Flatpak, quitting during an operation | **not tested** |
+| Problems found | none |
+
+Conclusion: **no blocker** in the sense of [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md)
+(nothing lost or corrupted, safety copies made and restorable), so the alpha can be
+tagged. B-3 stays **partly validated**: the untested items above and more thorough
+testing remain, and the layout adjustments are a cosmetic follow-up. Further reports
+(from the owner or from users, through the *Plasma test report* issue template) are
+added under `docs/reports/`.
