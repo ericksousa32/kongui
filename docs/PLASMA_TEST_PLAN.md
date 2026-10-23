@@ -17,7 +17,8 @@ in [`reports/`](reports/) and summarized in [`FINAL_AUDIT.md`](FINAL_AUDIT.md) Â
   widgets) with a tool of your own. KonGUI makes a safety copy before `apply` and
   `import`, but it only covers the files the operation overwrites, and it is not a
   full backup.
-* Use a virtual environment (see the README, *Installing the pre-release*).
+* Install it as the README says (*Installing the pre-release*: install once, then
+  open it from the menu or with `kongui`).
 * Run as a regular user. Note the versions below; they go in the report.
 
 | What | How to find it |
