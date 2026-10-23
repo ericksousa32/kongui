@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - (KonGUI) `install.sh` copies the icon into `~/.local/share/icons/hicolor` and the menu entry gets `Icon=kongui` and `StartupWMClass=kongui`; `--uninstall` removes the icon files that are still the installed ones. Releases without an icon (0.1.0a1, 0.1.0a2) still install, with a generic icon
 - (KonGUI) The smoke test checks the icon files (also with `--no-gui`) and the window icon; the release workflow checks the icon installed by `install.sh`
 
+### Fixed
+- (KonGUI) `install.sh`: an installation that stopped halfway (pip without network, for example) left `~/.venvs/kongui` without the `kongui` command, and the script then refused that folder as "not KonGUI's environment" until it was deleted by hand. The script now leaves a `.kongui-install` marker in the folder before creating the environment, so running it again finishes the installation (or `--uninstall` removes it); environments of the older script get the marker on the next run. A folder without the marker or the `kongui` command is still never touched; the message now says how to delete it if it is a failed installation
+
 ## [0.1.0a2] - 2026-10-23
 Second alpha (GitHub pre-release). **The program is the same as in 0.1.0a1**: this
 release adds `install.sh` to the release files (listed in `SHA256SUMS`) and brings the

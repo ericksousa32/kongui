@@ -120,10 +120,18 @@ if [ "$(uname -s)" != "Linux" ]; then
 fi
 [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not set to an existing folder"
 
-# A folder is KonGUI's environment only if it is a virtual environment with the
-# kongui command in it; nothing else is ever deleted or replaced.
+# A folder is KonGUI's environment only if this script made it (it leaves a
+# marker file in it before creating the environment, so an installation that
+# stopped halfway, for example when pip had no network, is still recognised),
+# or if it is a virtual environment with the kongui command in it (made by an
+# older version of this script). Nothing else is ever deleted or replaced.
+VENV_MARKER_NAME=".kongui-install"
 is_kongui_venv() {
-    [ -f "$1/pyvenv.cfg" ] && [ -e "$1/bin/kongui" ]
+    [ -f "$1/$VENV_MARKER_NAME" ] || { [ -f "$1/pyvenv.cfg" ] && [ -e "$1/bin/kongui" ]; }
+}
+mark_venv() {
+    printf '%s\n' "Made by KonGUI's install.sh; removed by: bash install.sh --uninstall" \
+        >"$VENV/$VENV_MARKER_NAME"
 }
 
 # The folder of icons shipped inside the installed package
@@ -222,7 +230,7 @@ uninstall() {
             say "removed $VENV"
             removed=1
         else
-            die "$VENV is not KonGUI's environment; refusing to delete it"
+            die "$VENV is not KonGUI's environment; refusing to delete it (if it is, delete it by hand)"
         fi
     fi
     refresh_menu
@@ -328,16 +336,23 @@ fi
 # The environment: reused when it works, made again when it does not (for
 # example after a Fedora upgrade replaced the Python it was made with).
 if [ -e "$VENV" ] && ! is_kongui_venv "$VENV" && [ -n "$(ls -A "$VENV" 2>/dev/null)" ]; then
-    die "$VENV exists and is not KonGUI's environment; move it away or set KONGUI_VENV"
+    die "$VENV exists and is not KonGUI's environment; move it away or set KONGUI_VENV (if it is what is left of a failed KonGUI installation, delete it: rm -rf $VENV)"
 fi
 if is_kongui_venv "$VENV" && ! "$VENV/bin/python" -c 'import sys' >/dev/null 2>&1; then
-    say "the environment in $VENV no longer works (was Python upgraded?); making it again"
+    if [ -e "$VENV/bin/python" ] || [ -L "$VENV/bin/python" ]; then
+        say "the environment in $VENV no longer works (was Python upgraded?); making it again"
+    else
+        say "the environment in $VENV is incomplete (an earlier installation stopped); making it again"
+    fi
     rm -rf "$VENV"
 fi
 if [ ! -x "$VENV/bin/python" ]; then
     say "creating the environment $VENV"
-    mkdir -p "$(dirname "$VENV")"
-    python3 -m venv "$VENV" || die "could not create $VENV"
+    mkdir -p "$VENV"
+    mark_venv # first, so that a failure from here on leaves a folder known as ours
+    python3 -m venv "$VENV" || die "could not create $VENV; run this script again to retry"
+elif [ ! -f "$VENV/$VENV_MARKER_NAME" ]; then
+    mark_venv # an environment made by an older version of this script
 fi
 
 TARGET="$WHEEL"
@@ -346,7 +361,7 @@ if [ -n "$EXTRAS" ]; then
 fi
 say "installing $WHEEL_NAME${EXTRAS:+ with [$EXTRAS]} (this can take a few minutes the first time)"
 "$VENV/bin/python" -m pip install --disable-pip-version-check --upgrade "$TARGET" ||
-    die "pip could not install KonGUI (see the messages above)"
+    die "pip could not install KonGUI (see the messages above); run this script again to retry"
 
 INSTALLED="$("$VENV/bin/python" -I -c 'import importlib.metadata as m; print(m.version("kongui"))' 2>/dev/null)" ||
     die "KonGUI is not importable after the installation"

@@ -119,7 +119,9 @@ You can read the script before running it (`less install.sh`). It needs no root
    Releases up to `0.1.0a2` have no icon; for them the menu shows a generic one.
 
 The first installation downloads PySide6 (Qt) and can take a few minutes. It needs
-`python3` 3.9 or newer, `curl` and `sha256sum`, all part of Fedora.
+`python3` 3.9 or newer, `curl` and `sha256sum`, all part of Fedora. If it stops
+halfway (no network, for example), run the script again: it picks up the environment
+it had started.
 
 Options: `bash install.sh --release 0.1.0a1` installs a given release;
 `bash install.sh --wheel ./kongui-0.1.0a1-py3-none-any.whl` installs a wheel you
@@ -129,7 +131,8 @@ each release and listed in its `SHA256SUMS`.
 
 The script never replaces a file it did not make: a `~/.local/bin/kongui` that is not a
 link, a different `kongui.desktop`, or a `~/.venvs/kongui` folder that is not KonGUI's
-environment are left alone (with a warning, or an error for the folder). On uninstall
+environment are left alone (with a warning, or an error for the folder; the script
+recognises its own folder by a `.kongui-install` file it leaves in it). On uninstall
 it only deletes the icon files that are still the ones it installed.
 
 ### 2. Open it (every time)
