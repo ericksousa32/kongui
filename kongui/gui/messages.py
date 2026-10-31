@@ -152,12 +152,27 @@ def is_partial(result: Optional[OperationResult]) -> bool:
     )
 
 
-#: Friendly names of the ``save`` groups of the default Konsave configuration.
-#: Any other group keeps its own name (it is whatever the user wrote).
+#: Friendly names of the ``save`` groups of the default Konsave configuration,
+#: and of the export categories of ``kongui.core.categories`` (``docs/
+#: INTEGRATION.md`` §12: ``system``, ``panels``, … — the keys the "what to
+#: include" checkboxes in ``ProfileDialog`` offer, and that a profile's own
+#: sections may also be, once saved with ``categories``). Any other group or
+#: key keeps its own name (it is whatever the user, or an older save, wrote).
 SECTION_LABELS = {
     "configs": QT_TRANSLATE_NOOP("messages", "Desktop settings"),
     "app_layouts": QT_TRANSLATE_NOOP("messages", "App layouts"),
     "autostart": QT_TRANSLATE_NOOP("messages", "Startup apps"),
+    "system": QT_TRANSLATE_NOOP("messages", "System settings"),
+    "panels": QT_TRANSLATE_NOOP("messages", "Panels and desktop layout"),
+    "themes": QT_TRANSLATE_NOOP("messages", "Themes and appearance"),
+    "icons": QT_TRANSLATE_NOOP("messages", "Icons and cursors"),
+    "wallpaper": QT_TRANSLATE_NOOP("messages", "Wallpaper"),
+    "fonts": QT_TRANSLATE_NOOP("messages", "Fonts"),
+    "apps": QT_TRANSLATE_NOOP("messages", "Application settings"),
+    "window_management": QT_TRANSLATE_NOOP("messages", "Window management"),
+    "gtk": QT_TRANSLATE_NOOP("messages", "GTK settings"),
+    "shortcuts": QT_TRANSLATE_NOOP("messages", "Keyboard shortcuts and input"),
+    "other": QT_TRANSLATE_NOOP("messages", "Other settings"),
 }
 
 

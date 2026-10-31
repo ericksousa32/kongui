@@ -2,6 +2,27 @@
 
 # pylint: disable=duplicate-code
 
+from kongui.core.categories import (
+    APPS,
+    AUTOSTART,
+    CATEGORIES,
+    CATEGORY_DEPENDENCIES,
+    FONTS,
+    GTK,
+    ICONS,
+    OTHER,
+    PANELS,
+    SHORTCUTS,
+    SYSTEM,
+    THEMES,
+    WALLPAPER,
+    WINDOW_MANAGEMENT,
+    CategoryCatalog,
+    build_catalog,
+    categorize,
+    filter_groups,
+    validate_categories,
+)
 from kongui.core.cli import READ_ONLY_FLAGS, CliRunner
 from kongui.core.config import ConfigService
 from kongui.core.engine import EngineCall, KonsaveEngine
@@ -58,6 +79,25 @@ from kongui.core.results import (
 )
 
 __all__ = [
+    "APPS",
+    "AUTOSTART",
+    "CATEGORIES",
+    "CATEGORY_DEPENDENCIES",
+    "FONTS",
+    "GTK",
+    "ICONS",
+    "OTHER",
+    "PANELS",
+    "SHORTCUTS",
+    "SYSTEM",
+    "THEMES",
+    "WALLPAPER",
+    "WINDOW_MANAGEMENT",
+    "CategoryCatalog",
+    "build_catalog",
+    "categorize",
+    "filter_groups",
+    "validate_categories",
     "DESCRIPTION_NOT_REMOVED",
     "DESCRIPTION_NOT_SAVED",
     "MAX_DESCRIPTION_CHARS",

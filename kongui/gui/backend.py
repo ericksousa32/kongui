@@ -29,6 +29,7 @@ from PySide6.QtCore import QCoreApplication as Q
 
 from kongui.core import (
     ArchiveExistsError,
+    CATEGORIES,
     ConfirmationRequiredError,
     KonsaveEngine,
     LockCancelledError,
@@ -46,7 +47,6 @@ from kongui.core import KEPT_PREFIX, ProfileDetails, clean_description
 from kongui.core.engine import FALLBACK_VERSION
 from kongui.core.safety import validate_archive_name, validate_profile_name
 from kongui.gui.mock_data import demo_profiles
-from kongui.gui.mock_data import sections as demo_sections
 from kongui.gui.state import Profile
 
 
@@ -318,7 +318,7 @@ class ServiceBackend(ProfileBackend):
     """Real operations, through :class:`~kongui.core.ProfileService`."""
 
     capabilities = Capabilities(
-        duplicate=False, transfer=True, descriptions=True, sections=False, demo=False
+        duplicate=False, transfer=True, descriptions=True, sections=True, demo=False
     )
 
     def __init__(self, service: ProfileService) -> None:
@@ -400,13 +400,22 @@ class ServiceBackend(ProfileBackend):
     ) -> OperationResult:
         """Saves the current configuration; creates the default ``conf.yaml`` first.
 
-        The description is kept with the profile; ``sections`` is ignored (what
-        a profile contains is decided by ``~/.config/konsave/conf.yaml``, which
-        the user edits by hand, as with Konsave).
+        The description is kept with the profile. ``sections``, when given, are
+        taken as export-category keys (``kongui.core.categories.CATEGORIES``)
+        and only the matching files are saved (``ProfileService.save``'s
+        ``categories``); an invalid key raises :class:`~kongui.core.ValidationError`,
+        caught like any other service error by the caller. An empty tuple (the
+        default) saves everything, unchanged from before.
+
+        ``capabilities.sections`` is ``True``: the save dialog (``ProfileDialog``,
+        wired in ``kongui/gui/actions.py``) offers the real 12 categories and
+        passes the ones the user checked here as ``sections`` (``docs/
+        INTEGRATION.md`` §12, ``docs/LIMITATIONS.md`` §4).
         """
-        del sections
         self._service.config.ensure_default_config()
-        return self._service.save(name, description=description)
+        return self._service.save(
+            name, description=description, categories=sections or None
+        )
 
     def set_description(self, name: str, description: str) -> OperationResult:
         """Sets, changes or clears the description of a profile."""
@@ -693,7 +702,7 @@ class FakeBackend(ProfileBackend):  # pylint: disable=too-many-public-methods
         with self._lock:
             if name in self._items:
                 raise ProfileExistsError(f"profile already exists: {name}")
-            chosen = tuple(sections) or demo_sections()[:5]
+            chosen = tuple(sections) or CATEGORIES[:5]
             self._items[name] = Profile(
                 name,
                 description or Q.translate("FakeBackend", "No description."),
@@ -820,8 +829,8 @@ class FakeBackend(ProfileBackend):  # pylint: disable=too-many-public-methods
             path,
             name,
             size,
-            tuple(demo_sections()[:4]),
-            (demo_sections()[4],),
+            tuple(CATEGORIES[:4]),
+            (CATEGORIES[4],),
             (),
             taken,
         )

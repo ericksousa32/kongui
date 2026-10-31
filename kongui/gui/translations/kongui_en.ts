@@ -528,8 +528,28 @@
         <translation>What to include</translation>
     </message>
     <message>
+        <source>Select all</source>
+        <translation>Select all</translation>
+    </message>
+    <message>
+        <source>Clear all</source>
+        <translation>Clear all</translation>
+    </message>
+    <message>
         <source>Choose at least one section.</source>
         <translation>Choose at least one section.</translation>
+    </message>
+    <message>
+        <source>Also select: {names} (needed by your choices).</source>
+        <translation>Also select: {names} (needed by your choices).</translation>
+    </message>
+    <message>
+        <source>nothing yet</source>
+        <translation>nothing yet</translation>
+    </message>
+    <message>
+        <source>Will include: {names}.</source>
+        <translation>Will include: {names}.</translation>
     </message>
     <message>
         <source>The description is too long (at most {limit} characters).</source>
@@ -1380,7 +1400,7 @@
     </message>
     <message>
         <source>Desktop settings</source>
-        <extracomment>Friendly names of the ``save`` groups of the default Konsave configuration. Any other group keeps its own name (it is whatever the user wrote).</extracomment>
+        <extracomment>Friendly names of the ``save`` groups of the default Konsave configuration, and of the export categories of ``kongui.core.categories`` (``docs/ INTEGRATION.md`` §12: ``system``, ``panels``, … — the keys the &quot;what to include&quot; checkboxes in ``ProfileDialog`` offer, and that a profile&apos;s own sections may also be, once saved with ``categories``). Any other group or key keeps its own name (it is whatever the user, or an older save, wrote).</extracomment>
         <translation>Desktop settings</translation>
     </message>
     <message>
@@ -1390,6 +1410,50 @@
     <message>
         <source>Startup apps</source>
         <translation>Startup apps</translation>
+    </message>
+    <message>
+        <source>System settings</source>
+        <translation>System settings</translation>
+    </message>
+    <message>
+        <source>Panels and desktop layout</source>
+        <translation>Panels and desktop layout</translation>
+    </message>
+    <message>
+        <source>Themes and appearance</source>
+        <translation>Themes and appearance</translation>
+    </message>
+    <message>
+        <source>Icons and cursors</source>
+        <translation>Icons and cursors</translation>
+    </message>
+    <message>
+        <source>Wallpaper</source>
+        <translation>Wallpaper</translation>
+    </message>
+    <message>
+        <source>Fonts</source>
+        <translation>Fonts</translation>
+    </message>
+    <message>
+        <source>Application settings</source>
+        <translation>Application settings</translation>
+    </message>
+    <message>
+        <source>Window management</source>
+        <translation>Window management</translation>
+    </message>
+    <message>
+        <source>GTK settings</source>
+        <translation>GTK settings</translation>
+    </message>
+    <message>
+        <source>Keyboard shortcuts and input</source>
+        <translation>Keyboard shortcuts and input</translation>
+    </message>
+    <message>
+        <source>Other settings</source>
+        <translation>Other settings</translation>
     </message>
     <message numerus="yes">
         <source>… and %n more.</source>

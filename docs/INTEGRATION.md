@@ -144,7 +144,7 @@ as with Konsave. The service only finds, bootstraps and reads them.
 | Method | Delegates to | Notes |
 |---|---|---|
 | `list_profiles()`, `get_profile(name)` | disk read | Fresh list; ignores stray files; `has_config` marks a complete profile |
-| `save(name, *, overwrite=False, description=None)` | `save_profile` | `overwrite` **merges** into the existing profile (see §8). To really replace, use `replace`. `description` is kept in a small file next to the profile (§11); if only that write fails the result is still `ok` and carries a warning starting with `DESCRIPTION_NOT_SAVED` |
+| `save(name, *, overwrite=False, description=None, categories=None, excluded_entries=())` | `save_profile` | `overwrite` **merges** into the existing profile (see §8). To really replace, use `replace`. `description` is kept in a small file next to the profile (§11); if only that write fails the result is still `ok` and carries a warning starting with `DESCRIPTION_NOT_SAVED`. `categories` selects what to save (§12); `None` saves everything, unchanged from before |
 | `profile_details(names)` | (disk read) | Description and sections of some profiles (§11), read separately from `list_profiles` so the operations do not parse every `conf.yaml`; never raises for one bad profile |
 | `set_description(name, description)` | (small file) | Sets, changes or clears the description (§11); writes nothing else |
 | `replace(name, *, confirmed)` | `save_profile` (temporary name) | Real replacement: saves the current configuration to `.kongui-new-…`, swaps with `rename` and deletes the old one; if anything fails, the old profile stays (or returns) in place. Does not change Konsave's code. The temporaries never appear in `list_profiles` |
@@ -192,6 +192,7 @@ python3 -m unittest tests.test_engine -v                        # KonsaveEngine
 python3 -m unittest tests.test_config_service -v                # ConfigService (default file, reading)
 python3 -m unittest tests.test_profile_service_mocked -v        # ProfileService, simulated engine
 python3 -m unittest tests.test_profile_service_integration -v   # ProfileService, real original engine
+python3 -m unittest tests.test_categories -v                    # export-category catalog and filter (§12)
 python3 -m unittest tests.test_cli_runner -v                    # CliRunner (simulated and real subprocess)
 python3 -m unittest tests.test_core_audit -v                   # findings of the final audit (core)
 python3 -m unittest tests.test_docs -v                          # this documentation vs. the code
@@ -391,6 +392,65 @@ Konsave stores neither; KonGUI adds them **without changing the engine or the `.
   * `replace` swaps the whole folder, so it carries the description over *before* the swap; if that fails nothing changes and the previous profile stays.
   * `import_profile` removes any such file that came inside the archive: Konsave copies everything under `save/` into the profile, so an archive could plant one. An imported profile always starts without a description (if the removal fails, a warning says so).
 * **Sections**: not stored. They are the `save` groups of the profile's own `conf.yaml` that hold at least one file (a group with no files, such as `autostart` in the default configuration, is left out; a group name that could point outside the profile, or a linked folder, is ignored). The `export` groups are not sections of a profile: they are read from the live system at export time and never stored in it. The interface shows friendly, translated names only for the groups of the default configuration (`configs`, `app_layouts`, `autostart`); any other group keeps its own name.
-* **What to include**: choosing what a profile contains is **not** offered. It stays manual: the user edits `~/.config/konsave/conf.yaml` by hand, as with Konsave; the steps are in [`LIMITATIONS.md`](LIMITATIONS.md) §4.
+* **What to include**: `save(..., categories=...)` (§12) lets the user choose by export category, and `ProfileDialog` (`kongui/gui/widgets/dialogs.py`) offers it when saving: a checkbox per category (`kongui.core.CATEGORIES`, labeled through `messages.section_label`), **Select all** / **Clear all**, a non-blocking warning naming any category a checked one depends on but that is not itself checked (`CATEGORY_DEPENDENCIES`, §12), and a running one-line summary of what will be included. The dialog returns category *keys*, not labels (`values()`); `kongui.gui.actions.ProfileActions.save_current` passes `kongui.core.CATEGORIES` to the dialog and the chosen keys straight to `ctx.controller.save`, which reaches `ServiceBackend.save(..., sections=...)` → `ProfileService.save(..., categories=...)`. Editing `~/.config/konsave/conf.yaml` by hand (as with Konsave) is still the way to change what each category can draw from, or to reach a single file within one; the steps are in [`LIMITATIONS.md`](LIMITATIONS.md) §4.
 
 Tests: `tests.test_profile_details` (service: persistence, isolation, renaming, import, removal, failures, compatibility with the exported archive) and `tests.test_gui_details` (dialog, card, warnings, plain text, friendly names), always in temporary homes.
+
+## 12. Export categories and selective save (B-4)
+
+`save(name, categories=(...), excluded_entries=(...))` lets the user choose, before
+a profile is created, which kinds of settings it should contain. Konsave itself has
+no such concept — its `conf.yaml` groups are coarse (the default KDE `configs` group
+alone mixes themes, panels, shortcuts, GTK and window management in one list) — so
+`kongui.core.categories` adds a finer, KonGUI-only grouping on top, entirely in the
+GUI/service layer; **the `.knsv` format and the groups Konsave itself understands
+(`save`/`export`, their `location`/`entries`) are unchanged.**
+
+* **The 12 categories** (`kongui.core.categories.CATEGORIES`): System Settings,
+  Panels and Desktop Layout, Themes and Appearance, Icons and Cursors, Wallpaper,
+  Fonts, Application Settings, Window Management, GTK Settings, Keyboard Shortcuts
+  and Input, Autostart, and Other Settings (the catch-all).
+* **The catalog** (`categorize(group_name, entry)`) is a best-effort, hand-maintained
+  table matching the entry names `konsave/conf_kde.yaml` ships (`kdeglobals` →
+  System, `kwinrc` → Window Management, `icons` → Icons and Cursors, …), by exact
+  name, whatever group they are physically found in. It is **not** derived from any
+  Konsave metadata — none exists — and is not exhaustive: an entry the catalog does
+  not recognize (a custom group the user added by hand, or a future Konsave file) is
+  Other Settings, never silently dropped. The `autostart` group is always the
+  Autostart category as a whole, since its entries are arbitrary user `.desktop`
+  files that cannot be known in advance.
+* **Filtering** (`filter_groups`) runs on the *resolved* groups
+  (`ConfigService.resolve()`, placeholders already substituted), dropping entries
+  whose category (or, individually, exact `(group_kind, group_name, entry)`, via
+  `excluded_entries`) was not chosen. Groups and their `location` are always kept,
+  even empty, the same as a group that already had no files on disk.
+* **How the choice reaches Konsave**: `ProfileService.save` writes the filtered
+  groups to a temporary `conf.yaml` (never touching the real one, which is only
+  read) and calls the patched `save_profile(..., config_path=<temporary file>)`
+  (`KONSAVE_PATCHES.md` §3.6). That temporary file becomes the profile's own
+  `conf.yaml` — the same file `apply_profile` and `export` read later — so the
+  selection is not only "what gets copied now": it also decides what a later
+  `export` of that profile pulls from the live system, since Konsave's `export`
+  only reads `export` entries from the *profile's* `conf.yaml`, not the active one.
+* **Dependencies** (`CATEGORY_DEPENDENCIES`): a small, explicit table of categories
+  whose files are meaningless without another — Icons and Cursors, Fonts and Themes
+  and Appearance depend on System Settings (where KDE keeps *which* icon theme, font
+  or color scheme is in use, `kdeglobals`); Wallpaper depends on Panels and Desktop
+  Layout (the wallpaper assignment lives in
+  `plasma-org.kde.plasma.desktop-appletsrc`). The interface warns, non-blocking,
+  when a category is chosen without a category it depends on (§11 above,
+  "What to include").
+* `categories=None` (the default) saves everything, exactly as before this feature;
+  `validate_categories` refuses an empty or unknown set before Konsave is ever
+  called.
+
+Tests: `tests.test_categories` (the catalog and the filter, no engine involved),
+`tests.test_profile_service_mocked.SaveTests` (the temporary file built, individual
+exclusions, bad categories refused up front),
+`tests.test_profile_service_integration.SaveIntegrationTests` (end to end against
+the real `konsave.funcs.save_profile`, including that a selectively saved profile
+still exports and imports through the existing workflow),
+`tests.test_gui_real_backend.RealSaveTests` (`ServiceBackend.save`'s `sections` →
+`categories`, including an unknown key reported and nothing saved) and
+`tests.test_gui_widgets.DialogTests` (`ProfileDialog`: keys vs. labels, select/clear
+all, the dependency warning and the running summary).

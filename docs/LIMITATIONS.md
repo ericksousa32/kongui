@@ -60,8 +60,28 @@ They protect against a damaged or hostile `.knsv` and against a full disk. They 
 
 ## 4. How to choose what a profile includes
 
-KonGUI does not ask this when saving and has no screen for it. The rule is
-Konsave's own, and so is the tool: a text editor.
+`kongui.core.profiles.ProfileService.save()` accepts a `categories` argument
+(`docs/INTEGRATION.md` §12): pass a subset of the 12 export categories and the
+profile is saved with only the matching files, without touching
+`~/.config/konsave/conf.yaml`. This is wired all the way to the application now:
+**Save profile** (`kongui/gui/actions.py`) opens `ProfileDialog`
+(`kongui/gui/widgets/dialogs.py`) with the real 12 categories (translated
+through `kongui.gui.messages.section_label`), the dialog offers **Select all**
+and **Clear all**, warns when a checked category needs another that is not
+checked (`kongui.core.CATEGORY_DEPENDENCIES`) and shows a running summary of
+what will be included; the keys the user leaves checked are passed to
+`kongui.gui.backend.ServiceBackend.save()` as `sections`, which passes them
+through to `ProfileService.save()` as `categories`. `Capabilities.sections` is
+`True` for `ServiceBackend`, so this is the normal save flow, not a prototype.
+
+What is **not** offered yet is picking individual files or settings *within* a
+category — the dialog only offers the 12 categories as a whole, matching
+`kongui.core.categories`'s own granularity; a category with files the user does
+not want still needs the manual route below, or hand-editing after the profile
+is saved. The manual route is also still how to add a group `filter_groups`
+does not know about (an unrecognized name falls into "Other settings", never
+dropped, but cannot be aimed at a *different* category without editing
+`kongui/core/categories.py`'s catalog itself):
 
 1. Open `~/.config/konsave/conf.yaml` in a text editor (Konsave creates it the first
    time; KonGUI creates the same default file before the first save). The `save:`
@@ -79,7 +99,9 @@ Konsave's own, and so is the tool: a text editor.
 4. The cards show what each profile ended up holding (its sections).
 
 Before **exporting** a profile, make sure the global file and the profile's agree
-(see A-4 in §2): KonGUI no longer warns about it.
+(see A-4 in §2): KonGUI no longer warns about it. This caveat does not apply to a
+profile saved with `categories`: the categories are resolved and filtered at that
+moment regardless of what the global file later becomes.
 
 ## 5. Package and installation
 
