@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- (KonGUI) `kongui/core/categories.py`: a catalog of 12 export categories (system, panels, themes, icons, wallpaper, fonts, apps, window management, GTK, shortcuts, autostart, other) that classify Konsave's `save`/`export` entries one by one, finer-grained than Konsave's own groups; `validate_categories`, `categorize`, `build_catalog` and `filter_groups` work on the already-resolved configuration (`ConfigService.resolve()`). A small dependency table (`CATEGORY_DEPENDENCIES`) records which category needs another to make sense (icons/wallpaper/fonts/themes all need system). See `docs/INTEGRATION.md` §12. Tests: `tests.test_categories`
+- (KonGUI) `ProfileService.save()` accepts `categories` and `excluded_entries`: when given, the profile is saved from a temporary, filtered copy of the active configuration instead of the active one, so it only contains the chosen categories (and any individually excluded entries within a kept category); the active `~/.config/konsave/conf.yaml` is only ever read, never written. `categories=None` (the default) is unchanged behavior. Because Konsave's `export()` reads a profile's `export` groups from the profile's own stored `conf.yaml`, a selectively-saved profile also exports only what was selected, with no change to `export()` itself. Tests: `tests.test_profile_service_mocked.SaveTests`, `tests.test_profile_service_integration.SaveIntegrationTests` (end to end against the real Konsave code, including a selective save that is exported and re-imported)
+- (KonGUI patch) `konsave/funcs.py`: `save_profile` takes an optional `config_path`, the configuration file to read and copy as the profile's `conf.yaml` instead of the active `CONFIG_FILE`; without it, behavior is unchanged. See `docs/KONSAVE_PATCHES.md` §3.6
+- (KonGUI) `ServiceBackend.save()` no longer discards its `sections` argument: it is now passed through to `ProfileService.save()` as `categories`, so the real backend saves a filtered profile when given category keys. `Capabilities.sections` is now `True` for `ServiceBackend`. Tests: `tests.test_gui_real_backend.RealSaveTests`
+- (KonGUI) **Save profile** now lets you choose what goes into a profile: `ProfileDialog` offers the 12 export categories as checkboxes (translated labels, via a new `kongui.gui.messages.SECTION_LABELS` extension), with **Select all** / **Clear all** buttons, a non-blocking warning when a checked category needs another that is not checked (e.g. Icons and Cursors needs System Settings), and a running summary of what will be included. The chosen categories reach `ProfileService.save()` through `ServiceBackend.save()` above; saving without touching any checkbox still saves everything, as before. Demo mode's save dialog and "import preview" now use the same 12 categories instead of seven fictitious area names (`kongui/gui/mock_data.py`'s `sections()` is unchanged and still backs only the seven ready-made demo profiles shown on first launch). See `docs/INTEGRATION.md` §11 and §12. Tests: `tests.test_gui_widgets.DialogTests`, `tests.test_i18n`
+
+This lands the whole selective-save feature end to end: the 12-category catalog
+and filtering, the Konsave patch, the service layer, the real backend, and the
+save dialog. What is still not offered is picking individual files within a
+category (see `docs/LIMITATIONS.md` §4).
+
 ## [0.1.0a3] - 2026-10-23
 Third alpha (GitHub pre-release). Adds the application icon.
 

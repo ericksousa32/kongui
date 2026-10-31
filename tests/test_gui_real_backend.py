@@ -151,6 +151,28 @@ class RealSaveTests(RealBackendCase):
                 self.assertFalse(self.last().ok)
         self.assertEqual(self.store.names(), [])
 
+    def test_sections_are_taken_as_category_keys_and_filter_the_profile(self):
+        # BASE_CONF's "configs" has kdeglobals (system) and gtk-3.0 (gtk); only
+        # "system" is passed, so gtk-3.0 must not end up in the saved profile.
+        self.assertTrue(self.controller.save("work", "", ("system",)))
+        self.assertTrue(self.last().ok, self.last().details)
+        self.assertEqual(
+            (self.folder("work") / "configs/kdeglobals").read_text(), "kdeglobals-A"
+        )
+        self.assertFalse((self.folder("work") / "configs/gtk-3.0").exists())
+
+    def test_no_sections_still_saves_everything_as_before(self):
+        self.assertTrue(self.controller.save("work", "", ()))
+        self.assertTrue(self.last().ok, self.last().details)
+        self.assertTrue((self.folder("work") / "configs/kdeglobals").exists())
+        self.assertTrue((self.folder("work") / "configs/gtk-3.0").exists())
+
+    def test_an_unknown_section_key_is_reported_and_nothing_is_saved(self):
+        self.controller.save("work", "", ("not-a-real-category",))
+        self.assertFalse(self.last().ok)
+        self.assertEqual(self.store.names(), [])
+        self.assertFalse(self.folder("work").exists())
+
 
 class RealOverwriteTests(RealBackendCase):
     """3. Overwriting (a real replacement, not Konsave's merge)."""

@@ -17,8 +17,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kongui.core import MAX_DESCRIPTION_CHARS
+from kongui.core import CATEGORY_DEPENDENCIES, MAX_DESCRIPTION_CHARS
 from kongui.gui.formatting import format_datetime, format_kib
+from kongui.gui.messages import section_label
 from kongui.gui.validation import profile_name_problem
 from kongui.gui.widgets.common import Button, Label, repolish
 
@@ -238,8 +239,7 @@ class ProfileDialog(BaseDialog):
             ask_details: Show the description box. Off when the backend cannot
                 store descriptions.
             ask_sections: Show the section check boxes. ``None`` (the default)
-                follows ``ask_details``; real backends cannot choose what a
-                profile contains, so they pass ``False``.
+                follows ``ask_details``.
         """
         super().__init__(
             parent,
@@ -259,21 +259,56 @@ class ProfileDialog(BaseDialog):
         self.description_edit.setFixedHeight(64)
         self.description_edit.setAccessibleName(self.tr("Profile description"))
         self.section_checks: List[QCheckBox] = []
+        self.warning_label = Label("", "muted", wrap=True)
         if ask_details:
             self.body.addWidget(Label(self.tr("Description (optional)"), "muted"))
             self.body.addWidget(self.description_edit)
             self.description_edit.textChanged.connect(self._update)
         if ask_details if ask_sections is None else ask_sections:
             self.body.addWidget(Label(self.tr("What to include"), "muted"))
+            picker_buttons = QHBoxLayout()
+            select_all = Button(self.tr("Select all"), variant="ghost")
+            clear_all = Button(self.tr("Clear all"), variant="ghost")
+            select_all.clicked.connect(lambda: self._check_all(True))
+            clear_all.clicked.connect(lambda: self._check_all(False))
+            picker_buttons.addWidget(select_all)
+            picker_buttons.addWidget(clear_all)
+            picker_buttons.addStretch(1)
+            self.body.addLayout(picker_buttons)
             for section in sections:
-                check = QCheckBox(section)
+                check = QCheckBox(section_label(section))
+                check.setProperty("sectionKey", section)
                 check.setChecked(True)
                 check.toggled.connect(self._update)
                 self.body.addWidget(check)
                 self.section_checks.append(check)
+            self.body.addWidget(self.warning_label)
         self.name_edit.textChanged.connect(self._update)
         self._update()
         self.name_edit.setFocus()
+
+    def _check_all(self, checked: bool) -> None:
+        """Checks or unchecks every section box at once."""
+        for check in self.section_checks:
+            check.setChecked(checked)
+
+    def _chosen_keys(self) -> Tuple[str, ...]:
+        """Keys (not labels) of the currently checked section boxes."""
+        return tuple(
+            check.property("sectionKey")
+            for check in self.section_checks
+            if check.isChecked()
+        )
+
+    def _missing_dependencies(self) -> Tuple[str, ...]:
+        """Keys chosen whose dependency (``CATEGORY_DEPENDENCIES``) is not."""
+        chosen = set(self._chosen_keys())
+        missing = []
+        for key in self._chosen_keys():
+            for needed in CATEGORY_DEPENDENCIES.get(key, ()):
+                if needed not in chosen and needed not in missing:
+                    missing.append(needed)
+        return tuple(missing)
 
     def validation_error(self) -> Optional[str]:
         """Returns the first problem with the form, or ``None``."""
@@ -293,7 +328,7 @@ class ProfileDialog(BaseDialog):
         )
 
     def _update(self) -> None:
-        """Refreshes the error text and the confirm button."""
+        """Refreshes the error text, the dependency warning and the confirm button."""
         error = self.validation_error()
         typed = bool(self.name_edit.text())
         # Do not scold before the user typed anything.
@@ -311,6 +346,23 @@ class ProfileDialog(BaseDialog):
         self.error_label.setVisible(bool(shown))
         self.name_edit.setProperty("invalid", bool(error and typed))
         repolish(self.name_edit)
+        if self.section_checks:
+            missing = self._missing_dependencies()
+            if missing:
+                names = ", ".join(section_label(key) for key in missing)
+                self.warning_label.setText(
+                    self.tr("Also select: {names} (needed by your choices).").format(
+                        names=names
+                    )
+                )
+            else:
+                chosen = ", ".join(
+                    section_label(key) for key in self._chosen_keys()
+                ) or self.tr("nothing yet")
+                self.warning_label.setText(self.tr("Will include: {names}.").format(
+                    names=chosen
+                ))
+            self.warning_label.setVisible(True)
         self.confirm_button.setEnabled(error is None)
 
     def values(self) -> Tuple[str, str, Tuple[str, ...]]:
@@ -318,15 +370,13 @@ class ProfileDialog(BaseDialog):
 
         Returns:
             Tuple[str, str, Tuple[str, ...]]: Name, description and the checked
-            sections.
+            section keys (``kongui.core.categories.CATEGORIES`` members, or
+            whatever keys were passed in).
         """
-        chosen = tuple(
-            check.text() for check in self.section_checks if check.isChecked()
-        )
         return (
             self.name_edit.text(),
             self.description_edit.toPlainText().strip(),
-            chosen,
+            self._chosen_keys(),
         )
 
     def keyPressEvent(self, event) -> None:  # pylint: disable=invalid-name

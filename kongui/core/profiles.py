@@ -19,10 +19,14 @@ import tempfile
 import time
 import zipfile
 import zlib
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple
 
+import yaml
+
+from kongui.core.categories import filter_groups, validate_categories
 from kongui.core.config import ConfigService, Groups
 from kongui.core.engine import EngineCall, KonsaveEngine
 from kongui.core.errors import (
@@ -215,6 +219,8 @@ class ProfileService:
         *,
         overwrite: bool = False,
         description: Optional[str] = None,
+        categories: Optional[Tuple[str, ...]] = None,
+        excluded_entries: Tuple[Tuple[str, str, str], ...] = (),
     ) -> OperationResult:
         """Saves the current configuration as a profile (``save_profile``).
 
@@ -230,24 +236,44 @@ class ProfileService:
                 description cannot be written, the result is still ``ok`` and
                 carries a warning starting with
                 :data:`~kongui.core.profilemeta.DESCRIPTION_NOT_SAVED`.
+            categories: Export categories to keep (see
+                ``kongui.core.categories``). ``None``, the default, saves
+                everything, exactly as before. An explicit set filters both
+                what is copied now (the ``save`` groups) and what a later
+                :meth:`export` of this profile will pull from the live
+                system (the ``export`` groups), because the profile keeps the
+                filtered configuration as its own ``conf.yaml``. The active
+                ``conf.yaml`` is only read, never changed.
+            excluded_entries: Individual ``(group_kind, group_name, entry)``
+                triples to drop even though their category was kept. Ignored
+                when ``categories`` is ``None``.
 
         Returns:
             OperationResult: Outcome, with the profile folder as ``path``.
 
         Raises:
-            ValidationError: If the name or the description is not acceptable.
+            ValidationError: If the name, the description or a category is
+                not acceptable.
             ConfigMissingError: If there is no active ``conf.yaml``.
-            ProfileExistsError: If the profile exists and ``overwrite`` is false.
+            ConfigError: If the active ``conf.yaml`` cannot be read (only
+                checked when ``categories`` is given).
+            ProfileExistsError: If the profile exists and ``overwrite`` is
+                false.
         """
         validate_profile_name(name)
         text = None if description is None else clean_description(description)
+        chosen = None if categories is None else validate_categories(categories)
         self._require_config()
         names = self._engine.profile_names()
         if name in names and not overwrite:
             raise ProfileExistsError(f"profile already exists: {name}")
         target = self._engine.profiles_dir / name
         existed = os.path.lexists(target)
-        call = self._engine.call("save_profile", name, names, force=overwrite)
+        with self._filtered_config(chosen, excluded_entries) as config_path:
+            kwargs: Dict[str, Any] = {"force": overwrite}
+            if config_path is not None:
+                kwargs["config_path"] = str(config_path)
+            call = self._engine.call("save_profile", name, names, **kwargs)
         ok = not call.failed and (target / "conf.yaml").is_file()
         notes: List[str] = []
         if not ok and not existed:
@@ -864,6 +890,38 @@ class ProfileService:
             raise ConfigMissingError(
                 "no conf.yaml; call ConfigService.ensure_default_config() first"
             )
+
+    @contextmanager
+    def _filtered_config(
+        self,
+        categories: Optional[Any],
+        excluded_entries: Tuple[Tuple[str, str, str], ...],
+    ) -> Iterator[Optional[Path]]:
+        """Yields the configuration file :meth:`save` should pass through.
+
+        Yields ``None`` (the active ``conf.yaml``, unchanged) when
+        ``categories`` is ``None``. Otherwise resolves the active
+        configuration, keeps only the chosen categories, and writes *that* to
+        a temporary file that is removed when the block ends; the active
+        ``conf.yaml`` is only ever read.
+
+        Args:
+            categories: A validated set of category keys, or ``None``.
+            excluded_entries: Individual entries to drop even from a kept
+                category.
+
+        Yields:
+            Optional[Path]: The temporary file, or ``None``.
+        """
+        if categories is None:
+            yield None
+            return
+        groups = self._config.resolve()
+        filtered = filter_groups(groups, categories, frozenset(excluded_entries))
+        with tempfile.TemporaryDirectory(prefix="kongui-save-") as folder:
+            path = Path(folder) / "conf.yaml"
+            path.write_text(yaml.safe_dump(filtered, sort_keys=False), encoding="utf-8")
+            yield path
 
     def _require_valid_profile(self, name: str) -> ProfileInfo:
         """Returns a profile that has its own ``conf.yaml``.

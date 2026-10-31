@@ -386,10 +386,10 @@ class DialogTests(GuiTestCase):
     """Profile and confirmation dialogs."""
 
     def dialog(self, existing=("Work",)):
-        from kongui.gui.mock_data import sections
+        from kongui.core import CATEGORIES
         from kongui.gui.widgets.dialogs import ProfileDialog
 
-        dialog = ProfileDialog(None, existing, sections())
+        dialog = ProfileDialog(None, existing, CATEGORIES)
         self.addCleanup(dialog.deleteLater)
         return dialog
 
@@ -453,6 +453,50 @@ class DialogTests(GuiTestCase):
         name, description, sections = dialog.values()
         self.assertEqual((name, description), ("Novo", "uma descrição"))
         self.assertEqual(len(sections), 2)
+
+    def test_values_returns_category_keys_not_labels(self):
+        from kongui.core import CATEGORIES
+
+        dialog = self.dialog()
+        for check in dialog.section_checks:
+            check.setChecked(check.property("sectionKey") == CATEGORIES[0])
+        _, _, sections = dialog.values()
+        self.assertEqual(sections, (CATEGORIES[0],))
+
+    def test_select_all_and_clear_all_toggle_every_box(self):
+        dialog = self.dialog()
+        clear_all, select_all = None, None
+        for button in dialog.findChildren(type(dialog.confirm_button)):
+            if button.text() == "Desmarcar tudo":
+                clear_all = button
+            elif button.text() == "Selecionar tudo":
+                select_all = button
+        self.assertIsNotNone(select_all)
+        self.assertIsNotNone(clear_all)
+        clear_all.click()
+        self.assertFalse(any(check.isChecked() for check in dialog.section_checks))
+        select_all.click()
+        self.assertTrue(all(check.isChecked() for check in dialog.section_checks))
+
+    def test_dependency_warning_names_the_missing_category(self):
+        from kongui.core import ICONS
+
+        dialog = self.dialog()
+        for check in dialog.section_checks:
+            key = check.property("sectionKey")
+            check.setChecked(key == ICONS)
+        self.assertIn("Configurações do sistema", dialog.warning_label.text())
+
+    def test_no_warning_once_the_dependency_is_also_checked(self):
+        from kongui.core import ICONS, SYSTEM
+
+        dialog = self.dialog()
+        for check in dialog.section_checks:
+            key = check.property("sectionKey")
+            check.setChecked(key in (ICONS, SYSTEM))
+        self.assertNotIn("Selecione também", dialog.warning_label.text())
+        self.assertTrue(dialog.warning_label.text().startswith("Vai incluir:"))
+        self.assertIn("Ícones e cursores", dialog.warning_label.text())
 
     def test_enter_is_ignored_while_invalid(self):
         dialog = self.dialog()
