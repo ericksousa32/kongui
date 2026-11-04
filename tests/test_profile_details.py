@@ -16,9 +16,14 @@ from pathlib import Path
 from unittest import mock
 
 from kongui.core import (
+    APPS,
+    AUTOSTART,
     DESCRIPTION_NOT_REMOVED,
     DESCRIPTION_NOT_SAVED,
+    ICONS,
     MAX_DESCRIPTION_CHARS,
+    OTHER,
+    SYSTEM,
     ProfileNotFoundError,
     ValidationError,
 )
@@ -26,6 +31,7 @@ from kongui.core.profilemeta import (
     META_FILENAME,
     MAX_META_BYTES,
     clean_description,
+    profile_categories,
     profile_sections,
     read_description,
     write_description,
@@ -467,6 +473,81 @@ class SectionsTests(DetailsCase):
         (folder / "conf.yaml").write_text("save:\n  my_vim:\n    entries: []\n")
         write(folder / "my_vim" / "vimrc", "x")
         self.assertEqual(profile_sections(folder), ("my_vim",))
+
+
+class CategoriesTests(DetailsCase):
+    """Categories: profile_categories(), the export categories re-derived
+    entry by entry from the profile's own conf.yaml (finer than sections)."""
+
+    def setUp(self):
+        super().setUp()
+        install_conf(self.config, TWO_GROUPS)
+        write(self.home / ".config" / "kdeglobals", "x")
+
+    def test_present_save_entries_and_every_listed_export_entry_count(self):
+        self.profiles.save("work").raise_for_status()
+        # kdeglobals (save/configs) was written -> System; dolphin
+        # (save/app_layouts) was never written -> not counted; icons
+        # (export/share_folder) is simply listed -> Icons, even though
+        # Konsave never copies export entries into the profile at save time.
+        self.assertEqual(profile_categories(self.folder("work")), (SYSTEM, ICONS))
+
+    def test_a_present_app_layout_entry_adds_its_own_category(self):
+        write(self.home / ".local/share/kxmlgui5/dolphin/ui.rc", "x")
+        self.profiles.save("work").raise_for_status()
+        self.assertEqual(
+            profile_categories(self.folder("work")), (SYSTEM, ICONS, APPS)
+        )
+
+    def test_a_selectively_saved_profile_reads_back_exactly_what_was_chosen(self):
+        write(self.home / ".local/share/kxmlgui5/dolphin/ui.rc", "x")
+        self.profiles.save("work", categories=(SYSTEM,)).raise_for_status()
+        # app_layouts' dolphin (Apps) and share_folder's icons (Icons) were
+        # filtered out of the profile's own conf.yaml at save time, so they
+        # are gone for good -- not just "not on disk".
+        self.assertEqual(profile_categories(self.folder("work")), (SYSTEM,))
+
+    def test_categories_come_from_the_profile_not_from_the_current_conf(self):
+        self.profiles.save("work").raise_for_status()
+        install_conf(self.config, BASE_CONF)
+        self.assertEqual(profile_categories(self.folder("work")), (SYSTEM, ICONS))
+
+    def test_odd_configurations_never_raise(self):
+        folder = self.base / "odd"
+        folder.mkdir()
+        self.assertEqual(profile_categories(folder), ())
+        (folder / "conf.yaml").write_text("save: [unclosed")
+        self.assertEqual(profile_categories(folder), ())
+        (folder / "conf.yaml").write_text("- just\n- a list\n")
+        self.assertEqual(profile_categories(folder), ())
+
+    def test_unrecognized_entries_fall_back_to_other(self):
+        folder = self.base / "custom"
+        folder.mkdir()
+        (folder / "conf.yaml").write_text(
+            "save:\n  configs:\n    entries:\n      - my_custom_app.conf\n"
+        )
+        write(folder / "configs" / "my_custom_app.conf", "x")
+        self.assertEqual(profile_categories(folder), (OTHER,))
+
+    def test_autostart_entries_are_always_the_autostart_category(self):
+        folder = self.base / "auto"
+        folder.mkdir()
+        (folder / "conf.yaml").write_text(
+            "save:\n  autostart:\n    entries:\n      - my-app.desktop\n"
+        )
+        write(folder / "autostart" / "my-app.desktop", "x")
+        self.assertEqual(profile_categories(folder), (AUTOSTART,))
+
+    def test_an_entry_name_that_could_escape_the_profile_is_ignored(self):
+        folder = self.base / "esc_profile"
+        folder.mkdir()
+        (folder / "conf.yaml").write_text(
+            "save:\n  configs:\n    entries:\n      - ../escape\n      - kdeglobals\n"
+        )
+        write(self.base / "escape", "x")
+        write(folder / "configs" / "kdeglobals", "x")
+        self.assertEqual(profile_categories(folder), (SYSTEM,))
 
 
 class WriteHelperTests(unittest.TestCase):

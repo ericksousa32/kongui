@@ -367,12 +367,17 @@ class ServiceBackend(ProfileBackend):
         return "" if version == FALLBACK_VERSION else version
 
     def list_profiles(self) -> List[Profile]:
-        """Lists profiles with the description and sections KonGUI can read.
+        """Lists profiles with the description and badges KonGUI can read.
 
         Konsave stores neither: the description is a small file inside the
-        profile folder and the sections are the ``save`` groups of the
-        profile's own ``conf.yaml`` that hold files (raw group names; the
-        interface chooses the words, see ``messages.section_label``).
+        profile folder. The badges are ``found.categories`` when any were
+        recognized — the export categories (``kongui.core.CATEGORIES``)
+        re-derived entry by entry from the profile's own ``conf.yaml``, the
+        same classification a selective save filtered by (``docs/
+        INTEGRATION.md`` §11-§12) — otherwise ``found.sections`` (Konsave's
+        own, coarse ``save`` group names), for a profile where nothing was
+        recognized at all. Either way the interface chooses the words shown,
+        see ``messages.section_label``.
         """
         infos = self._service.list_profiles()
         details = self._service.profile_details([info.name for info in infos])
@@ -388,7 +393,7 @@ class ServiceBackend(ProfileBackend):
                 Profile(
                     info.name,
                     found.description,
-                    found.sections,
+                    found.categories or found.sections,
                     round(folder_size_mb(info.path), 1),
                     modified,
                 )

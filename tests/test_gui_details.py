@@ -41,7 +41,10 @@ class DetailsControllerTests(RealBackendCase):
         self.assertFalse(self.last().warning)
         profile = self.store.get("work")
         self.assertEqual(profile.description, "Dark theme")
-        self.assertEqual(profile.sections, ("configs",))
+        # BASE_CONF + live(): kdeglobals (System), icons/theme.txt (Icons,
+        # export), gtk-3.0/settings.ini (GTK) -- the real categories, not the
+        # single coarse "configs" group name they all happen to live inside.
+        self.assertEqual(profile.sections, ("system", "icons", "gtk"))
 
     def test_editing_and_clearing(self):
         self.controller.save("work", "First", ())
@@ -160,11 +163,14 @@ class DetailsWindowTests(RealBackendCase):
         self.assertFalse(dialog.confirm_button.isEnabled())
         self.assertIn("too long", dialog.error_label.text())
 
-    def test_the_save_dialog_asks_for_a_description_but_not_for_sections(self):
+    def test_the_save_dialog_asks_for_a_description_and_the_real_categories(self):
+        from kongui.core import CATEGORIES
+
         seen = {}
 
         def fake_exec(dialog):
             seen["checks"] = len(dialog.section_checks)
+            seen["all_checked"] = all(c.isChecked() for c in dialog.section_checks)
             seen["description"] = dialog.description_edit.isVisibleTo(dialog)
             dialog.name_edit.setText("second")
             dialog.description_edit.setPlainText("From the dialog")
@@ -173,7 +179,10 @@ class DetailsWindowTests(RealBackendCase):
         with mock.patch.object(ProfileDialog, "exec", new=fake_exec):
             self.page.new_button.click()
         self.flush()
-        self.assertEqual(seen, {"checks": 0, "description": True})
+        self.assertEqual(
+            seen,
+            {"checks": len(CATEGORIES), "all_checked": True, "description": True},
+        )
         self.assertEqual(self.window.store.get("second").description, "From the dialog")
 
     def test_a_save_without_its_description_shows_a_warning_toast(self):
@@ -197,23 +206,30 @@ class DetailsWindowTests(RealBackendCase):
 
 
 class SectionChipsTests(RealBackendCase):
-    """The sections shown on the cards: friendly names, no empty groups."""
+    """The badges shown on the cards: the real export categories re-derived
+    from the profile's own conf.yaml (``docs/INTEGRATION.md`` §11), friendly
+    names, falling back to Konsave's own coarse group names only when nothing
+    is recognized at all."""
 
     LANGUAGE = "en_US"
 
     def chips(self, card):
         return [badge.text() for badge in card.findChildren(Badge)]
 
-    def test_known_groups_get_friendly_names_and_empty_ones_are_hidden(self):
+    def test_recognized_entries_get_fine_grained_category_chips(self):
         install_conf(self.config, TWO_GROUPS)
         self.service.save("work").raise_for_status()
         window = self.make_window(backend=self.backend)
         window.controller.refresh()
         self.flush()
         card = window.pages["profiles"].cards()[0]
-        self.assertEqual(self.chips(card), ["Desktop settings"])
+        # kdeglobals (save/configs, written by live()) -> System; dolphin
+        # (save/app_layouts) was never written -> not counted; icons
+        # (export/share_folder) is simply listed -> Icons. Both live inside
+        # Konsave's single "configs" group, but get their own, separate chips.
+        self.assertEqual(self.chips(card), ["System settings", "Icons and cursors"])
 
-    def test_unknown_groups_keep_their_own_name(self):
+    def test_unrecognized_entries_fall_back_to_other_settings(self):
         install_conf(
             self.config,
             'save:\n  my_vim:\n    location: "$HOME/.config"\n    entries:\n      - vimrc\n'
@@ -225,9 +241,12 @@ class SectionChipsTests(RealBackendCase):
         window.controller.refresh()
         self.flush()
         card = window.pages["profiles"].cards()[0]
-        self.assertEqual(self.chips(card), ["my_vim"])
+        # "vimrc" under a custom group is not in the catalog, so it is the
+        # catch-all "Other settings" -- never silently dropped, but the
+        # custom group's own name ("my_vim") is no longer shown as such.
+        self.assertEqual(self.chips(card), ["Other settings"])
 
-    def test_the_search_finds_by_description_and_by_friendly_section(self):
+    def test_the_search_finds_by_description_and_by_friendly_category(self):
         self.service.save("work", description="Single panel").raise_for_status()
         self.service.save("other").raise_for_status()
         window = self.make_window(backend=self.backend)
@@ -236,8 +255,8 @@ class SectionChipsTests(RealBackendCase):
         page = window.pages["profiles"]
         for query, expected in (
             ("single panel", ["work"]),
-            ("desktop settings", ["other", "work"]),
-            ("configs", ["other", "work"]),
+            ("icons and cursors", ["other", "work"]),
+            ("gtk", ["other", "work"]),
         ):
             with self.subTest(query=query):
                 page.search.setText(query)
@@ -254,7 +273,10 @@ class SectionChipsTests(RealBackendCase):
         window.controller.refresh()
         self.flush()
         card = window.pages["profiles"].cards()[0]
-        self.assertEqual(self.chips(card), ["Configurações da área de trabalho"])
+        self.assertEqual(
+            self.chips(card),
+            ["Configurações do sistema", "Ícones e cursores", "Configurações GTK"],
+        )
 
 
 class DemoBackendTests(unittest.TestCase):
