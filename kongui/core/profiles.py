@@ -47,6 +47,7 @@ from kongui.core.profilemeta import (
     ProfileDetails,
     clean_description,
     copy_description,
+    profile_categories,
     profile_sections,
     read_description,
     remove_description,
@@ -153,12 +154,12 @@ class ProfileService:
 
     @guarded(SHARED)
     def profile_details(self, names: Iterable[str]) -> Dict[str, ProfileDetails]:
-        """Reads the description and the sections of some profiles.
+        """Reads the description, sections and categories of some profiles.
 
         This is separate from :meth:`list_profiles` so the operations, which
         list profiles often, do not parse every ``conf.yaml``. It never fails
         for one bad profile: a profile that disappeared is left out, and a
-        damaged file just means no description and no sections.
+        damaged file just means no description, no sections and no categories.
 
         Args:
             names: Profile names (names that are not valid are ignored).
@@ -175,7 +176,9 @@ class ProfileService:
             folder = self._engine.profiles_dir / name
             if folder.is_dir() and not os.path.islink(folder):
                 found[name] = ProfileDetails(
-                    read_description(folder), profile_sections(folder)
+                    read_description(folder),
+                    profile_sections(folder),
+                    profile_categories(folder),
                 )
         return found
 

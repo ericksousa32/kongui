@@ -96,7 +96,11 @@ dropped, but cannot be aimed at a *different* category without editing
    *at that moment*; profiles saved earlier keep what they had. If the file has a
    mistake, the save fails and the notice shows Konsave's own reason (for example a
    YAML error, or an entry with a `/` in it); nothing is left behind.
-4. The cards show what each profile ended up holding (its sections).
+4. The cards show what each profile ended up holding: the real export categories
+   re-derived entry by entry from the group(s) you edited (`profile_categories()`,
+   `docs/INTEGRATION.md` §11), not the raw group name you gave it — a custom group
+   with recognized entries shows the category they belong to; one with none
+   recognized shows "Other settings".
 
 Before **exporting** a profile, make sure the global file and the profile's agree
 (see A-4 in §2): KonGUI no longer warns about it. This caveat does not apply to a

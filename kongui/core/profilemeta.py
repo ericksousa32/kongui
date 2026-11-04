@@ -22,7 +22,7 @@ import time
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 import yaml
 
@@ -65,11 +65,16 @@ class ProfileDetails:
     Attributes:
         description: Free text (empty if none).
         sections: Names of the ``save`` groups that hold files, in the order of
-            the profile's ``conf.yaml``.
+            the profile's ``conf.yaml`` (Konsave's own, coarse grouping).
+        categories: Export category keys (``kongui.core.categories.CATEGORIES``)
+            actually in the profile, re-derived entry by entry from the same
+            ``conf.yaml`` (see :func:`profile_categories`) — finer-grained than
+            ``sections``, and what the interface prefers for a profile's badges.
     """
 
     description: str = ""
     sections: Tuple[str, ...] = ()
+    categories: Tuple[str, ...] = ()
 
 
 def clean_description(text: object, *, truncate: bool = False) -> str:
@@ -229,6 +234,26 @@ def copy_description(source: Path, target: Path) -> None:
         write_description(target, text)
 
 
+def _read_profile_conf(folder: Path) -> Optional[dict]:
+    """Safely parses a profile's own ``conf.yaml``, or ``None``.
+
+    Shared by :func:`profile_sections` and :func:`profile_categories`: the
+    same size, type and parsing guards, so a damaged or oversized file (an
+    imported archive is untrusted) means "nothing known" for both, never a
+    raised exception.
+    """
+    try:
+        conf = folder / "conf.yaml"
+        info = os.lstat(conf)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > _MAX_CONF_BYTES:
+            return None
+        with open(conf, "r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle.read())
+    except (OSError, ValueError, yaml.YAMLError, RecursionError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def profile_sections(folder: Path) -> Tuple[str, ...]:
     """Lists the ``save`` groups of a profile that really hold files.
 
@@ -244,27 +269,98 @@ def profile_sections(folder: Path) -> Tuple[str, ...]:
         Tuple[str, ...]: Group names, in the order of the file.
     """
     folder = Path(folder)
-    try:
-        conf = folder / "conf.yaml"
-        info = os.lstat(conf)
-        if not stat.S_ISREG(info.st_mode) or info.st_size > _MAX_CONF_BYTES:
-            return ()
-        with open(conf, "r", encoding="utf-8") as handle:
-            data = yaml.safe_load(handle.read())
-    except (OSError, ValueError, yaml.YAMLError, RecursionError):
-        return ()
-    groups = data.get("save") if isinstance(data, dict) else None
+    data = _read_profile_conf(folder)
+    groups = data.get("save") if data is not None else None
     if not isinstance(groups, dict):
         return ()
     found = []
     for name in groups:
-        if _usable_group(name) and _holds_files(folder / name):
+        if _usable_name(name) and _holds_files(folder / name):
             found.append(name)
     return tuple(found)
 
 
-def _usable_group(name: object) -> bool:
-    """Whether a group name is plain text that stays inside the profile folder."""
+def profile_categories(folder: Path) -> Tuple[str, ...]:
+    """Export categories (``kongui.core.categories``) actually in a profile.
+
+    Unlike :func:`profile_sections` (Konsave's own, coarse ``save`` group
+    names), this re-classifies the *entries* of the profile's own
+    ``conf.yaml`` one by one with :func:`~kongui.core.categories.categorize`,
+    the same function ``ProfileService.save``'s ``categories`` argument uses
+    to filter at save time — so a profile saved with only "System" and "GTK"
+    checked is read back as exactly ``("system", "gtk")``, never the single
+    generic ``configs`` group name both of those live inside of. Nothing is
+    written; the profile's files and ``conf.yaml`` are only read.
+
+    ``save`` groups: only entries whose own file or folder is actually present
+    in the profile (``<profile>/<group>/<entry>``) count, the same bar
+    :func:`profile_sections` uses — an entry only *listed* but never copied
+    (missing from the live system at save time) is not counted.
+    ``export`` groups: Konsave never copies their files into the profile
+    folder at save time (``docs/INTEGRATION.md`` §11) — they are pulled from
+    the live system only when the profile is later exported — so there is
+    nothing on disk to check against; an entry counts simply because the
+    profile's own ``conf.yaml`` still lists it (which, after a selective save,
+    means it was chosen; after a save with ``categories=None``, means
+    whatever the live ``export`` groups held at that time).
+
+    A group name that is not plain text or could point outside the profile is
+    ignored, the same as :func:`profile_sections`. Never raises.
+
+    Args:
+        folder: The profile folder.
+
+    Returns:
+        Tuple[str, ...]: Category keys (``kongui.core.categories.CATEGORIES``
+        order), empty when nothing is recognized (an odd or empty profile).
+    """
+    # Imported here, not at module level: kongui.core.categories imports
+    # kongui.core.config, and keeping profilemeta.py's own import list free of
+    # that avoids a needless load for the (more common) plain profile_sections
+    # call sites, such as the CLI-facing parts of the core.
+    from kongui.core.categories import CATEGORIES, categorize
+
+    folder = Path(folder)
+    data = _read_profile_conf(folder)
+    if data is None:
+        return ()
+    found = set()
+    save_groups = data.get("save")
+    if isinstance(save_groups, dict):
+        for name, body in save_groups.items():
+            if not _usable_name(name):
+                continue
+            for entry in _usable_entries(body):
+                if _usable_name(entry) and _entry_exists(folder / name / entry):
+                    found.add(categorize(name, entry))
+    export_groups = data.get("export")
+    if isinstance(export_groups, dict):
+        for name, body in export_groups.items():
+            if not _usable_name(name):
+                continue
+            for entry in _usable_entries(body):
+                if _usable_name(entry):
+                    found.add(categorize(name, entry))
+    return tuple(key for key in CATEGORIES if key in found)
+
+
+def _usable_entries(body: object) -> Tuple[object, ...]:
+    """The ``entries`` list of a group body, or ``()`` for anything odd."""
+    entries = body.get("entries") if isinstance(body, dict) else None
+    return tuple(entries) if isinstance(entries, list) else ()
+
+
+def _entry_exists(path: Path) -> bool:
+    """Whether a profile entry (a file or a folder) is actually present."""
+    try:
+        os.lstat(path)
+    except OSError:
+        return False
+    return True
+
+
+def _usable_name(name: object) -> bool:
+    """Whether a group or entry name is plain text that stays inside the profile folder."""
     return (
         isinstance(name, str)
         and bool(name)
