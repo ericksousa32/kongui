@@ -103,8 +103,21 @@ class Label(QLabel):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
 
+#: Horizontal padding (``theme.py``'s ``padding: 2px 9px``, both sides) to
+#: leave out of a Badge's elision width, so the shown text does not crowd the
+#: rounded background.
+_BADGE_HPADDING = 18
+
+
 class Badge(QLabel):
-    """A small rounded status label."""
+    """A small rounded status label.
+
+    When there is not enough room for the full text (a narrow card, a small
+    window), it is elided with "…" instead of being cut off raw mid-word —
+    the full text is still available as a tooltip. ``minimumSizeHint`` only
+    asks for room for the ellipsis, so a row of several badges shrinks each
+    one gracefully instead of overlapping its neighbors.
+    """
 
     def __init__(self, text: Text = "", tone: str = "neutral") -> None:
         """Creates the badge.
@@ -113,13 +126,83 @@ class Badge(QLabel):
             text: Badge text, or a function returning it in the current language.
             tone: ``neutral``, ``accent``, ``success``, ``warning`` or ``danger``.
         """
-        super().__init__(resolve_text(text))
-        if callable(text):
-            i18n.bind(self, lambda: self.setText(text()), now=False)
+        super().__init__()
+        self._full_text = ""
+        self._elided_for_width = -1
         self.setTextFormat(Qt.TextFormat.PlainText)
         self.setProperty("role", "badge")
         self.setProperty("tone", tone)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if callable(text):
+            i18n.bind(self, lambda: self._set_full_text(text()), now=False)
+        self._set_full_text(resolve_text(text))
+
+    def _set_full_text(self, text: str) -> None:
+        """Stores the untruncated text and re-elides it for the current width."""
+        self._full_text = text
+        self.setToolTip(text)
+        self._apply_elision()
+
+    def _apply_elision(self) -> None:
+        """Shows as much of the full text as the current width allows.
+
+        Never ends up fully blank: in a crowded row (several badges sharing
+        too little space), Qt's layout can give one less room than even its
+        own ``minimumSizeHint`` asked for, which would otherwise elide an
+        already-short text (such as "+7") down to nothing at all. The full
+        text is always in the tooltip regardless.
+        """
+        available = self.width() - _BADGE_HPADDING
+        metrics = self.fontMetrics()
+        if available <= 0:
+            shown = self._full_text
+        else:
+            shown = metrics.elidedText(
+                self._full_text, Qt.TextElideMode.ElideRight, available
+            )
+            if not shown and self._full_text:
+                shown = "…"
+        super().setText(shown)
+        self._elided_for_width = self.width()
+
+    def setText(self, text: str) -> None:  # pylint: disable=invalid-name
+        """Like ``QLabel.setText``, but keeps the new text elidable too."""
+        self._set_full_text(text)
+
+    def resizeEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Re-elides the text for the new width."""
+        super().resizeEvent(event)
+        self._apply_elision()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # pylint: disable=invalid-name
+        """Re-elides first if the width has moved since the last computation.
+
+        During a live, interactive window drag, Qt can deliver several resizes
+        between two paints (or paint before ``resizeEvent`` has caught up), so
+        the text cached by ``resizeEvent`` may no longer match the box actually
+        being painted. Re-checking here, right before painting, guarantees the
+        shown text is always elided for the real, final width -- never a raw
+        mid-word slice with no "…" from an earlier, now-stale width.
+        """
+        if self.width() != self._elided_for_width:
+            self._apply_elision()
+        super().paintEvent(event)
+
+    def sizeHint(self) -> QSize:  # pylint: disable=invalid-name
+        """Room for the *full* text, from ``self._full_text`` rather than
+        whatever is currently displayed — so a badge that is elided today
+        still asks for its real width, and grows back once a resize gives a
+        crowded row enough room again."""
+        height = super().sizeHint().height()
+        width = self.fontMetrics().horizontalAdvance(self._full_text) + _BADGE_HPADDING
+        return QSize(width, height)
+
+    def minimumSizeHint(self) -> QSize:  # pylint: disable=invalid-name
+        """Room for just the ellipsis, so a crowded row can shrink this badge
+        instead of overlapping it with its neighbors."""
+        height = super().sizeHint().height()
+        ellipsis = self.fontMetrics().horizontalAdvance("…") + _BADGE_HPADDING
+        return QSize(ellipsis, height)
 
     def set_tone(self, tone: str) -> None:
         """Changes the tone.

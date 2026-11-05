@@ -8,7 +8,7 @@ from tests.gui_helpers import HAVE_QT, GuiTestCase, pin_language
 
 if HAVE_QT:
     from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
-    from PySide6.QtGui import QColor, QDropEvent, QPalette
+    from PySide6.QtGui import QColor, QDropEvent, QPalette, QPixmap
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QDialog, QWidget
 
@@ -196,6 +196,50 @@ class CommonWidgetTests(GuiTestCase):
         self.assertEqual(badge.property("tone"), "accent")
         badge.set_tone("danger")
         self.assertEqual(badge.property("tone"), "danger")
+
+    def test_badge_elides_long_text_when_too_narrow(self):
+        from kongui.gui.widgets.common import Badge
+
+        full = "Panels and desktop layout"
+        badge = Badge(full)
+        badge.show()
+        self.addCleanup(badge.deleteLater)
+        badge.resize(60, 20)
+        self.flush()
+        self.assertNotEqual(badge.text(), full)
+        self.assertTrue(badge.text().endswith("…"))
+        self.assertEqual(badge.toolTip(), full)
+        badge.resize(300, 20)
+        self.flush()
+        self.assertEqual(badge.text(), full)
+
+    def test_badge_reelides_at_paint_time_if_the_cached_width_is_stale(self):
+        from PySide6.QtWidgets import QLabel as QLabelBase
+
+        from kongui.gui.widgets.common import Badge
+
+        full = "Panels and desktop layout"
+        badge = Badge(full)
+        badge.resize(300, 24)
+        self.assertEqual(badge.text(), full)
+
+        # Reproduce the exact race the fix closes: during a live window drag,
+        # Qt can paint a width that the elision cached by the last
+        # resizeEvent() no longer matches. Force that stale state directly,
+        # bypassing setText()/resizeEvent() (which would otherwise re-elide
+        # it immediately and hide the bug this guards against).
+        badge.resize(50, 24)
+        QLabelBase.setText(badge, full)
+        badge._elided_for_width = 300  # pylint: disable=protected-access
+
+        pixmap = QPixmap(badge.size())
+        badge.render(pixmap)
+
+        self.assertNotEqual(badge.text(), full, "paint time must re-elide the stale cache")
+        self.assertTrue(badge.text().endswith("…"))
+        self.assertEqual(
+            badge._elided_for_width, badge.width()  # pylint: disable=protected-access
+        )
 
     def test_segmented_control(self):
         from kongui.gui.widgets.common import SegmentedControl
