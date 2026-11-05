@@ -20,6 +20,9 @@ dialog, and accurate per-category badges on every profile card. What is still
 not offered is picking individual files within a category (see
 `docs/LIMITATIONS.md` §4).
 
+### Fixed
+- (KonGUI) `kongui/gui/widgets/common.py`: `Badge` (the profile card chips) could show raw, un-ellipsized, truncated text — missing characters from *both* ends, e.g. "Panels and desktop layout" rendered as "s and desktop l" — during interactive window resizing. The elision was only recomputed on `resizeEvent`, which caches the shown text for the width known at that moment; a live, continuous drag can deliver a paint for a width the last `resizeEvent` hasn't caught up to yet, so the stale, wrongly-sized string got centered and clipped by the real (narrower) paint rect instead of being elided for it. `Badge` now also re-checks and, if needed, recomputes the elision in a `paintEvent` override, immediately before painting, so what is drawn always matches the widget's true current width — closing the race regardless of how many resizes land between two paints. No layout, sizing or other visual behavior changes. Tests: `tests.test_gui_widgets.CommonWidgetTests.test_badge_elides_long_text_when_too_narrow`, `tests.test_gui_widgets.CommonWidgetTests.test_badge_reelides_at_paint_time_if_the_cached_width_is_stale`
+
 ## [0.1.0a3] - 2026-10-23
 Third alpha (GitHub pre-release). Adds the application icon.
 
