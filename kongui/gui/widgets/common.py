@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Iterable, List, Optional, Sequence, Tuple
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPaintEvent
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPaintEvent
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -444,6 +444,35 @@ class Button(QPushButton):
             self.setToolTip(tip)
             if not resolve_text(self._text):
                 self.setAccessibleName(tip)
+
+    def _checked_text_extra(self) -> int:
+        """Extra width the label needs when drawn in its checked font.
+
+        ``theme.py`` draws a checked segment in semibold (``font-weight: 600``
+        on ``:checked``), but Qt applies that weight only while painting: the
+        widget's font, and so ``QPushButton.sizeHint``, stay regular. A
+        checked segment was then a few pixels too narrow for its own label
+        (more with wide fonts such as Noto Sans), and both ends of the text
+        were clipped. The room is reserved in both states, so picking an
+        option does not make the control jump either.
+        """
+        text = self.text()
+        if self._variant != "segment" or not text:
+            return 0
+        bold = QFont(self.font())
+        bold.setWeight(QFont.Weight.DemiBold)
+        extra = QFontMetrics(bold).horizontalAdvance(
+            text
+        ) - self.fontMetrics().horizontalAdvance(text)
+        return max(0, extra) + _BADGE_SLACK
+
+    def sizeHint(self) -> QSize:  # pylint: disable=invalid-name
+        """Qt's size, widened for a segment's semibold checked label.
+
+        ``QPushButton.minimumSizeHint`` is derived from this, so it follows.
+        """
+        hint = super().sizeHint()
+        return QSize(hint.width() + self._checked_text_extra(), hint.height())
 
     def set_icon_name(self, name: Optional[str]) -> None:
         """Changes the icon.
