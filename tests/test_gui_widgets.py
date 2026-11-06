@@ -310,6 +310,36 @@ class CommonWidgetTests(GuiTestCase):
         self.assertIsNone(row.overflow)
         self.assertEqual(self._resize(row, 900), ["System settings"])
 
+    def test_a_segment_reserves_room_for_its_semibold_checked_label(self):
+        from PySide6.QtGui import QFont, QFontMetrics
+        from PySide6.QtWidgets import QPushButton
+
+        from kongui.gui.widgets.common import Button, SegmentedControl
+
+        control = SegmentedControl(
+            [("en", "English", None), ("pt", "Português (Brasil)", None)]
+        )
+        self.addCleanup(control.deleteLater)
+        # A wide font, where semibold is clearly wider than regular.
+        control.setFont(QFont("DejaVu Sans", 10))
+        control.show()
+        control.set_value("en")
+        self.flush()
+        for button in control._buttons.values():  # pylint: disable=protected-access
+            with self.subTest(text=button.text()):
+                bold = QFont(button.font())
+                bold.setWeight(QFont.Weight.DemiBold)
+                needed = QFontMetrics(bold).horizontalAdvance(button.text())
+                regular = button.fontMetrics().horizontalAdvance(button.text())
+                self.assertGreater(needed, regular)
+                qt_hint = QPushButton.sizeHint(button).width()
+                self.assertGreaterEqual(button.sizeHint().width(), qt_hint + needed - regular)
+                self.assertEqual(button.minimumSizeHint().width(), button.sizeHint().width())
+                self.assertGreaterEqual(button.width(), button.sizeHint().width())
+        plain = Button("English")
+        self.addCleanup(plain.deleteLater)
+        self.assertEqual(plain.sizeHint(), QPushButton.sizeHint(plain))
+
     def test_segmented_control(self):
         from kongui.gui.widgets.common import SegmentedControl
 
