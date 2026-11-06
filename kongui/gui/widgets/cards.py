@@ -20,7 +20,7 @@ from kongui.gui.i18n import Text, resolve_text
 from kongui.gui.messages import section_label
 from kongui.gui.state import ActivityEntry, Profile
 from kongui.gui.theme import get_theme
-from kongui.gui.widgets.common import Badge, Button, Card, IconTile, Label
+from kongui.gui.widgets.common import Badge, BadgeRow, Button, Card, IconTile, Label
 from kongui.gui.widgets.feedback import BusyBar
 
 MAX_CHIPS = 3
@@ -145,17 +145,21 @@ class ProfileCard(Card):
             )
             info.addWidget(self.description_label)
         if profile.sections:
-            chips = QHBoxLayout()
-            chips.setSpacing(6)
-            for section in profile.sections[:MAX_CHIPS]:
-                chips.addWidget(
-                    Badge(section_label(section).split(" (", maxsplit=1)[0])
-                )
-            extra = len(profile.sections) - MAX_CHIPS
-            if extra > 0:
-                chips.addWidget(Badge(f"+{extra}"))
-            chips.addStretch(1)
-            info.addLayout(chips)
+            names = [
+                section_label(section).split(" (", maxsplit=1)[0]
+                for section in profile.sections
+            ]
+            badges = [Badge(name) for name in names[:MAX_CHIPS]]
+            extra = names[MAX_CHIPS:]
+            if extra:
+                overflow = Badge(f"+{len(extra)}")
+                # Shown instead of each individual chip's own full-name
+                # tooltip, so hovering the "+N" badge still tells the whole
+                # story: every section the profile covers, not just the ones
+                # left out of the row.
+                overflow.setToolTip("\n".join(names))
+                badges.append(overflow)
+            info.addWidget(BadgeRow(badges))
         parts = [format_size(profile.size_mb)]
         if profile.sections:
             parts.append(self.tr("%n section(s)", "", len(profile.sections)))
