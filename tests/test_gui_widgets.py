@@ -241,6 +241,49 @@ class CommonWidgetTests(GuiTestCase):
             badge._elided_for_width, badge.width()  # pylint: disable=protected-access
         )
 
+    def _badge_row(self, labels):
+        """A ``BadgeRow`` of plain badges, shown as its own top-level widget
+        so resizing it isn't clamped by an outer layout's minimum size."""
+        from kongui.gui.widgets.common import Badge, BadgeRow
+
+        badges = [Badge(label) for label in labels]
+        row = BadgeRow(badges)
+        row.show()
+        self.addCleanup(row.deleteLater)
+        self.flush()
+        return row, badges
+
+    def test_badge_row_shows_every_badge_in_full_when_there_is_room(self):
+        labels = ["System settings", "Panels and desktop layout", "Themes and appearance"]
+        row, badges = self._badge_row(labels)
+        row.resize(900, 40)
+        self.flush()
+        self.assertEqual([b.text() for b in badges], labels)
+        self.assertTrue(all(b.isVisible() for b in badges))
+
+    def test_badge_row_elides_only_the_first_badge_that_does_not_fit(self):
+        labels = ["System settings", "Panels and desktop layout", "Themes and appearance"]
+        row, badges = self._badge_row(labels)
+        # Wide enough for the first badge at full size plus a little, not
+        # enough for the second badge's own full size too.
+        first_width = badges[0].sizeHint().width()
+        row.resize(first_width + 40, 40)
+        self.flush()
+        self.assertEqual(badges[0].text(), labels[0], "the first badge had room and stays full")
+        self.assertTrue(badges[1].isVisible())
+        self.assertNotEqual(badges[1].text(), labels[1])
+        self.assertTrue(badges[1].text().endswith("…"))
+        self.assertFalse(badges[2].isVisible(), "no room left, so it is hidden, not squeezed")
+
+    def test_badge_row_hides_badges_once_there_is_no_room_at_all(self):
+        labels = ["System settings", "Panels and desktop layout", "Themes and appearance"]
+        row, badges = self._badge_row(labels)
+        row.resize(2, 40)
+        self.flush()
+        self.assertFalse(badges[0].isVisible())
+        self.assertFalse(badges[1].isVisible())
+        self.assertFalse(badges[2].isVisible())
+
     def test_segmented_control(self):
         from kongui.gui.widgets.common import SegmentedControl
 

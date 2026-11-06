@@ -21,6 +21,23 @@ from tests.helpers import install_conf, write
 from tests.test_gui_real_backend import RealBackendCase
 from tests.test_profile_details import TWO_GROUPS
 
+#: A save group covering more than ``MAX_CHIPS`` categories (system, panels,
+#: themes, gtk, plus icons via export), to exercise the "+N" overflow badge.
+MANY_CATEGORIES = """save:
+    configs:
+        location: "$HOME/.config"
+        entries:
+            - kdeglobals
+            - plasma-org.kde.plasma.desktop-appletsrc
+            - plasmarc
+            - gtk-3.0
+export:
+    share_folder:
+        location: "$HOME/.local/share"
+        entries:
+            - icons
+"""
+
 
 def full_disk():
     """Makes the next description write fail as if the disk were full."""
@@ -262,6 +279,33 @@ class SectionChipsTests(RealBackendCase):
                 page.search.setText(query)
                 self.flush()
                 self.assertEqual(sorted(c.profile_name for c in page.cards()), expected)
+
+    def test_more_than_max_chips_gets_an_overflow_badge_listing_every_section(self):
+        from kongui.gui.widgets.cards import MAX_CHIPS
+
+        install_conf(self.config, MANY_CATEGORIES)
+        write(self.root / ".config/plasma-org.kde.plasma.desktop-appletsrc", "x")
+        write(self.root / ".config/plasmarc", "x")
+        self.service.save("work").raise_for_status()
+        window = self.make_window(backend=self.backend)
+        window.controller.refresh()
+        self.flush()
+        card = window.pages["profiles"].cards()[0]
+        badges = card.findChildren(Badge)
+        all_labels = [
+            "System settings",
+            "Panels and desktop layout",
+            "Themes and appearance",
+            "Icons and cursors",
+            "GTK settings",
+        ]
+        self.assertEqual(len(badges), MAX_CHIPS + 1)
+        self.assertEqual([b.text() for b in badges[:MAX_CHIPS]], all_labels[:MAX_CHIPS])
+        overflow = badges[MAX_CHIPS]
+        self.assertEqual(overflow.text(), f"+{len(all_labels) - MAX_CHIPS}")
+        # Hovering the overflow badge must tell the whole story, not just the
+        # chips it stands in for -- every section the profile covers.
+        self.assertEqual(overflow.toolTip(), "\n".join(all_labels))
 
     def test_the_friendly_name_follows_the_language(self):
         self.service.save("work").raise_for_status()

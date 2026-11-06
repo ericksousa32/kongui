@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QPushButton,
+    QSizePolicy,
     QWidget,
 )
 
@@ -108,6 +109,14 @@ class Label(QLabel):
 #: rounded background.
 _BADGE_HPADDING = 18
 
+#: Extra slack added on top of a text's exact measured advance when asking
+#: for room for it (``sizeHint``/``minimumSizeHint``). ``QFontMetrics``'s
+#: ``elidedText`` can still elide a string given *exactly* its own advance as
+#: the available width (a sub-pixel rounding guard inside Qt), so without
+#: this, a badge resized to precisely its own ``sizeHint`` could still show
+#: "…" instead of its full text.
+_BADGE_SLACK = 2
+
 
 class Badge(QLabel):
     """A small rounded status label.
@@ -194,14 +203,20 @@ class Badge(QLabel):
         still asks for its real width, and grows back once a resize gives a
         crowded row enough room again."""
         height = super().sizeHint().height()
-        width = self.fontMetrics().horizontalAdvance(self._full_text) + _BADGE_HPADDING
+        width = (
+            self.fontMetrics().horizontalAdvance(self._full_text)
+            + _BADGE_HPADDING
+            + _BADGE_SLACK
+        )
         return QSize(width, height)
 
     def minimumSizeHint(self) -> QSize:  # pylint: disable=invalid-name
         """Room for just the ellipsis, so a crowded row can shrink this badge
         instead of overlapping it with its neighbors."""
         height = super().sizeHint().height()
-        ellipsis = self.fontMetrics().horizontalAdvance("…") + _BADGE_HPADDING
+        ellipsis = (
+            self.fontMetrics().horizontalAdvance("…") + _BADGE_HPADDING + _BADGE_SLACK
+        )
         return QSize(ellipsis, height)
 
     def set_tone(self, tone: str) -> None:
@@ -212,6 +227,81 @@ class Badge(QLabel):
         """
         self.setProperty("tone", tone)
         repolish(self)
+
+
+class BadgeRow(QWidget):
+    """A left-to-right row of :class:`Badge`, each kept at full size while
+    there is room for it.
+
+    A plain ``QHBoxLayout`` of badges shrinks every item together once they
+    no longer all fit, eliding even the ones that had room to spare. This
+    instead lays badges out in priority (left-to-right) order: each gets its
+    full width as long as the row has room left, the first one that does not
+    fully fit is elided to whatever space remains, and anything after that is
+    hidden rather than squeezed down to an unreadable sliver.
+    """
+
+    #: Horizontal gap between badges, matching the old ``QHBoxLayout`` spacing.
+    SPACING = 6
+
+    def __init__(self, badges: Iterable[Badge]) -> None:
+        """Creates the row.
+
+        Args:
+            badges: The badges, in priority order. Each is reparented here.
+        """
+        super().__init__()
+        self._badges: List[Badge] = list(badges)
+        for badge in self._badges:
+            badge.setParent(self)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._laid_out_for_width = -1
+
+    def sizeHint(self) -> QSize:  # pylint: disable=invalid-name
+        """Room for every badge at its full, untruncated width."""
+        height = max((badge.sizeHint().height() for badge in self._badges), default=0)
+        width = sum(badge.sizeHint().width() for badge in self._badges)
+        if len(self._badges) > 1:
+            width += self.SPACING * (len(self._badges) - 1)
+        return QSize(width, height)
+
+    def minimumSizeHint(self) -> QSize:  # pylint: disable=invalid-name
+        """Room for just the first badge, elided down to its ellipsis."""
+        if not self._badges:
+            return QSize(0, 0)
+        return self._badges[0].minimumSizeHint()
+
+    def resizeEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Re-lays out the badges for the new width."""
+        super().resizeEvent(event)
+        self._relayout()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # pylint: disable=invalid-name
+        """Re-lays out first if the width has moved since the last pass.
+
+        Closes the same resize/paint race ``Badge.paintEvent`` closes for a
+        single badge's text: a live, interactive window drag can deliver a
+        paint for a width this row has not relaid out for yet.
+        """
+        if self.width() != self._laid_out_for_width:
+            self._relayout()
+        super().paintEvent(event)
+
+    def _relayout(self) -> None:
+        """Gives each badge its full width, in order, until space runs out."""
+        available = self.width()
+        height = self.height()
+        x = 0
+        for badge in self._badges:
+            remaining = available - x
+            if remaining < badge.minimumSizeHint().width():
+                badge.hide()
+                continue
+            width = min(badge.sizeHint().width(), remaining)
+            badge.setGeometry(x, 0, width, height)
+            badge.show()
+            x += width + self.SPACING
+        self._laid_out_for_width = available
 
 
 class Button(QPushButton):
