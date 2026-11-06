@@ -158,12 +158,12 @@ later run fails, the tag can be deleted and pushed again (§3).
 Before tagging the first alpha:
 
 * [x] The owner's report of the real Plasma session is recorded in
-  [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §7 (script: [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md)),
+  [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md) (*Results so far*),
   and has no blocker (2026-10-22, quick test).
 * [x] `dev` is merged into `master`, and `master` passes the whole suite on the
   system Python and in a virtual environment (§3, step 1; PR #15, 805 tests OK on
   2026-10-22). The suite also ran on
-  Python 3.9 to 3.14 ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
+  Python 3.9 to 3.14 ([`TEST_OVERVIEW.md`](TEST_OVERVIEW.md)).
 * [x] `CHANGELOG.md` has the release under its own heading, with the date of the tag
   in place of `TBD` (2026-10-22), and the README status line
   is up to date.
@@ -180,8 +180,7 @@ After the workflow ends:
 * [x] Download the files, run `sha256sum -c SHA256SUMS`, install the wheel with
   `[gui]` in a new virtual environment and run
   `python tools/smoke_test.py --expect-version 0.1.0a1` (without `--no-gui`). Done
-  for `0.1.0a1` on Linux with Qt offscreen, on Python 3.11, 3.13 and 3.14
-  ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6); repeated for `0.1.0a3` (2026-10-23,
+  for `0.1.0a1` on Linux with Qt offscreen, on Python 3.11, 3.13 and 3.14; repeated for `0.1.0a3` (2026-10-23,
   cloud container, Qt offscreen): checksums ok, the smoke test printed the 9 icon
   files, both translations, an 8-size window icon and the 5 pages.
 * [ ] The same on a Fedora KDE desktop, with `kongui --demo` in a real window (left
