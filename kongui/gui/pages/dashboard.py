@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from PySide6.QtCore import QT_TRANSLATE_NOOP, Qt
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
@@ -11,10 +11,10 @@ from kongui.gui.actions import ProfileActions
 from kongui.gui.context import AppContext
 from kongui.gui.controller import LoadState
 from kongui.gui.formatting import format_relative, format_size
-from kongui.gui.messages import section_label
+from kongui.gui.messages import section_short_label
 from kongui.gui.pages.base import Page
-from kongui.gui.widgets.cards import ActivityRow, StatCard
-from kongui.gui.widgets.common import Badge, Button, Card, Label, clear_layout
+from kongui.gui.widgets.cards import MAX_CHIPS, ActivityRow, StatCard
+from kongui.gui.widgets.common import Badge, BadgeRow, Button, Card, Label, clear_layout
 from kongui.gui.widgets.grid import ResponsiveGrid
 from kongui.gui.widgets.states import EmptyState
 
@@ -62,6 +62,8 @@ class DashboardPage(Page):
         )
         grid.set_items(list(self.stats.values()))
         self.stats_grid = grid
+        #: Section badges of the active profile, when it has any.
+        self.active_chips: Optional[BadgeRow] = None
         self.body.addWidget(grid)
 
         self.panels = ResponsiveGrid(min_item_width=380, max_columns=2)
@@ -132,6 +134,7 @@ class DashboardPage(Page):
     def _build_active(self, active) -> None:
         """Fills the active-profile panel."""
         clear_layout(self.active_layout)
+        self.active_chips = None
         self.active_layout.addWidget(self.section_title(self.tr("Active profile")))
         if active is None:
             state = EmptyState(
@@ -155,12 +158,13 @@ class DashboardPage(Page):
             self.active_layout.addWidget(
                 Label(active.description, "muted", wrap=True, plain=True)
             )
-        chips = QHBoxLayout()
-        chips.setSpacing(6)
-        for section in active.sections:
-            chips.addWidget(Badge(section_label(section).split(" (", maxsplit=1)[0]))
-        chips.addStretch(1)
-        self.active_layout.addLayout(chips)
+        if active.sections:
+            # Same row as the profile cards: up to MAX_CHIPS badges, then "+N".
+            self.active_chips = BadgeRow(
+                [section_short_label(section) for section in active.sections],
+                MAX_CHIPS,
+            )
+            self.active_layout.addWidget(self.active_chips)
         buttons = QHBoxLayout()
         view = Button(self.tr("View profiles"), icon_name="profiles")
         view.clicked.connect(lambda: self.ctx.navigate("profiles"))

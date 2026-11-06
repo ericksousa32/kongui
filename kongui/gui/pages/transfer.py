@@ -34,7 +34,7 @@ from kongui.gui.pages.base import Page
 from kongui.gui.validation import archive_name_problem, profile_name_problem
 from kongui.gui.widgets.cards import ActivityRow
 from kongui.gui.widgets.common import (
-    Badge,
+    BadgeRow,
     Button,
     Card,
     IconTile,
@@ -664,11 +664,8 @@ class TransferPage(
             self.import_info.setText("")
             return
         names = [_short(section) for section in info.save_sections]
-        for name in names[:MAX_BADGES]:
-            self.contents_row.addWidget(Badge(name))
-        if len(names) > MAX_BADGES:
-            self.contents_row.addWidget(Badge(f"+{len(names) - MAX_BADGES}"))
-        self.contents_row.addStretch(1)
+        if names:
+            self.contents_row.addWidget(BadgeRow(names, MAX_BADGES))
         if info.export_sections:
             self.import_info.setText(
                 self.tr(

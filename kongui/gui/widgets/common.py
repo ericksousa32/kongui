@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPaintEvent
@@ -230,46 +230,95 @@ class Badge(QLabel):
 
 
 class BadgeRow(QWidget):
-    """A left-to-right row of :class:`Badge`, each kept at full size while
-    there is room for it.
+    """A row of section badges: at most ``max_shown`` of them, then "+N".
 
     A plain ``QHBoxLayout`` of badges shrinks every item together once they
     no longer all fit, eliding even the ones that had room to spare. This
-    instead lays badges out in priority (left-to-right) order: each gets its
-    full width as long as the row has room left, the first one that does not
-    fully fit is elided to whatever space remains, and anything after that is
-    hidden rather than squeezed down to an unreadable sliver.
+    instead lays the badges out in order, each at its full width while there
+    is room for it. Badges that do not fit are not squeezed or cut: they are
+    left out and counted in a trailing "+N" badge, whose room is reserved
+    first so it is never hidden, and whose tooltip lists every label. Only
+    when not even the first badge fits next to "+N" is that one elided, so
+    the row is never just a counter.
     """
 
     #: Horizontal gap between badges, matching the old ``QHBoxLayout`` spacing.
     SPACING = 6
 
-    def __init__(self, badges: Iterable[Badge]) -> None:
+    def __init__(self, labels: Sequence[str], max_shown: int = 3) -> None:
         """Creates the row.
 
         Args:
-            badges: The badges, in priority order. Each is reparented here.
+            labels: Every label, in priority order.
+            max_shown: The most badges shown before "+N", whatever the width.
         """
         super().__init__()
-        self._badges: List[Badge] = list(badges)
-        for badge in self._badges:
+        self._labels: List[str] = list(labels)
+        self._badges: List[Badge] = []
+        for label in self._labels[: max(1, max_shown)]:
+            badge = Badge(label)
             badge.setParent(self)
+            self._badges.append(badge)
+        self._overflow: Optional[Badge] = None
+        if len(self._labels) > 1:
+            self._overflow = Badge("")
+            self._overflow.setParent(self)
+            self._overflow.hide()
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._laid_out_for_width = -1
 
+    @property
+    def overflow(self) -> Optional[Badge]:
+        """The "+N" badge, or ``None`` when there is a single label."""
+        return self._overflow
+
+    def shown_texts(self) -> List[str]:
+        """Texts of the badges currently laid out, "+N" included."""
+        if self.width() != self._laid_out_for_width:
+            self._relayout()
+        texts = [badge.text() for badge in self._badges if not badge.isHidden()]
+        if self._overflow is not None and not self._overflow.isHidden():
+            texts.append(self._overflow.text())
+        return texts
+
+    def _overflow_width(self) -> int:
+        """Room for the widest "+N" this row can show."""
+        if self._overflow is None:
+            return 0
+        metrics = self._overflow.fontMetrics()
+        return (
+            metrics.horizontalAdvance(f"+{len(self._labels)}")
+            + _BADGE_HPADDING
+            + _BADGE_SLACK
+        )
+
+    def _needs_overflow(self, width: int) -> bool:
+        """Whether some label must be counted in "+N" at this width."""
+        if len(self._badges) < len(self._labels):
+            return True
+        needed = sum(badge.sizeHint().width() for badge in self._badges)
+        needed += self.SPACING * (len(self._badges) - 1)
+        return needed > width
+
     def sizeHint(self) -> QSize:  # pylint: disable=invalid-name
-        """Room for every badge at its full, untruncated width."""
+        """Room for the shown badges at full width, plus "+N" if needed."""
         height = max((badge.sizeHint().height() for badge in self._badges), default=0)
         width = sum(badge.sizeHint().width() for badge in self._badges)
-        if len(self._badges) > 1:
-            width += self.SPACING * (len(self._badges) - 1)
+        width += self.SPACING * max(0, len(self._badges) - 1)
+        if len(self._badges) < len(self._labels):
+            width += self.SPACING + self._overflow_width()
         return QSize(width, height)
 
     def minimumSizeHint(self) -> QSize:  # pylint: disable=invalid-name
-        """Room for just the first badge, elided down to its ellipsis."""
+        """Room for the first badge elided down to "…", plus "+N"."""
         if not self._badges:
             return QSize(0, 0)
-        return self._badges[0].minimumSizeHint()
+        first = self._badges[0].minimumSizeHint()
+        if self._overflow is None:
+            return first
+        return QSize(
+            first.width() + self.SPACING + self._overflow_width(), first.height()
+        )
 
     def resizeEvent(self, event) -> None:  # pylint: disable=invalid-name
         """Re-lays out the badges for the new width."""
@@ -288,20 +337,49 @@ class BadgeRow(QWidget):
         super().paintEvent(event)
 
     def _relayout(self) -> None:
-        """Gives each badge its full width, in order, until space runs out."""
+        """Places full badges in order, then "+N" for whatever is left out."""
         available = self.width()
         height = self.height()
+        self._laid_out_for_width = available
+        if not self._needs_overflow(available):
+            x = 0
+            for badge in self._badges:
+                width = badge.sizeHint().width()
+                badge.setGeometry(x, 0, width, height)
+                badge.show()
+                x += width + self.SPACING
+            if self._overflow is not None:
+                self._overflow.hide()
+            return
+        budget = available - self._overflow_width() - self.SPACING
         x = 0
+        shown = 0
         for badge in self._badges:
-            remaining = available - x
-            if remaining < badge.minimumSizeHint().width():
-                badge.hide()
-                continue
-            width = min(badge.sizeHint().width(), remaining)
+            width = badge.sizeHint().width()
+            if x + width > budget:
+                break
             badge.setGeometry(x, 0, width, height)
             badge.show()
             x += width + self.SPACING
-        self._laid_out_for_width = available
+            shown += 1
+        if shown == 0 and self._badges:
+            first = self._badges[0]
+            room = max(budget, first.minimumSizeHint().width())
+            first.setGeometry(0, 0, room, height)
+            first.show()
+            x = room + self.SPACING
+            shown = 1
+        for badge in self._badges[shown:]:
+            badge.hide()
+        if self._overflow is None:
+            return
+        self._overflow.setText(f"+{len(self._labels) - shown}")
+        # setText resets the tooltip to the text; keep the full list instead.
+        self._overflow.setToolTip("\n".join(self._labels))
+        width = max(self._overflow.minimumSizeHint().width(), available - x)
+        width = min(self._overflow.sizeHint().width(), width)
+        self._overflow.setGeometry(x, 0, width, height)
+        self._overflow.show()
 
 
 class Button(QPushButton):

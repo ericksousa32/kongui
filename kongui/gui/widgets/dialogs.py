@@ -8,11 +8,14 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
+    QFrame,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -50,7 +53,9 @@ class BaseDialog(QDialog):
         self.body = QVBoxLayout()
         self.body.setSpacing(10)
         outer.addLayout(self.body)
+        self._outer = outer
         outer.addStretch(1)
+        self._body_spacer = outer.itemAt(outer.count() - 1)
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
         buttons.addStretch(1)
@@ -63,6 +68,43 @@ class BaseDialog(QDialog):
         buttons.addWidget(self.confirm_button)
         self.button_row = buttons
         outer.addLayout(buttons)
+
+    def fit_wrapped_labels(self) -> None:
+        """Reserves the height each wrapped label needs at its current width.
+
+        Qt sizes a window from its children's minimum sizes, and a word-wrapped
+        label's minimum height does not follow its width. A dialog squeezed to
+        that minimum (a short screen, or a long summary) then gives such labels
+        fewer lines than they need and they paint over their neighbors. Pinning
+        each visible wrapped label's minimum height to ``heightForWidth`` keeps
+        the dialog from ever being made shorter than its text.
+        """
+        for label in self.findChildren(QLabel):
+            if not label.wordWrap() or label.isHidden() or label.width() <= 0:
+                continue
+            needed = label.heightForWidth(label.width())
+            if needed > 0 and label.minimumHeight() != needed:
+                label.setMinimumHeight(needed)
+
+    def resizeEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Keeps wrapped labels' room in step with the new width."""
+        super().resizeEvent(event)
+        self.fit_wrapped_labels()
+
+    def showEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Sizes wrapped labels once their real width is known."""
+        super().showEvent(event)
+        self.fit_wrapped_labels()
+
+    def _let_body_grow(self) -> None:
+        """Gives the body the room below it, for a body holding a scroll area.
+
+        By default the free space under the body goes to an empty spacer, so
+        short dialogs keep their content at the top. A dialog whose body holds
+        a ``QScrollArea`` calls this so the scroll area gets that room instead.
+        """
+        self._outer.removeItem(self._body_spacer)
+        self._outer.setStretchFactor(self.body, 1)
 
 
 class ConfirmDialog(BaseDialog):
@@ -265,6 +307,9 @@ class ProfileDialog(BaseDialog):
             self.body.addWidget(self.description_edit)
             self.description_edit.textChanged.connect(self._update)
         if ask_details if ask_sections is None else ask_sections:
+            # Heading, the select/clear buttons, the summary and the dialog's
+            # own buttons stay put; only the list of check boxes scrolls, so
+            # nothing overlaps however short the window gets.
             self.body.addWidget(Label(self.tr("What to include"), "muted"))
             picker_buttons = QHBoxLayout()
             select_all = Button(self.tr("Select all"), variant="ghost")
@@ -275,14 +320,33 @@ class ProfileDialog(BaseDialog):
             picker_buttons.addWidget(clear_all)
             picker_buttons.addStretch(1)
             self.body.addLayout(picker_buttons)
+            checks = QWidget()
+            checks.setObjectName("DialogBody")  # themed like the dialog itself
+            checks_layout = QVBoxLayout(checks)
+            checks_layout.setContentsMargins(0, 0, 0, 0)
+            checks_layout.setSpacing(10)
             for section in sections:
                 check = QCheckBox(section_label(section))
                 check.setProperty("sectionKey", section)
                 check.setChecked(True)
                 check.toggled.connect(self._update)
-                self.body.addWidget(check)
+                checks_layout.addWidget(check)
                 self.section_checks.append(check)
+            checks_layout.addStretch(1)
+            self.sections_area = QScrollArea()
+            self.sections_area.setObjectName("SectionChecksArea")
+            self.sections_area.setWidgetResizable(True)
+            self.sections_area.setFrameShape(QFrame.Shape.NoFrame)
+            self.sections_area.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            self.sections_area.setWidget(checks)
+            # Always room for a few boxes, so the list never collapses.
+            row = self.section_checks[0].sizeHint().height() if sections else 0
+            self.sections_area.setMinimumHeight(min(len(sections), 3) * (row + 10))
+            self.body.addWidget(self.sections_area, 1)
             self.body.addWidget(self.warning_label)
+            self._let_body_grow()
         self.name_edit.textChanged.connect(self._update)
         self._update()
         self.name_edit.setFocus()
@@ -364,6 +428,7 @@ class ProfileDialog(BaseDialog):
                 ))
             self.warning_label.setVisible(True)
         self.confirm_button.setEnabled(error is None)
+        self.fit_wrapped_labels()
 
     def values(self) -> Tuple[str, str, Tuple[str, ...]]:
         """Returns what the user entered.
