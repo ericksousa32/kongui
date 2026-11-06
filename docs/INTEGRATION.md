@@ -258,7 +258,7 @@ before `apply`/`import` (requirement RN-01) has existed since §9.
   [`CONCURRENCY.md`](CONCURRENCY.md).
 * `XDG_CONFIG_HOME` support (the original hardcodes `~/.config`).
 * Validation on a real Fedora KDE (Plasma 6) session: a first quick test passed
-  (Fedora 44, Plasma 6.7.5, Wayland; [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §7). Still to
+  (Fedora 44, Plasma 6.7.5, Wayland; [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md), *Results so far*). Still to
   investigate: X11, SELinux, Flatpak, quitting during an operation.
 * Editing, backing up or validating `conf.yaml` (removed on 2026-10-19), pruning of
   safety copies or a limit on their number, and rewriting the `conf.yaml` stored in a
@@ -380,7 +380,7 @@ fixed constants, not settings):
   halfway is undone by this layer, not by the engine.
 
 The same list, with the other decisions, is in [`LIMITATIONS.md`](LIMITATIONS.md) §3;
-see also `GUI_SERVICES.md` §6.
+see also [`GUI.md`](GUI.md) §11.
 
 ## 11. Profile description and sections (B-2)
 

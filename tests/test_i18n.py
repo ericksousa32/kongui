@@ -869,7 +869,7 @@ class WholeInterfaceTests(WindowCase):
         """Texts that are data of the fictitious profiles, not interface text.
 
         They are always English, whatever the interface language (documented in
-        docs/GUI_PROTOTYPE.md).
+        docs/GUI.md).
         """
         from kongui.gui.mock_data import sections
 

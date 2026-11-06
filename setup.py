@@ -52,7 +52,6 @@ setup(
     license="GPL-3.0-or-later",
     packages=find_packages(exclude=["tests", "tests.*"]),
     package_data={
-        "config": ["conf.yaml"],
         # Interface translations: sources (.ts) and compiled catalogs (.qm);
         # the application icon, in the freedesktop "hicolor" layout.
         "kongui.gui": [
