@@ -15,7 +15,6 @@ from unittest import mock
 from PySide6.QtWidgets import QDialog
 
 from kongui.core.profilemeta import META_FILENAME
-from kongui.gui.widgets.common import Badge
 from kongui.gui.widgets.dialogs import DetailsDialog, ProfileDialog
 from tests.helpers import install_conf, write
 from tests.test_gui_real_backend import RealBackendCase
@@ -231,7 +230,9 @@ class SectionChipsTests(RealBackendCase):
     LANGUAGE = "en_US"
 
     def chips(self, card):
-        return [badge.text() for badge in card.findChildren(Badge)]
+        # What is actually laid out: badges that do not fit at this width are
+        # counted in "+N" rather than shown (BadgeRow).
+        return card.chips.shown_texts()
 
     def test_recognized_entries_get_fine_grained_category_chips(self):
         install_conf(self.config, TWO_GROUPS)
@@ -290,8 +291,9 @@ class SectionChipsTests(RealBackendCase):
         window = self.make_window(backend=self.backend)
         window.controller.refresh()
         self.flush()
+        window.resize(1400, 800)
+        self.flush()
         card = window.pages["profiles"].cards()[0]
-        badges = card.findChildren(Badge)
         all_labels = [
             "System settings",
             "Panels and desktop layout",
@@ -299,10 +301,13 @@ class SectionChipsTests(RealBackendCase):
             "Icons and cursors",
             "GTK settings",
         ]
-        self.assertEqual(len(badges), MAX_CHIPS + 1)
-        self.assertEqual([b.text() for b in badges[:MAX_CHIPS]], all_labels[:MAX_CHIPS])
-        overflow = badges[MAX_CHIPS]
-        self.assertEqual(overflow.text(), f"+{len(all_labels) - MAX_CHIPS}")
+        shown = card.chips.shown_texts()
+        # At most MAX_CHIPS full labels, in order, then "+N" for the rest.
+        self.assertLessEqual(len(shown) - 1, MAX_CHIPS)
+        self.assertEqual(shown[:-1], all_labels[: len(shown) - 1])
+        overflow = card.chips.overflow
+        self.assertEqual(shown[-1], overflow.text())
+        self.assertEqual(overflow.text(), f"+{len(all_labels) - (len(shown) - 1)}")
         # Hovering the overflow badge must tell the whole story, not just the
         # chips it stands in for -- every section the profile covers.
         self.assertEqual(overflow.toolTip(), "\n".join(all_labels))

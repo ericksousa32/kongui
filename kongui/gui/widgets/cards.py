@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from kongui.gui import icons
 from kongui.gui.formatting import format_date, format_relative, format_size
 from kongui.gui.i18n import Text, resolve_text
-from kongui.gui.messages import section_label
+from kongui.gui.messages import section_short_label
 from kongui.gui.state import ActivityEntry, Profile
 from kongui.gui.theme import get_theme
 from kongui.gui.widgets.common import Badge, BadgeRow, Button, Card, IconTile, Label
@@ -145,21 +145,13 @@ class ProfileCard(Card):
             )
             info.addWidget(self.description_label)
         if profile.sections:
-            names = [
-                section_label(section).split(" (", maxsplit=1)[0]
-                for section in profile.sections
-            ]
-            badges = [Badge(name) for name in names[:MAX_CHIPS]]
-            extra = names[MAX_CHIPS:]
-            if extra:
-                overflow = Badge(f"+{len(extra)}")
-                # Shown instead of each individual chip's own full-name
-                # tooltip, so hovering the "+N" badge still tells the whole
-                # story: every section the profile covers, not just the ones
-                # left out of the row.
-                overflow.setToolTip("\n".join(names))
-                badges.append(overflow)
-            info.addWidget(BadgeRow(badges))
+            # At most MAX_CHIPS badges, then "+N" (always visible, tooltip with
+            # every section): see BadgeRow.
+            self.chips = BadgeRow(
+                [section_short_label(section) for section in profile.sections],
+                MAX_CHIPS,
+            )
+            info.addWidget(self.chips)
         parts = [format_size(profile.size_mb)]
         if profile.sections:
             parts.append(self.tr("%n section(s)", "", len(profile.sections)))

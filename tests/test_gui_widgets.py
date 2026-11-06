@@ -241,48 +241,74 @@ class CommonWidgetTests(GuiTestCase):
             badge._elided_for_width, badge.width()  # pylint: disable=protected-access
         )
 
-    def _badge_row(self, labels):
-        """A ``BadgeRow`` of plain badges, shown as its own top-level widget
-        so resizing it isn't clamped by an outer layout's minimum size."""
-        from kongui.gui.widgets.common import Badge, BadgeRow
+    LABELS = [
+        "System settings",
+        "Panels and desktop layout",
+        "Themes and appearance",
+        "Icons and cursors",
+        "Wallpaper",
+    ]
 
-        badges = [Badge(label) for label in labels]
-        row = BadgeRow(badges)
+    def _badge_row(self, labels, max_shown=3):
+        """A ``BadgeRow``, shown as its own top-level widget so resizing it
+        isn't clamped by an outer layout's minimum size."""
+        from kongui.gui.widgets.common import BadgeRow
+
+        row = BadgeRow(labels, max_shown)
         row.show()
         self.addCleanup(row.deleteLater)
         self.flush()
-        return row, badges
+        return row
 
-    def test_badge_row_shows_every_badge_in_full_when_there_is_room(self):
-        labels = ["System settings", "Panels and desktop layout", "Themes and appearance"]
-        row, badges = self._badge_row(labels)
-        row.resize(900, 40)
+    def _resize(self, row, width):
+        row.resize(max(width, row.minimumSizeHint().width()), 40)
         self.flush()
-        self.assertEqual([b.text() for b in badges], labels)
-        self.assertTrue(all(b.isVisible() for b in badges))
+        return row.shown_texts()
 
-    def test_badge_row_elides_only_the_first_badge_that_does_not_fit(self):
-        labels = ["System settings", "Panels and desktop layout", "Themes and appearance"]
-        row, badges = self._badge_row(labels)
-        # Wide enough for the first badge at full size plus a little, not
-        # enough for the second badge's own full size too.
-        first_width = badges[0].sizeHint().width()
-        row.resize(first_width + 40, 40)
-        self.flush()
-        self.assertEqual(badges[0].text(), labels[0], "the first badge had room and stays full")
-        self.assertTrue(badges[1].isVisible())
-        self.assertNotEqual(badges[1].text(), labels[1])
-        self.assertTrue(badges[1].text().endswith("…"))
-        self.assertFalse(badges[2].isVisible(), "no room left, so it is hidden, not squeezed")
+    def test_badge_row_shows_every_label_in_full_when_they_fit(self):
+        labels = self.LABELS[:3]
+        row = self._badge_row(labels)
+        self.assertEqual(self._resize(row, 900), labels)
+        self.assertTrue(row.overflow.isHidden(), "nothing left out, so no +N")
 
-    def test_badge_row_hides_badges_once_there_is_no_room_at_all(self):
-        labels = ["System settings", "Panels and desktop layout", "Themes and appearance"]
-        row, badges = self._badge_row(labels)
-        row.resize(2, 40)
-        self.flush()
-        self.assertFalse(badges[0].isVisible())
-        self.assertFalse(badges[1].isVisible())
-        self.assertFalse(badges[2].isVisible())
+    def test_badge_row_caps_at_max_shown_then_counts_the_rest(self):
+        row = self._badge_row(self.LABELS)
+        self.assertEqual(self._resize(row, 900), self.LABELS[:3] + ["+2"])
+
+    def test_badge_row_never_elides_a_later_badge_it_moves_it_into_plus_n(self):
+        row = self._badge_row(self.LABELS)
+        badge = row.findChildren(type(row.overflow))[0]
+        # Room for the first badge and "+N" only, not for the second badge.
+        width = badge.sizeHint().width() + 40 + 2 * row.SPACING
+        self.assertEqual(self._resize(row, width), ["System settings", "+4"])
+
+    def test_badge_row_keeps_plus_n_visible_at_any_width(self):
+        row = self._badge_row(self.LABELS)
+        for width in (900, 400, 250, 150, 1):
+            with self.subTest(width=width):
+                shown = self._resize(row, width)
+                self.assertFalse(row.overflow.isHidden())
+                self.assertEqual(shown[-1], f"+{len(self.LABELS) - (len(shown) - 1)}")
+                self.assertGreaterEqual(len(shown), 2, "never just the counter")
+                right = row.overflow.geometry().right()
+                self.assertLessEqual(right, row.width() - 1, "+N is not cut off")
+
+    def test_badge_row_only_elides_the_first_badge_when_nothing_else_fits(self):
+        row = self._badge_row(self.LABELS)
+        shown = self._resize(row, 1)
+        self.assertNotEqual(shown[0], self.LABELS[0])
+        self.assertTrue(shown[0].endswith("…"))
+
+    def test_badge_row_tooltip_on_plus_n_lists_every_label(self):
+        row = self._badge_row(self.LABELS)
+        for width in (900, 150):
+            self._resize(row, width)
+            self.assertEqual(row.overflow.toolTip(), "\n".join(self.LABELS))
+
+    def test_badge_row_with_a_single_label_has_no_plus_n(self):
+        row = self._badge_row(["System settings"])
+        self.assertIsNone(row.overflow)
+        self.assertEqual(self._resize(row, 900), ["System settings"])
 
     def test_segmented_control(self):
         from kongui.gui.widgets.common import SegmentedControl
@@ -479,6 +505,64 @@ class DialogTests(GuiTestCase):
         dialog = ProfileDialog(None, existing, CATEGORIES)
         self.addCleanup(dialog.deleteLater)
         return dialog
+
+    def _visible_rect(self, dialog, widget):
+        from PySide6.QtCore import QRect
+
+        seen = widget.visibleRegion().boundingRect()
+        return QRect(widget.mapTo(dialog, seen.topLeft()), seen.size())
+
+    def test_only_the_section_list_scrolls_and_nothing_overlaps_at_minimum_size(self):
+        from PySide6.QtWidgets import QCheckBox, QLabel, QPushButton
+
+        dialog = self.dialog()
+        dialog.show()
+        self.flush()
+        self.assertTrue(dialog.sections_area.widgetResizable())
+        for check in dialog.section_checks:
+            self.assertTrue(dialog.sections_area.widget().isAncestorOf(check))
+        for size in ((440, 1), (440, 900), (700, 1)):
+            with self.subTest(size=size):
+                dialog.resize(*size)
+                self.flush()
+                dialog.resize(dialog.minimumSize() if size[1] == 1 else dialog.size())
+                self.flush()
+                widgets = [
+                    w
+                    for w in dialog.findChildren(QLabel)
+                    + dialog.findChildren(QPushButton)
+                    + dialog.findChildren(QCheckBox)
+                    if w.isVisible() and not w.visibleRegion().isEmpty()
+                ]
+                rects = [(w, self._visible_rect(dialog, w)) for w in widgets]
+                for i, (a, ra) in enumerate(rects):
+                    for b, rb in rects[i + 1 :]:
+                        if a.isAncestorOf(b) or b.isAncestorOf(a):
+                            continue
+                        overlap = ra.intersected(rb)
+                        self.assertFalse(
+                            overlap.width() > 2 and overlap.height() > 2,
+                            f"{a.text()!r} overlaps {b.text()!r}",
+                        )
+                summary = dialog.warning_label
+                self.assertGreaterEqual(
+                    summary.height(), summary.heightForWidth(summary.width())
+                )
+                self.assertLessEqual(
+                    self._visible_rect(dialog, summary).bottom(),
+                    self._visible_rect(dialog, dialog.cancel_button).top(),
+                )
+
+    def test_a_dialog_without_sections_keeps_its_content_at_the_top(self):
+        from kongui.gui.widgets.dialogs import ProfileDialog
+
+        dialog = ProfileDialog(None, (), (), ask_sections=False)
+        self.addCleanup(dialog.deleteLater)
+        self.assertFalse(hasattr(dialog, "sections_area"))
+        dialog.show()
+        dialog.resize(440, 700)
+        self.flush()
+        self.assertLess(dialog.name_edit.geometry().top(), 120)
 
     def test_starts_invalid_without_scolding(self):
         dialog = self.dialog()

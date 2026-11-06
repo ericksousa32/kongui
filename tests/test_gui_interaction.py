@@ -51,6 +51,31 @@ class DashboardTests(GuiTestCase):
         self.flush()
         self.assertEqual(page.stats["count"].value_label.text(), "7")
 
+    def test_active_profile_shows_at_most_three_badges_then_plus_n(self):
+        from dataclasses import replace
+
+        from kongui.core import CATEGORIES
+        from kongui.gui.widgets.cards import MAX_CHIPS
+
+        window = self.make_window()
+        backend = window.context.backend
+        sections = tuple(CATEGORIES[:10])
+        backend._items["Work"] = replace(  # pylint: disable=protected-access
+            backend._items["Work"], sections=sections  # pylint: disable=protected-access
+        )
+        window.controller.refresh()
+        page = window.pages["dashboard"]
+        window.show_page("dashboard")
+        for size in ((1400, 900), (900, 600)):
+            with self.subTest(size=size):
+                window.resize(*size)
+                self.flush()
+                shown = page.active_chips.shown_texts()
+                badges = shown[:-1]
+                self.assertTrue(1 <= len(badges) <= MAX_CHIPS)
+                self.assertTrue(all(not text.endswith("…") for text in badges))
+                self.assertEqual(shown[-1], f"+{len(sections) - len(badges)}")
+
     def test_activity_feed_is_limited_and_updates(self):
         window = self.make_window()
         page = window.pages["dashboard"]
