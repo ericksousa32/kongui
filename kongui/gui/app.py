@@ -51,7 +51,7 @@ def create_app(argv: Optional[Sequence[str]] = None) -> QApplication:
         app = QApplication(list(argv if argv is not None else sys.argv))
     app.setApplicationName("kongui")
     app.setApplicationDisplayName("KonGUI")
-    app.setDesktopFileName("kongui")  # the menu entry install.sh writes
+    app.setDesktopFileName("kongui")  # the menu entry of install.sh and the AppImage
     app.setWindowIcon(icons.app_icon())
     return app  # type: ignore[return-value]
 

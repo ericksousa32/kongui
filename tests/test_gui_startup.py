@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from tests.gui_helpers import HAVE_QT, GuiTestCase
+from tests.helpers import really_root
 
 ROOT = Path(__file__).resolve().parent.parent
 GUI_SOURCES = sorted((ROOT / "kongui" / "gui").rglob("*.py"))
@@ -278,6 +279,71 @@ class EntryPointTests(GuiTestCase):
         self.assertIsNotNone(path)
         self.assertTrue(path.startswith(self.home))
         self.assertTrue(path.endswith("kongui-gui.ini"))
+
+
+#: Runs the real ``kongui`` entry point, opens and cancels the save dialog from
+#: the dashboard, then closes the window like a user would.
+_OPEN_DIALOG_AND_QUIT = """
+import sys
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication
+from kongui.gui import app as appmod
+
+class Driven(appmod.MainWindow):
+    def show(self):
+        super().show()
+
+        def cancel_dialog():
+            dialog = QApplication.activeModalWidget()
+            if dialog is None:
+                QTimer.singleShot(20, cancel_dialog)
+                return
+            dialog.reject()
+
+        def open_dialog():
+            QTimer.singleShot(100, cancel_dialog)
+            self.pages["dashboard"].save_button.click()
+
+        QTimer.singleShot(200, open_dialog)
+        QTimer.singleShot(1200, self.close)
+
+appmod.MainWindow = Driven
+sys.exit(appmod.main(["kongui"]))
+"""
+
+
+@unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
+class ExitTests(unittest.TestCase):
+    """KonGUI exits cleanly after its window is closed.
+
+    Regression: a dialog that was opened and closed stayed alive as a hidden
+    child of the window until the program ended, and was then freed twice
+    (crash after closing the window: SIGSEGV in ``QObject::~QObject`` or
+    "malloc_consolidate(): unaligned fastbin chunk detected"). It happened in
+    about half the runs, so the scenario is repeated.
+    """
+
+    RUNS = 4
+
+    def test_closing_after_using_a_dialog_exits_cleanly(self):
+        if really_root():
+            self.skipTest("KonGUI refuses to run as root")
+        env = dict(os.environ, PYTHONPATH=str(ROOT), QT_QPA_PLATFORM="offscreen")
+        for run in range(self.RUNS):
+            with self.subTest(run=run), tempfile.TemporaryDirectory() as home:
+                env["HOME"] = home
+                env["XDG_RUNTIME_DIR"] = home
+                result = subprocess.run(
+                    [sys.executable, "-c", _OPEN_DIALOG_AND_QUIT],
+                    env=env,
+                    cwd=home,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+                self.assertNotIn("malloc", result.stderr)
 
 
 @unittest.skipUnless(HAVE_QT, "PySide6 is not installed")

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=KonGUI
+GenericName=Plasma profiles
+Comment=Save, apply, export and import KDE Plasma configuration profiles (Konsave)
+Exec=kongui
+Icon=kongui
+Terminal=false
+StartupWMClass=kongui
+Categories=Settings;DesktopSettings;Qt;
+Keywords=konsave;profile;plasma;backup;theme;

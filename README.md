@@ -44,9 +44,10 @@ What it does not do yet, and why, is in [`docs/LIMITATIONS.md`](docs/LIMITATIONS
 > **Alpha software.** Applying or importing a profile rewrites real configuration
 > files. **Back up `~/.config` first** and try `kongui --demo` before anything else.
 
-There is no RPM, Flatpak or AppImage yet. The `install.sh` script installs KonGUI for
-your user only, in its own Python virtual environment, and adds it to the application
-menu.
+Two ways, both for your user only and without root: the `install.sh` script (below),
+which installs KonGUI in its own Python virtual environment and adds it to the
+application menu, or, from `0.1.0a4` on, a single [AppImage](#appimage) file. There is
+no RPM or Flatpak.
 
 ### Install
 
@@ -106,6 +107,37 @@ stays: profiles, safety copies and `conf.yaml` in `~/.config/konsave` (including
 `kongui-backups/`), and preferences in `~/.config/kongui/`. Delete them by hand if
 you no longer want them.
 
+### AppImage
+
+Each release (from `0.1.0a4` on) also has `KonGUI-<version>-x86_64.AppImage` and
+`KonGUI-<version>-aarch64.AppImage`: everything in one file (about 50 MB), nothing to
+install.
+
+```bash
+chmod +x KonGUI-*-x86_64.AppImage
+./KonGUI-*-x86_64.AppImage            # the interface (add --demo for fictitious data)
+./KonGUI-*-x86_64.AppImage konsave -l # the bundled konsave command
+```
+
+It needs glibc 2.34 or newer on x86_64 and 2.39 or newer on aarch64 (any current
+Fedora), and nothing else on Wayland; on X11 also `libxcb-cursor` (Fedora:
+`xcb-util-cursor`, installed with Plasma). It does **not** need `libfuse2`. To add it
+to the menu and get updates, open it with [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever):
+the file knows where its newer versions are published.
+
+**Checking the download.** Next to the files, each release has `SHA256SUMS`, its GPG
+signature `SHA256SUMS.asc` and the public key `kongui-signing-key.asc`; the AppImages
+also carry their own signature. Check that the key's fingerprint is the one in
+[`docs/RELEASING.md`](docs/RELEASING.md#signing-key), then:
+
+```bash
+gpg --import kongui-signing-key.asc
+gpg --verify SHA256SUMS.asc SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+Your profiles and preferences are the same files whichever way KonGUI was installed.
+
 ### Reporting problems
 
 Open an issue and include the version shown in *About*. To tell how KonGUI behaved
@@ -129,6 +161,7 @@ pip install -e ".[gui,dev]"
 kongui --demo                                 # or: python3 -m kongui.gui --demo
 QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -t .   # or: make tests
 make smoke                                    # quick check that the app starts
+make appimage                                 # build an AppImage (docs/RELEASING.md §7)
 ```
 
 Use a virtual environment: the package also installs a Python package named

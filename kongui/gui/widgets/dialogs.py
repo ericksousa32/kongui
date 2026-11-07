@@ -28,7 +28,10 @@ from kongui.gui.widgets.common import Button, Label, repolish
 
 
 class BaseDialog(QDialog):
-    """Dialog frame with a title, a body area and a button row."""
+    """Dialog frame with a title, a body area and a button row.
+
+    A dialog is used once: :meth:`exec` schedules its deletion when it returns.
+    """
 
     def __init__(
         self, parent: Optional[QWidget], title: str, confirm_text: str, variant: str
@@ -68,6 +71,26 @@ class BaseDialog(QDialog):
         buttons.addWidget(self.confirm_button)
         self.button_row = buttons
         outer.addLayout(buttons)
+
+    def exec(self) -> int:  # pylint: disable=invalid-name
+        """Shows the dialog and waits, then schedules its deletion.
+
+        Every dialog here is created for one question and has the main window
+        as parent. Left alive, it stayed a hidden child of the window until the
+        program ended, and Qt (deleting the window's children) and PySide6
+        (cleaning up at interpreter exit) could then both free it: KonGUI
+        crashed *after* its window was closed (``SIGSEGV`` in
+        ``QObject::~QObject``, or "malloc_consolidate(): unaligned fastbin chunk
+        detected"). ``deleteLater`` waits for the event loop, so whoever called
+        ``exec`` can still read the answer (``values()``, ``choice`` …) first.
+
+        Returns:
+            int: ``QDialog.DialogCode`` of the answer.
+        """
+        try:
+            return super().exec()
+        finally:
+            self.deleteLater()
 
     def fit_wrapped_labels(self) -> None:
         """Reserves the height each wrapped label needs at its current width.

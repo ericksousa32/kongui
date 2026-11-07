@@ -116,34 +116,54 @@ contain the four files).
 ## 5. The release workflow
 
 `.github/workflows/release.yml` (it replaced `deploy.yml`, which published to PyPI on
-every `v*` tag; **KonGUI is not published to PyPI**). It runs only when a tag
-`v[0-9]*` is pushed, with read-only permissions except in the last job.
+every `v*` tag; **KonGUI is not published to PyPI**). It runs when a tag `v[0-9]*` is
+pushed, with read-only permissions except in the last job, and by hand
+(*Actions → Release → Run workflow*) as a **dry run** of any branch: everything is
+built and checked, nothing is published, and the files stay as the run's artifacts.
 
 Job `build`:
 
-1. reads the version from the tag and refuses anything that is not PEP 440 in the
-   forms `v0.1.0a1`, `v0.1.0b1`, `v0.1.0rc1`, `v0.1.0` (`a`, `b` and `rc` mean
-   *pre-release*);
-2. refuses a tag whose commit is not on `master`;
-3. builds the sdist and the wheel (`python -m build`, with the whole history:
-   `fetch-depth: 0`) and checks that their file names carry the version of the tag;
-4. installs the wheel in a clean virtual environment and runs
+1. on a tag: refuses anything that is not PEP 440 in the forms `v0.1.0a1`,
+   `v0.1.0b1`, `v0.1.0rc1`, `v0.1.0` (`a`, `b` and `rc` mean *pre-release*), and a
+   tag whose commit is not on `master`;
+2. builds the sdist and the wheel (`python -m build`, with the whole history:
+   `fetch-depth: 0`), reads the version from the wheel and, on a tag, checks that the
+   file names carry the tag's version;
+3. installs the wheel in a clean virtual environment and runs
    `tools/smoke_test.py --no-gui --expect-version <version>` from another folder:
-   the package reports the tag's version, the bundled `konsave` command starts and
-   the application icon files were packaged (the window and translation checks are left out because a CI runner has no Qt
-   system libraries);
-5. installs the wheel with `install.sh --wheel` in a temporary home (without
+   the package reports the version, the bundled `konsave` command starts and the
+   application icon files were packaged;
+4. installs the wheel with `install.sh --wheel` in a temporary home (without
    PySide6), checks the `kongui` link, the menu entry, its `Icon=kongui` line and the
    copied icons, and uninstalls it (the icons go too);
-6. copies `install.sh` into `dist/`, writes `SHA256SUMS` (which lists it too) and
-   uploads `dist/` as a workflow artifact.
+5. copies `install.sh` into `dist/` and uploads `dist/` as a workflow artifact.
 
-Job `release` (the only one with `contents: write`): creates the GitHub release
-(`gh release create --verify-tag`) with the files of `dist/`, the text of
-`.github/release-notes.md` (the alpha warning) and `--prerelease` when the tag is an
-`a`, `b` or `rc`.
+Job `appimage`, once per architecture, each on its own kind of runner
+(`ubuntu-24.04` for x86_64, `ubuntu-24.04-arm` for aarch64), from the wheel `build`
+made (§7):
 
-What was tested: the steps of `build` were executed on a scratch repository (a branch
+1. imports the signing key from the secrets (§7, *Signing key*). **On a tag without
+   the key it fails**: nothing is published unsigned; a dry run without it builds
+   unsigned AppImages and says so;
+2. runs `packaging/appimage/build.sh` with the wheel, signing when the key is there
+   and, on a tag, embedding the update information: channel `latest-all` for a
+   pre-release (it follows any newer release), `latest` for a stable one;
+3. runs the AppImage's `konsave -v`, and `tools/smoke_test.py --expect-version`
+   with the AppImage's own Python and Qt (offscreen): window, pages, icon and both
+   translations; on a tag it checks the embedded update information and the
+   `.zsync` file;
+4. checks the embedded signature with AppImageUpdate's `validate` tool (it must
+   succeed with the key's fingerprint);
+5. uploads the AppImage and its `.zsync`.
+
+Job `release` (only on a tag; the only one with `contents: write`): gathers all the
+files, writes `SHA256SUMS` of every one of them, signs it into `SHA256SUMS.asc`
+(checked with `gpg --verify` right after), adds the public key as
+`kongui-signing-key.asc`, and creates the GitHub release
+(`gh release create --verify-tag`) with the text of `.github/release-notes.md` and
+`--prerelease` when the tag is an `a`, `b` or `rc`.
+
+What was tested (before the AppImage jobs): the steps of `build` were executed on a scratch repository (a branch
 `master`, a local bare remote and the tag `v0.1.0a1`), reading them from the YAML file
 with the version and the commit supplied through the same environment variables the
 runner sets: the good tag built `kongui-0.1.0a1` (wheel and sdist), passed the
@@ -203,7 +223,103 @@ After the workflow ends:
 
 For the next release, copy this checklist and start again with every box empty.
 
-## 7. Tests
+## 7. AppImage
+
+Every release from `0.1.0a4` on has an AppImage for x86_64 and one for aarch64,
+built and checked by the release workflow (§5). The same recipe builds one from any
+checkout:
+
+```bash
+make appimage          # or: packaging/appimage/build.sh [WHEEL]
+```
+
+The result is `dist/appimage/KonGUI-<version>-<arch>.AppImage` (about 50 MB) and
+its `.sha256`. What `packaging/appimage/build.sh` does:
+
+1. builds the wheel from a clean `git worktree` of `HEAD` (or takes the one given),
+   so no `build/` or `*.egg-info` is left in the checkout;
+2. extracts a relocatable CPython (3.12, manylinux_2_28) from
+   [python-appimage](https://github.com/niess/python-appimage) and installs into it
+   the wheel, PyYAML and **PySide6-Essentials** (the app only uses QtCore, QtGui,
+   QtWidgets and QtSvg);
+3. runs `packaging/appimage/trim.py`, which removes what KonGUI does not use (QML /
+   Quick, Designer, SQL, the test library, developer tools, type stubs; about 145 MB
+   unpacked) by explicit lists, then runs `ldd` on every remaining library and fails
+   if one of them lost a dependency;
+4. adds `AppRun` (`KonGUI.AppImage` starts the interface, `KonGUI.AppImage konsave …`
+   the bundled command; the caller's `PYTHONPATH`, `PYTHONHOME` and user
+   site-packages are ignored), the desktop entry, the AppStream metadata and the icon;
+5. packages it with [appimagetool](https://github.com/AppImage/appimagetool), which
+   embeds the static type-2 runtime.
+
+Options of `build.sh` (environment): `UPDATE_INFORMATION` embeds where newer versions
+are published (Gear Lever and AppImageUpdate read it) and writes a `.zsync` file next
+to the AppImage (needs `zsyncmake`, package `zsync`); `SIGN=1` embeds a GPG signature
+(`SIGN_KEY` picks the key, `APPIMAGETOOL_SIGN_PASSPHRASE` gives its passphrase). If
+something asked for fails, the build fails and leaves no file behind: never an
+unsigned AppImage when a signature was asked for.
+
+On the user's machine it needs glibc 2.34 or newer on x86_64, 2.39 or newer on
+aarch64 (PySide6 6.12 is only built for that there; any current Fedora) and, only for
+X11 sessions, `libxcb-cursor` (Fedora: `xcb-util-cursor`, installed with
+Plasma). It does **not** need `libfuse2`. The app id stays `kongui`, as in
+`install.sh`, so the window, the menu entry and the icon match either way;
+AppStream reports that id as not reverse-DNS, which is accepted.
+
+Checked by hand (2026-11-06, x86_64): it starts with and without `--demo`, saves,
+applies, exports and imports, and runs `konsave`, on Fedora KDE (Wayland); `make
+appimage` output passes `tools/smoke_test.py` with its own Python and opens every
+page and dialog. `tests.test_appimage` checks the recipe (see §8).
+
+### Signing key
+
+The release files are signed with a GPG key kept only in two repository secrets
+(*Settings → Secrets and variables → Actions*): `KONGUI_SIGNING_KEY` (the armored
+secret key) and `KONGUI_SIGNING_PASSPHRASE`. Its public part is attached to every
+release as `kongui-signing-key.asc`.
+
+* **Fingerprint:** *not created yet*. Write it here, in full, when the key is made:
+  users compare it with the key attached to a release (README, *Checking the
+  download*).
+
+Creating it (once, on the owner's computer, not in the repository):
+
+```bash
+gpg --quick-gen-key "KonGUI release signing <EMAIL>" ed25519 sign 2y
+gpg --list-secret-keys --keyid-format long          # the fingerprint
+gpg --armor --export-secret-keys FINGERPRINT > kongui-signing-key.secret.asc
+gh secret set KONGUI_SIGNING_KEY < kongui-signing-key.secret.asc
+gh secret set KONGUI_SIGNING_PASSPHRASE              # asks for the passphrase
+shred -u kongui-signing-key.secret.asc               # do not keep the export
+gpg --output kongui-revoke.asc --gen-revoke FINGERPRINT   # keep it offline
+```
+
+Keep a backup of the key (and the revocation certificate) offline. When it expires,
+extend it with `gpg --quick-set-expire FINGERPRINT 2y`, export it again and update
+the secret; the fingerprint stays the same. Before the first signed tag, run the
+workflow by hand on `dev` (dry run): with the secrets in place the AppImages come out
+signed and validated.
+
+Checked (2026-11-07, cloud container, with a throwaway key): `build.sh` with `SIGN=1`
+and `UPDATE_INFORMATION` produced a signed AppImage that AppImageUpdate's `validate`
+accepted with the key's fingerprint, and its `.zsync`; with no key it failed and left
+no file; the `release` job's commands signed and verified `SHA256SUMS`, and a home with
+only the exported public key verified it too; the `appimage` job's smoke-test step ran
+as written. The workflow passes `actionlint` (with `shellcheck`). The aarch64 build
+was not run here (no ARM machine): its first run is the workflow's.
+
+## 8. Tests
+
+`tests.test_appimage`: the desktop entry (same keys as `install.sh`'s, one main
+category, `desktop-file-validate`), the AppStream metadata (points at the desktop
+entry; `appstreamcli` finds nothing but the accepted id warning), `AppRun`'s
+dispatching and its isolation from the caller's Python, `shellcheck` of the scripts,
+and what `trim.py` keeps and removes, including that a lost library fails the build;
+`ReleaseWorkflowTests`: both architectures on their own runners, the smoke test and
+signature check of each AppImage, a tag without the key failing, the signed
+`SHA256SUMS` of every file, the update channel per kind of release and the manual
+run being a dry run.
+
 
 `tests.test_version`:
 

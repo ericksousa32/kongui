@@ -224,7 +224,7 @@ class LanguageManager(QObject):
         if own.load(translation_path(language)):
             loaded.append(own)
         if language != DEFAULT_LANGUAGE:
-            qt_own = QTranslator()
+            qt_own = QtCatalogTranslator()
             qt_dir = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
             if qt_own.load(f"qtbase_{language}", qt_dir):
                 loaded.append(qt_own)
@@ -244,6 +244,41 @@ class LanguageManager(QObject):
             return
         for widget in QApplication.topLevelWidgets():
             QCoreApplication.sendEvent(widget, QEvent(QEvent.Type.LanguageChange))
+
+
+class QtCatalogTranslator(QTranslator):
+    """Qt's own catalog, falling back to a text's version without its mnemonic.
+
+    Qt's translations sometimes have a text without its keyboard mnemonic but not
+    with it: ``qtbase_pt_BR`` translates "Look in:" and "Files of type:", while the
+    file dialog asks for "&Look in:" and "Files of &type:", so those two labels
+    stayed in English. When the text with ``&`` has no translation, this returns
+    the translation of the same text without it, with the mnemonic put back at
+    the start.
+    """
+
+    def translate(  # pylint: disable=invalid-name
+        self,
+        context: str,
+        source: str,
+        disambiguation: Optional[str] = None,
+        n: int = -1,
+    ) -> Optional[str]:
+        """Qt's translation, or the mnemonic-less fallback, or ``None``.
+
+        ``None`` (a null string for Qt), never ``""``: Qt asks each installed
+        translator in turn and stops at the first answer that is not null, so an
+        empty string would hide KonGUI's own catalog and show an empty text.
+        """
+        found = super().translate(context, source, disambiguation, n)
+        if found:
+            return found
+        if not source or "&" not in source or "&&" in source:
+            return None
+        plain = super().translate(context, source.replace("&", ""), disambiguation, n)
+        if not plain:
+            return None
+        return plain if "&" in plain else "&" + plain
 
 
 _MANAGER: Optional[LanguageManager] = None

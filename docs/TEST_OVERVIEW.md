@@ -19,9 +19,11 @@ QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -t .   # or: mak
   `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails
   with `-9`.
 * Every test works in a temporary `$HOME`; nothing touches your real configuration.
-* Last full run: **874 tests in 34 modules, all passing, 4 skipped**: the three
-  source-archive tests skip when `git` or `setuptools_scm` is missing, and the
-  `install.sh` lint test when `shellcheck` is missing. About 2 minutes.
+* Last full run: **900 tests in 35 modules, all passing, 3 skipped** (the
+  source-archive tests, which skip when `git` or `setuptools_scm` is missing). The
+  checks that use `shellcheck`, `desktop-file-validate` or `appstreamcli` also
+  skip when those tools are missing; install them to run everything. About 2
+  minutes.
 * **Known sensitivities:** one language test compares relative dates ("2 days ago")
   and can fail once when a run crosses midnight; one lock test can fail once under
   heavy load. If a test fails once, rerun it alone, in the foreground, before
@@ -104,7 +106,7 @@ end to end and repeating it would add time, not information:
 | Every text translated, catalogs up to date, live language switch on every page | `tests.test_i18n` |
 | Theme contrast, icons, adaptive grid | `tests.test_gui_widgets`, `tests.test_gui_startup` |
 | Refusal to run as root, name rules | `tests.test_safety`, `tests.test_engine`, `tests.test_gui_startup` |
-| Packaging, version, smoke test, user install script | `tests.test_packaging`, `tests.test_version`, `tests.test_smoke`, `tests.test_install_script` |
+| Packaging, version, smoke test, user install script, AppImage recipe | `tests.test_packaging`, `tests.test_version`, `tests.test_smoke`, `tests.test_install_script`, `tests.test_appimage` |
 
 ## 3. What the overview found
 

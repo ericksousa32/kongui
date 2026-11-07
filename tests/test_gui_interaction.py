@@ -61,7 +61,8 @@ class DashboardTests(GuiTestCase):
         backend = window.context.backend
         sections = tuple(CATEGORIES[:10])
         backend._items["Work"] = replace(  # pylint: disable=protected-access
-            backend._items["Work"], sections=sections  # pylint: disable=protected-access
+            backend._items["Work"],
+            sections=sections,  # pylint: disable=protected-access
         )
         window.controller.refresh()
         page = window.pages["dashboard"]
@@ -392,6 +393,19 @@ class AboutPageTests(GuiTestCase):
         self.assertEqual(page.info_values["Versão do KonGUI"], expected)
         self.assertEqual(page.info_values["PySide6"], PySide6.__version__)
         self.assertIn("GPL", page.info_values["Licença"])
+
+    def test_says_when_it_runs_as_an_appimage(self):
+        with mock.patch.dict(os.environ, {"APPIMAGE": ""}):
+            window = self.make_window()
+            self.assertNotIn("Pacote", window.pages["about"].info_values)
+        with mock.patch.dict(
+            os.environ, {"APPIMAGE": "/home/u/Apps/KonGUI-0.1.0a4-x86_64.AppImage"}
+        ):
+            window = self.make_window()
+            self.assertEqual(
+                window.pages["about"].info_values["Pacote"],
+                "AppImage (KonGUI-0.1.0a4-x86_64.AppImage)",
+            )
 
     def test_links_open_through_the_desktop_service(self):
         from kongui.gui.pages.about import KONSAVE_URL, REPOSITORY_URL

@@ -107,10 +107,18 @@ def check_translations(problems: List[str]) -> None:
             print(f"translations: {path.name} loaded")
 
 
+def wait(milliseconds: int) -> None:
+    """Processes events for a while (QtCore only: QtTest is not part of every
+    installation; the AppImage leaves it out)."""
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    loop = QEventLoop()
+    QTimer.singleShot(milliseconds, loop.quit)
+    loop.exec()
+
+
 def check_window(problems: List[str]) -> None:
     """Opens the main window in demo mode and closes it."""
-    from PySide6.QtTest import QTest
-
     from kongui.gui.app import create_app
     from kongui.gui.backend import FakeBackend
     from kongui.gui.main_window import MainWindow
@@ -123,14 +131,14 @@ def check_window(problems: List[str]) -> None:
         print(f"icon: window icon set ({len(app.windowIcon().availableSizes())} sizes)")
     window = MainWindow(AppSettings(None), FakeBackend(latency=0))
     window.show()
-    QTest.qWait(300)
+    wait(300)
     pages = list(window.pages)
     print(f"window: {len(pages)} pages ({', '.join(pages)})")
     if len(pages) != 5 or not window.isVisible():
         problems.append("the main window did not open with its five pages")
     window.close()
     window.deleteLater()
-    QTest.qWait(50)
+    wait(50)
     app.processEvents()
 
 
