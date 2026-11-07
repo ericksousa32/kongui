@@ -10,9 +10,9 @@ same engine, same profile folder, same `.knsv` files, plus a graphical interface
 [newest release](https://github.com/ericksousa32/kongui/releases), make it executable
 and open it; nothing to install. Details in [AppImage](#appimage).
 
-![KonGUI dashboard](docs/screenshots/Captura_de_tela_20261023_124016.png)
+![KonGUI dashboard](docs/screenshots/Captura_de_tela_20261107_104625.png)
 
-*Screenshots are taken in demo mode, so every profile shown is fictitious. More in
+*Screenshots are taken using real profiles. More in
 [`docs/screenshots/`](docs/screenshots/).*
 
 > **Status: alpha.** Published as GitHub
