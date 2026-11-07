@@ -446,9 +446,9 @@ class ProfileDialog(BaseDialog):
                 chosen = ", ".join(
                     section_label(key) for key in self._chosen_keys()
                 ) or self.tr("nothing yet")
-                self.warning_label.setText(self.tr("Will include: {names}.").format(
-                    names=chosen
-                ))
+                self.warning_label.setText(
+                    self.tr("Will include: {names}.").format(names=chosen)
+                )
             self.warning_label.setVisible(True)
         self.confirm_button.setEnabled(error is None)
         self.fit_wrapped_labels()

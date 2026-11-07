@@ -190,7 +190,6 @@ def section_label(name: str) -> str:
     return Q.translate("messages", source) if source else name
 
 
-
 def section_short_label(name: str) -> str:
     """Returns :func:`section_label` without the explanation in parentheses.
 
@@ -204,6 +203,7 @@ def section_short_label(name: str) -> str:
         str: The friendly name, cut before any " (…)" explanation.
     """
     return section_label(name).split(" (", maxsplit=1)[0]
+
 
 def _limit(lines, count: int = 4) -> Tuple[str, ...]:
     """Keeps the first lines and says how many were dropped."""
