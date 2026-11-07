@@ -278,9 +278,10 @@ The release files are signed with a GPG key kept only in two repository secrets
 secret key) and `KONGUI_SIGNING_PASSPHRASE`. Its public part is attached to every
 release as `kongui-signing-key.asc`.
 
-* **Fingerprint:** *not created yet*. Write it here, in full, when the key is made:
-  users compare it with the key attached to a release (README, *Checking the
-  download*).
+* **Fingerprint:** `397A B1E6 6805 CDAB 9FB9 971E E4C5 D1C9 CF43 BE52`
+  (ed25519, signing only, created 2026-11-07, valid for two years). Users compare
+  it with the key attached to a release (README, *Checking the download*): `gpg
+  --show-keys --fingerprint kongui-signing-key.asc` must print this line.
 
 Creating it (once, on the owner's computer, not in the repository):
 
@@ -307,6 +308,11 @@ no file; the `release` job's commands signed and verified `SHA256SUMS`, and a ho
 only the exported public key verified it too; the `appimage` job's smoke-test step ran
 as written. The workflow passes `actionlint` (with `shellcheck`). The aarch64 build
 was not run here (no ARM machine): its first run is the workflow's.
+
+First dry run on GitHub (`dev`, 2026-11-07, with the real key): the aarch64 AppImage
+was built, passed its smoke test and its signature validated with the key above, but
+the check step failed: `validate` writes its report to stderr and only stdout went
+into `validate.log`. Fixed (`2>&1 | tee`); the step then passed as written, locally.
 
 ## 8. Tests
 
