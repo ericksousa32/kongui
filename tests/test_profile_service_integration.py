@@ -138,9 +138,7 @@ class SaveIntegrationTests(IntegrationCase):
         result = self.profiles.save("work", categories=("system",))
         self.assertTrue(result.ok, result.message)
         folder = self.engine.profiles_dir / "work"
-        self.assertEqual(
-            tree(folder), ["conf.yaml", "configs", "configs/kdeglobals"]
-        )
+        self.assertEqual(tree(folder), ["conf.yaml", "configs", "configs/kdeglobals"])
         saved_conf = self.config.resolve(folder / "conf.yaml")
         self.assertEqual(saved_conf["save"]["configs"]["entries"], ["kdeglobals"])
         self.assertEqual(saved_conf["export"]["share_folder"]["entries"], [])
@@ -170,9 +168,7 @@ class SaveIntegrationTests(IntegrationCase):
         )
         self.assertTrue(result.ok, result.message)
         imported = other_engine.profiles_dir / "work"
-        self.assertEqual(
-            tree(imported), ["conf.yaml", "configs", "configs/kdeglobals"]
-        )
+        self.assertEqual(tree(imported), ["conf.yaml", "configs", "configs/kdeglobals"])
 
     def test_existing_profile_requires_overwrite(self):
         self.profiles.save("work").raise_for_status()

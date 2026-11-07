@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0a4] - 2026-11-07
+Fourth alpha (GitHub pre-release). Choose what goes into a profile (12 categories);
+the first AppImages, for x86_64 and aarch64, signed with the release key; the crash
+after closing the window, text clipped by resizing and overlapping dialogs are fixed.
+
 ### Added
 - (KonGUI) `kongui/core/categories.py`: a catalog of 12 export categories (system, panels, themes, icons, wallpaper, fonts, apps, window management, GTK, shortcuts, autostart, other) that classify Konsave's `save`/`export` entries one by one, finer-grained than Konsave's own groups; `validate_categories`, `categorize`, `build_catalog` and `filter_groups` work on the already-resolved configuration (`ConfigService.resolve()`). A small dependency table (`CATEGORY_DEPENDENCIES`) records which category needs another to make sense (icons/wallpaper/fonts/themes all need system). See `docs/INTEGRATION.md` §12. Tests: `tests.test_categories`
 - (KonGUI) `ProfileService.save()` accepts `categories` and `excluded_entries`: when given, the profile is saved from a temporary, filtered copy of the active configuration instead of the active one, so it only contains the chosen categories (and any individually excluded entries within a kept category); the active `~/.config/konsave/conf.yaml` is only ever read, never written. `categories=None` (the default) is unchanged behavior. Because Konsave's `export()` reads a profile's `export` groups from the profile's own stored `conf.yaml`, a selectively-saved profile also exports only what was selected, with no change to `export()` itself. Tests: `tests.test_profile_service_mocked.SaveTests`, `tests.test_profile_service_integration.SaveIntegrationTests` (end to end against the real Konsave code, including a selective save that is exported and re-imported)

@@ -50,11 +50,15 @@ class CatalogTests(unittest.TestCase):
                 self.assertIn(category, CATEGORIES)
 
     def test_app_layouts_entries_are_known(self):
-        for entry in "dolphin konsole yakuakerc systemsettings spectacle plasma-systemmonitor".split():
+        for (
+            entry
+        ) in "dolphin konsole yakuakerc systemsettings spectacle plasma-systemmonitor".split():
             self.assertNotEqual(categorize("app_layouts", entry), OTHER, entry)
 
     def test_export_entries_are_known(self):
-        for entry in "plasma kwin konsole fonts color-schemes aurorae icons wallpapers yakuake".split():
+        for (
+            entry
+        ) in "plasma kwin konsole fonts color-schemes aurorae icons wallpapers yakuake".split():
             self.assertNotEqual(categorize("share_folder", entry), OTHER, entry)
         for entry in (".fonts", ".themes", ".icons"):
             self.assertNotEqual(categorize("home_folder", entry), OTHER, entry)
@@ -147,7 +151,8 @@ class FilterGroupsTests(unittest.TestCase):
         result = filter_groups(self.groups, frozenset({"icons"}))
         self.assertEqual(set(result["save"]), {"configs", "autostart"})
         self.assertEqual(
-            result["save"]["configs"]["location"], self.groups["save"]["configs"]["location"]
+            result["save"]["configs"]["location"],
+            self.groups["save"]["configs"]["location"],
         )
 
     def test_individual_entries_can_be_excluded_within_a_kept_category(self):
@@ -165,7 +170,10 @@ class FilterGroupsTests(unittest.TestCase):
     def test_input_is_not_mutated(self):
         before = {k: {n: dict(b) for n, b in s.items()} for k, s in self.groups.items()}
         filter_groups(self.groups, frozenset({"system"}))
-        self.assertEqual(self.groups["save"]["configs"]["entries"], before["save"]["configs"]["entries"])
+        self.assertEqual(
+            self.groups["save"]["configs"]["entries"],
+            before["save"]["configs"]["entries"],
+        )
 
 
 class BuildCatalogTests(unittest.TestCase):
@@ -173,7 +181,9 @@ class BuildCatalogTests(unittest.TestCase):
 
     def test_entries_of_groups_by_category(self):
         groups = {
-            "save": {"configs": {"location": "/x", "entries": ["kdeglobals", "kwinrc"]}},
+            "save": {
+                "configs": {"location": "/x", "entries": ["kdeglobals", "kwinrc"]}
+            },
             "export": {},
         }
         catalog = build_catalog(groups)
@@ -190,7 +200,9 @@ class BuildCatalogTests(unittest.TestCase):
         catalog = build_catalog(groups)
         self.assertEqual(catalog.category_of("save", "configs", "kdeglobals"), "system")
         # Falls back to categorize() for an entry it never saw.
-        self.assertEqual(catalog.category_of("save", "configs", "kwinrc"), "window_management")
+        self.assertEqual(
+            catalog.category_of("save", "configs", "kwinrc"), "window_management"
+        )
 
 
 if __name__ == "__main__":

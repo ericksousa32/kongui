@@ -185,8 +185,12 @@ def validate_categories(categories: object) -> FrozenSet[str]:
         ValidationError: If ``categories`` is not a collection of strings, is
             empty, or names a key outside :data:`CATEGORIES`.
     """
-    if isinstance(categories, str) or not isinstance(categories, (list, tuple, set, frozenset)):
-        raise ValidationError(f"categories must be a list of strings, not {categories!r}")
+    if isinstance(categories, str) or not isinstance(
+        categories, (list, tuple, set, frozenset)
+    ):
+        raise ValidationError(
+            f"categories must be a list of strings, not {categories!r}"
+        )
     chosen = frozenset(categories)
     if not chosen:
         raise ValidationError("choose at least one category")
@@ -265,6 +269,9 @@ def filter_groups(
                 if categorize(group_name, entry) in categories
                 and (kind, group_name, entry) not in excluded_entries
             ]
-            kept_section[group_name] = {"location": body["location"], "entries": entries}
+            kept_section[group_name] = {
+                "location": body["location"],
+                "entries": entries,
+            }
         result[kind] = kept_section
     return result
