@@ -1,4 +1,4 @@
-.PHONY: help all setup dev-setup fmt clean distclean maintclean pyfmt black usort tests smoke dist translations
+.PHONY: help all setup dev-setup fmt clean distclean maintclean pyfmt black usort tests smoke dist appimage translations
 
 all: setup
 
@@ -14,6 +14,7 @@ help:
 		@echo " - tests:        Run the whole test suite (needs: pip install -e \".[gui,dev]\")"
 		@echo " - smoke:        Quick check of a checkout (tools/smoke_test.py)"
 		@echo " - dist:         Build the sdist and the wheel (needs the git history and tags)"
+		@echo " - appimage:     Build the AppImage of this checkout into dist/appimage/"
 		@echo " - translations: Update the GUI .ts files and rebuild the .qm catalogs"
 		@echo ""
 
@@ -73,6 +74,10 @@ smoke:
 dist:
 		python3 -m pip install --upgrade build
 		python3 -m build
+
+# The AppImage of this checkout (packaging/appimage/build.sh), in dist/appimage/.
+appimage:
+		packaging/appimage/build.sh
 
 # GUI texts: extract the strings from the code into the .ts files (keeping the
 # existing translations), then compile them. Translate any message left

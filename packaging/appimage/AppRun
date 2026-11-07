@@ -1,0 +1,23 @@
+#!/bin/sh
+# Entry point of the KonGUI AppImage.
+#
+#   KonGUI.AppImage [--demo]          the graphical interface
+#   KonGUI.AppImage konsave [ARGS…]   the bundled konsave command
+#
+# Only the Python inside the image is used: the user's own site-packages and
+# any PYTHONHOME / PYTHONPATH from the calling shell are ignored, so a KonGUI or
+# Konsave installed with pip cannot shadow the bundled one.
+set -e
+if [ -z "${APPDIR:-}" ]; then
+    self="$(readlink -f -- "$0")"
+    APPDIR="${self%/*}"
+fi
+export APPDIR
+unset PYTHONHOME PYTHONPATH
+export PYTHONNOUSERSITE=1
+python="$APPDIR/opt/python@PYTHON_VERSION@/bin/python@PYTHON_VERSION@"
+if [ "${1:-}" = "konsave" ]; then
+    shift
+    exec "$python" -s -m konsave "$@"
+fi
+exec "$python" -s -m kongui.gui "$@"

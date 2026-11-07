@@ -203,7 +203,54 @@ After the workflow ends:
 
 For the next release, copy this checklist and start again with every box empty.
 
-## 7. Tests
+## 7. AppImage (not published yet)
+
+An AppImage of KonGUI is being prepared; it is **not part of the release workflow
+yet** (building it there for x86_64 and aarch64, with a GPG signature and update
+information, is the next step). It can be built from any checkout:
+
+```bash
+make appimage          # or: packaging/appimage/build.sh [WHEEL]
+```
+
+The result is `dist/appimage/KonGUI-<version>-<arch>.AppImage` (about 50 MB) and
+its `.sha256`. What `packaging/appimage/build.sh` does:
+
+1. builds the wheel from a clean `git worktree` of `HEAD` (or takes the one given),
+   so no `build/` or `*.egg-info` is left in the checkout;
+2. extracts a relocatable CPython (3.12, manylinux_2_28) from
+   [python-appimage](https://github.com/niess/python-appimage) and installs into it
+   the wheel, PyYAML and **PySide6-Essentials** (the app only uses QtCore, QtGui,
+   QtWidgets and QtSvg);
+3. runs `packaging/appimage/trim.py`, which removes what KonGUI does not use (QML /
+   Quick, Designer, SQL, the test library, developer tools, type stubs; about 145 MB
+   unpacked) by explicit lists, then runs `ldd` on every remaining library and fails
+   if one of them lost a dependency;
+4. adds `AppRun` (`KonGUI.AppImage` starts the interface, `KonGUI.AppImage konsave …`
+   the bundled command; the caller's `PYTHONPATH`, `PYTHONHOME` and user
+   site-packages are ignored), the desktop entry, the AppStream metadata and the icon;
+5. packages it with [appimagetool](https://github.com/AppImage/appimagetool), which
+   embeds the static type-2 runtime.
+
+On the user's machine it needs glibc 2.34 or newer (any current Fedora) and, only
+for X11 sessions, `libxcb-cursor` (Fedora: `xcb-util-cursor`, installed with
+Plasma). It does **not** need `libfuse2`. The app id stays `kongui`, as in
+`install.sh`, so the window, the menu entry and the icon match either way;
+AppStream reports that id as not reverse-DNS, which is accepted.
+
+Checked by hand (2026-11-06, x86_64): it starts with and without `--demo`, saves,
+applies, exports and imports, and runs `konsave`, on Fedora KDE (Wayland); `make
+appimage` output passes `tools/smoke_test.py` with its own Python and opens every
+page and dialog. `tests.test_appimage` checks the recipe (see §8).
+
+## 8. Tests
+
+`tests.test_appimage`: the desktop entry (same keys as `install.sh`'s, one main
+category, `desktop-file-validate`), the AppStream metadata (points at the desktop
+entry; `appstreamcli` finds nothing but the accepted id warning), `AppRun`'s
+dispatching and its isolation from the caller's Python, `shellcheck` of the scripts,
+and what `trim.py` keeps and removes, including that a lost library fails the build.
+
 
 `tests.test_version`:
 
