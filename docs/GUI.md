@@ -88,6 +88,12 @@ Page ──► ProfileActions (dialogs) ──► ProfileController ──► Ex
   export-folder check `probe_export`) go through `controller.background`.
 * The window **does not close** while an operation runs: Konsave cannot be
   interrupted, and closing would leave the work orphaned.
+* **Dialogs are used once.** Every dialog (`widgets/dialogs.py`) is a child of the
+  main window and `BaseDialog.exec()` schedules its deletion when it returns; the
+  caller reads the answer right away. A dialog left alive until exit could be freed
+  twice, by Qt and by PySide6, and crash KonGUI after its window had closed
+  (`tests.test_gui_startup.ExitTests`). For the same reason a page's top-bar
+  buttons stay inside the window while another page is shown.
 * `OutcomeNotifier` (`actions.py`) shows the notice (errors stay until closed) and
   records the activity. `messages.py` turns results and exceptions into sentences in
   the language in use; unknown exceptions show their type, so a bug is not hidden.

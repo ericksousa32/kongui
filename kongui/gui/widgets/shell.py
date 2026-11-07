@@ -223,8 +223,11 @@ class TopBar(QFrame):
         self.subtitle_label.setText(subtitle)
         self.subtitle_label.setVisible(bool(subtitle))
         for widget in self._current:
+            # Hidden but still a child of the top bar: a page's buttons stay in
+            # the window's tree (deleted with it), instead of becoming parentless
+            # top-level widgets that are destroyed separately at exit.
             self._actions.removeWidget(widget)
-            widget.setParent(None)
+            widget.hide()
         self._current = list(actions)
         for widget in self._current:
             self._actions.addWidget(widget)
