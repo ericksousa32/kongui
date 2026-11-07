@@ -18,7 +18,15 @@
 # appimagetool embeds the static type-2 runtime: no libfuse2 is needed on the
 # host.
 #
-# Environment: ARCH (default: this machine), PYTHON_FULL_VERSION, PYSIDE6_VERSION.
+# Environment:
+#   ARCH (default: this machine), PYTHON_FULL_VERSION, PYSIDE6_VERSION;
+#   UPDATE_INFORMATION: embedded so AppImageUpdate / Gear Lever can update the
+#     file, e.g. "gh-releases-zsync|OWNER|REPO|latest-all|KonGUI-*-x86_64.AppImage.zsync";
+#     a .zsync file is written next to the AppImage (needs zsyncmake, package
+#     zsync). The release workflow sets it; a local build leaves it out;
+#   SIGN=1: embed a GPG signature (gpg must have the secret key; SIGN_KEY picks
+#     it, APPIMAGETOOL_SIGN_PASSPHRASE gives its passphrase). A failed signature
+#     fails the build.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -114,9 +122,36 @@ chmod -R a+rX "$APPDIR"
 # warning (the id "kongui" is not reverse-DNS); tests/test_appimage.py runs the
 # validator itself and allows only that warning.
 TARGET="$OUT/KonGUI-$VERSION-$ARCH.AppImage"
+TOOL_ARGS=(--no-appstream)
+if [ -n "${UPDATE_INFORMATION:-}" ]; then
+    command -v zsyncmake >/dev/null \
+        || { echo "UPDATE_INFORMATION needs zsyncmake (package zsync)" >&2; exit 1; }
+    TOOL_ARGS+=(-u "$UPDATE_INFORMATION")
+fi
+if [ "${SIGN:-0}" = 1 ]; then
+    TOOL_ARGS+=(--sign)
+    if [ -n "${SIGN_KEY:-}" ]; then
+        TOOL_ARGS+=(--sign-key "$SIGN_KEY")
+    fi
+    export APPIMAGETOOL_FORCE_SIGN=1  # no unsigned file when signing was asked
+fi
+fail() {  # fail MESSAGE: no partial or unsigned file is left behind
+    cat "$WORK/appimagetool.log"
+    rm -f "$TARGET" "$TARGET.zsync" "$TARGET.sha256"
+    echo "$1" >&2
+    exit 1
+}
+rm -f "$TARGET" "$TARGET.zsync" "$TARGET.sha256"
 say "packaging $TARGET"
-APPIMAGE_EXTRACT_AND_RUN=1 "$CACHE/appimagetool-$ARCH.AppImage" \
-    --no-appstream "$APPDIR" "$TARGET" >"$WORK/appimagetool.log" 2>&1 \
-    || { cat "$WORK/appimagetool.log"; exit 1; }
+# Run from the output folder: the .zsync file is written next to the AppImage.
+(cd "$OUT" && APPIMAGE_EXTRACT_AND_RUN=1 "$CACHE/appimagetool-$ARCH.AppImage" \
+    "${TOOL_ARGS[@]}" "$APPDIR" "$TARGET") >"$WORK/appimagetool.log" 2>&1 \
+    || fail "appimagetool failed"
+if [ -n "${UPDATE_INFORMATION:-}" ] && [ ! -s "$TARGET.zsync" ]; then
+    fail "no $TARGET.zsync was written"
+fi
+if [ "${SIGN:-0}" = 1 ] && [ -z "$("$TARGET" --appimage-signature 2>/dev/null)" ]; then
+    fail "the AppImage carries no signature"
+fi
 (cd "$OUT" && sha256sum "$(basename "$TARGET")" >"$(basename "$TARGET").sha256")
 say "done: $(du -h "$TARGET" | cut -f1)  $TARGET"

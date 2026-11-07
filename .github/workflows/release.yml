@@ -4,15 +4,30 @@
 # the upstream's package name). Alphas, betas and release candidates are published
 # as GitHub *pre-releases*. How it works, what it checks and how to try it is in
 # docs/RELEASING.md.
+#
+# Files: the wheel, the sdist, install.sh, an AppImage (+ .zsync) for x86_64 and
+# for aarch64, SHA256SUMS of all of them, SHA256SUMS.asc (its GPG signature) and
+# kongui-signing-key.asc (the public key). The AppImages also carry an embedded
+# signature. The key comes from two repository secrets, KONGUI_SIGNING_KEY (the
+# armored secret key) and KONGUI_SIGNING_PASSPHRASE; without them a tag fails:
+# nothing is published unsigned.
+#
+# "Run workflow" (workflow_dispatch) is a dry run of any branch: it builds and
+# checks everything, signs only if the key is there, and publishes nothing; the
+# files are kept as the run's artifacts.
 name: Release
 
 on:
   push:
     tags:
       - 'v[0-9]*'
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  IS_TAG: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   build:
@@ -29,8 +44,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Read the version from the tag
-        id: version
+      - name: Check the tag and that its commit is on master
+        if: env.IS_TAG == 'true'
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
@@ -40,14 +55,6 @@ jobs:
             echo "::error::The tag '$tag' is not a version (v0.1.0a1, v0.1.0rc1, v0.1.0)."
             exit 1
           fi
-          if [[ "$version" =~ (a|b|rc)[0-9]+$ ]]; then prerelease=true; else prerelease=false; fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
-          echo "Releasing $version (pre-release: $prerelease)"
-
-      - name: Check that the tagged commit is on master
-        run: |
-          set -euo pipefail
           git fetch origin master
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
             echo "::error::The tag is not on master. Merge dev into master first (docs/RELEASING.md)."
@@ -60,14 +67,21 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build
 
-      - name: Check that the files carry the version of the tag
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+      - name: Read the version from the files (and check it matches the tag)
+        id: version
         run: |
           set -euo pipefail
           ls dist
-          test -f "dist/kongui-${VERSION}-py3-none-any.whl" || { echo "::error::wheel name does not match the tag"; exit 1; }
-          test -f "dist/kongui-${VERSION}.tar.gz" || { echo "::error::sdist name does not match the tag"; exit 1; }
+          wheel="$(ls dist/kongui-*-py3-none-any.whl)"
+          version="$(basename "$wheel" | cut -d- -f2)"
+          if [ "$IS_TAG" = "true" ]; then
+            test "$version" = "${GITHUB_REF_NAME#v}" || { echo "::error::wheel $version does not match the tag"; exit 1; }
+            test -f "dist/kongui-${version}.tar.gz" || { echo "::error::sdist name does not match the tag"; exit 1; }
+          fi
+          if [[ "$version" =~ (a|b|rc)[0-9]+$ ]]; then prerelease=true; else prerelease=false; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "Building $version (pre-release: $prerelease, tag: $IS_TAG)"
 
       - name: Install the wheel in a clean environment and smoke-test it
         env:
@@ -97,13 +111,8 @@ jobs:
           test ! -e "$home/.venvs/kongui"
           test ! -e "$home/.local/share/icons/hicolor/scalable/apps/kongui.svg"
 
-      - name: Write the checksums (install.sh is published with the release)
-        run: |
-          set -euo pipefail
-          cp install.sh dist/
-          cd dist
-          sha256sum -- * > SHA256SUMS
-          cat SHA256SUMS
+      - name: Add install.sh (published with the release)
+        run: cp install.sh dist/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -111,18 +120,143 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  release:
-    name: Publish the GitHub release
+  appimage:
+    name: AppImage (${{ matrix.arch }})
     needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write   # create the release and attach the files
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      ARCH: ${{ matrix.arch }}
+      VERSION: ${{ needs.build.outputs.version }}
+      PRERELEASE: ${{ needs.build.outputs.prerelease }}
+      HAS_KEY: ${{ secrets.KONGUI_SIGNING_KEY != '' }}
     steps:
-      - uses: actions/checkout@v4   # for the notes header; no history needed
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
+
+      - name: Install the build and check tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          # zsync: the .zsync update file; the rest: Qt's offscreen platform for
+          # the smoke test of the AppImage's own Python.
+          sudo apt-get install -y -q zsync libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+
+      - name: Import the signing key
+        env:
+          KEY: ${{ secrets.KONGUI_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ "$HAS_KEY" != "true" ]; then
+            if [ "$IS_TAG" = "true" ]; then
+              echo "::error::KONGUI_SIGNING_KEY is not set: a release is never published unsigned (docs/RELEASING.md)."
+              exit 1
+            fi
+            echo "::warning::No signing key: this dry run builds unsigned AppImages."
+            exit 0
+          fi
+          printf '%s\n' "$KEY" | gpg --batch --import
+          fingerprint="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')"
+          echo "SIGN_KEY=$fingerprint" >> "$GITHUB_ENV"
+          echo "Signing with $fingerprint"
+
+      - name: Build the AppImage from the release wheel
+        env:
+          APPIMAGETOOL_SIGN_PASSPHRASE: ${{ secrets.KONGUI_SIGNING_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ "$HAS_KEY" = "true" ]; then export SIGN=1; fi
+          if [ "$IS_TAG" = "true" ]; then
+            # A pre-release follows every newer release, pre or not; a stable
+            # release only stable ones.
+            if [ "$PRERELEASE" = "true" ]; then channel=latest-all; else channel=latest; fi
+            export UPDATE_INFORMATION="gh-releases-zsync|${GITHUB_REPOSITORY_OWNER}|${GITHUB_REPOSITORY#*/}|${channel}|KonGUI-*-${ARCH}.AppImage.zsync"
+            echo "UPDATE_INFORMATION=$UPDATE_INFORMATION" >> "$GITHUB_ENV"
+          fi
+          packaging/appimage/build.sh "dist/kongui-${VERSION}-py3-none-any.whl"
+          ls -la dist/appimage
+
+      - name: Smoke-test the AppImage
+        run: |
+          set -euo pipefail
+          appimage="$PWD/dist/appimage/KonGUI-${VERSION}-${ARCH}.AppImage"
+          home="$(mktemp -d)"
+          mkdir -p "$home/.cache" "$home/.config"
+          export HOME="$home" APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen
+          "$appimage" konsave -v
+          cd "$home"
+          "$appimage" --appimage-extract >/dev/null
+          python_dir="$(echo squashfs-root/opt/python3.*)"   # one folder: opt/python3.NN
+          "$python_dir/bin/$(basename "$python_dir")" -s "$GITHUB_WORKSPACE/tools/smoke_test.py" \
+            --expect-version "$VERSION"
+          if [ "$IS_TAG" = "true" ]; then
+            test "$("$appimage" --appimage-updateinformation)" = "$UPDATE_INFORMATION"
+            test -s "${appimage}.zsync"
+          fi
+
+      - name: Check the embedded signature
+        if: env.HAS_KEY == 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSL -o validate.AppImage \
+            "https://github.com/AppImageCommunity/AppImageUpdate/releases/download/continuous/validate-${ARCH}.AppImage"
+          chmod +x validate.AppImage
+          APPIMAGE_EXTRACT_AND_RUN=1 ./validate.AppImage "dist/appimage/KonGUI-${VERSION}-${ARCH}.AppImage" \
+            | tee validate.log
+          grep -q "Validation result: validation successful" validate.log
+          grep -q "$SIGN_KEY" validate.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage-${{ matrix.arch }}
+          path: |
+            dist/appimage/KonGUI-*.AppImage
+            dist/appimage/KonGUI-*.AppImage.zsync
+          if-no-files-found: error
+
+  release:
+    name: Publish the GitHub release
+    needs: [build, appimage]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the release and attach the files
+    steps:
+      - uses: actions/checkout@v4   # for the notes; no history needed
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write and sign the checksums, add the public key
+        env:
+          KEY: ${{ secrets.KONGUI_SIGNING_KEY }}
+          PASSPHRASE: ${{ secrets.KONGUI_SIGNING_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY" || { echo "::error::KONGUI_SIGNING_KEY is not set."; exit 1; }
+          printf '%s\n' "$KEY" | gpg --batch --import
+          fingerprint="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')"
+          cd dist
+          ls -la
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+          printf '%s' "$PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --local-user "$fingerprint" --armor --detach-sign --output SHA256SUMS.asc SHA256SUMS
+          gpg --verify SHA256SUMS.asc SHA256SUMS
+          gpg --armor --export "$fingerprint" > kongui-signing-key.asc
+          echo "Signed with $fingerprint"
+
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}

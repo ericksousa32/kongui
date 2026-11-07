@@ -281,5 +281,74 @@ class TrimTests(unittest.TestCase):
             trim.missing_libraries = original
 
 
+class ReleaseWorkflowTests(unittest.TestCase):
+    """The release workflow builds, checks, signs and publishes the AppImages."""
+
+    def setUp(self):
+        import yaml
+
+        path = ROOT / ".github" / "workflows" / "release.yml"
+        self.text = path.read_text(encoding="utf-8")
+        self.jobs = yaml.safe_load(self.text)["jobs"]
+
+    def steps(self, job):
+        return "\n".join(step.get("run", "") for step in self.jobs[job]["steps"])
+
+    def test_both_architectures_are_built_natively(self):
+        matrix = self.jobs["appimage"]["strategy"]["matrix"]["include"]
+        self.assertEqual(
+            {(entry["arch"], entry["runner"]) for entry in matrix},
+            {("x86_64", "ubuntu-24.04"), ("aarch64", "ubuntu-24.04-arm")},
+        )
+        self.assertIn(
+            'packaging/appimage/build.sh "dist/kongui-', self.steps("appimage")
+        )
+
+    def test_the_appimage_is_smoke_tested_and_its_signature_validated(self):
+        run = self.steps("appimage")
+        self.assertIn('"$appimage" konsave -v', run)
+        self.assertIn("tools/smoke_test.py", run)
+        self.assertIn("validation successful", run)
+
+    def test_a_tag_without_the_key_fails_instead_of_publishing_unsigned(self):
+        run = self.steps("appimage")
+        self.assertRegex(
+            run,
+            r'if \[ "\$IS_TAG" = "true" \]; then\s+echo "::error::KONGUI_SIGNING_KEY',
+        )
+        self.assertIn(
+            'test -n "$KEY" || { echo "::error::KONGUI_SIGNING_KEY',
+            self.steps("release"),
+        )
+
+    def test_the_release_signs_the_checksums_of_every_file(self):
+        release = self.jobs["release"]
+        self.assertEqual(release["needs"], ["build", "appimage"])
+        self.assertIn("refs/tags/", release["if"])
+        run = self.steps("release")
+        self.assertIn("sha256sum -- * > SHA256SUMS", run)
+        self.assertIn("--detach-sign --output SHA256SUMS.asc SHA256SUMS", run)
+        self.assertIn("gpg --verify SHA256SUMS.asc SHA256SUMS", run)
+        self.assertIn("kongui-signing-key.asc", run)
+
+    def test_the_update_channel_follows_the_kind_of_release(self):
+        run = self.steps("appimage")
+        self.assertIn("channel=latest-all; else channel=latest;", run)
+        self.assertIn("gh-releases-zsync|", run)
+
+    def test_a_manual_run_is_a_dry_run(self):
+        on = yaml_on(self.text)
+        self.assertIn("workflow_dispatch", on)
+        self.assertNotIn("workflow_dispatch", self.jobs["release"]["if"])
+
+
+def yaml_on(text: str) -> dict:
+    """The workflow's triggers (PyYAML reads the key ``on`` as ``True``)."""
+    import yaml
+
+    data = yaml.safe_load(text)
+    return data.get("on", data.get(True))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
