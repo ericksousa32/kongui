@@ -52,6 +52,10 @@
         <translation>Konsave version</translation>
     </message>
     <message>
+        <source>Package</source>
+        <translation>Package</translation>
+    </message>
+    <message>
         <source>System</source>
         <translation>System</translation>
     </message>
@@ -140,6 +144,7 @@
     </message>
     <message>
         <source>Loading…</source>
+        <extracomment>Section badges of the active profile, when it has any.</extracomment>
         <translation>Loading…</translation>
     </message>
     <message>

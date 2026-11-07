@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import platform
 from typing import Dict, List, Tuple
 
@@ -134,6 +135,12 @@ class AboutPage(Page):
         ]
         if engine_version:
             rows.append((lambda: self.tr("Konsave version"), engine_version))
+        appimage = os.environ.get("APPIMAGE", "")
+        if appimage:
+            # Set by the AppImage runtime to the file being run.
+            rows.append(
+                (lambda: self.tr("Package"), f"AppImage ({os.path.basename(appimage)})")
+            )
         rows += [
             ("Qt", qVersion()),
             ("PySide6", PySide6.__version__),

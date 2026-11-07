@@ -108,60 +108,11 @@ moment regardless of what the global file later becomes.
 
 ## 5. Package and installation
 
-* **AppImage: being prepared, not published yet** ([`RELEASING.md`](RELEASING.md)
-  §7). It is x86_64 only so far (aarch64 comes with the release workflow), uses
-  Qt's own file dialog rather than Plasma's (the Qt inside has no KDE platform
-  plugin; the dialog is fully translated), and needs glibc 2.34 or newer.
-* The distribution is `kongui` and installs two commands: `kongui` and the bundled
-  `konsave`. Both ship a Python package called `konsave`, so **installing KonGUI in
-  the same environment as the original Konsave replaces it**; use a virtual
-  environment.
-* The `konsave` package normally reads its version from the installed distribution
-  called `konsave`. With the rename that lookup finds nothing, so a one-line patch
-  makes it report `2.2.0+kongui` (the Konsave release this copy derives from)
-  when `kongui` is installed. Without it the `konsave` command would fail to start.
-  See [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md) §3.5.
-* `PySide6` is an extra (`pip install "kongui[gui]"`), not a plain requirement. **On
-  Python older than 3.12 (3.9, 3.10, 3.11) the extra limits it to 6.8 and 6.9**
-  (`PySide6>=6.8,<6.10`). Evidence: on 3.9 with PySide6 6.10.3 the interpreter crashed
-  with a segmentation fault when opening *Settings → Safety copies → Manage…* (gdb: in
-  PySide6's own signal connection code, `PySide::qobjectConnectCallback`); on 3.11 with
-  6.10.3 the GUI tests segfaulted too, and with 6.12.0 every test passed but the test
-  process aborted while shutting down (`bool_dealloc: deallocating True or False`,
-  `free(): invalid size`; 3.10 the same); with 6.9.3 the whole suite passes and exits
-  normally on 3.9, 3.10 and 3.11 (6.8.3 on 3.9). These are bugs of the PySide6
-  releases, not found in KonGUI's code; Python 3.12 or newer (where `True`/`False`
-  are immortal objects) takes the newest PySide6 (6.12 was tested on 3.12, 3.13, 3.14).
-  `tests.test_packaging` checks that the limit is declared. If you install PySide6
-  by hand (not through the extra) on Python older than 3.12, use 6.9 or older.
-* Python versions: the suite was run on 3.9, 3.10, 3.11, 3.12, 3.13 and 3.14
-  ([`TEST_OVERVIEW.md`](TEST_OVERVIEW.md), *Python and PySide6*).
-* The version comes from the git tag only: `setuptools_scm` computes the package
-  version and `kongui.__version__` reads it from the installed package, so they can
-  not disagree ([`RELEASING.md`](RELEASING.md)). A checkout that was never installed
-  reports `0+unknown` and the interface shows `dev`; a build between two tags is a
-  `.devN` version. `setuptools_scm` is declared as a build requirement in
-  `pyproject.toml`. Building needs the git history and tags, an sdist, or an archive
-  made by `git archive` (GitHub's "Source code" files carry the version through
-  `.git_archival.txt`). A copy of the working tree made by hand, with no `.git`,
-  can not be built: use a clone or an sdist.
-* **KonGUI is not published to PyPI.** The old `.github/workflows/deploy.yml` (any
-  `v*` tag → PyPI) was replaced by `.github/workflows/release.yml`, which builds the
-  wheel and the sdist, tests the wheel in a clean environment and creates a GitHub
-  *pre-release* with the files and `SHA256SUMS`. Its first real run, for `0.1.0a1`,
-  succeeded; see [`RELEASING.md`](RELEASING.md) §5.
-* The build prints two warnings that do not fail it: the licence classifier is
-  deprecated in favour of an SPDX expression, and `kongui.gui.translations` is "absent
-  from `packages`" (it holds only the `.ts` and `.qm` files, which are included
-  through `package_data`; the wheel was checked to contain them).
-* There is no AppImage, no RPM and no Flatpak; the pre-release is a wheel and an sdist.
-  `install.sh` installs the wheel for the user (a virtual environment in
-  `~/.venvs/kongui`, the `kongui` command in `~/.local/bin`, a menu entry with the
-  KonGUI icon), checks it against `SHA256SUMS`, updates and uninstalls it; see the
-  README. The icon ships from the first release after `0.1.0a2` (`0.1.0a1` and
-  `0.1.0a2` install with a generic one); it is a single full-color design, with no
-  monochrome *symbolic* variant for the system tray. The script is for Linux with `python3`
-  3.9 or newer, and it was only run on Fedora-like systems and in the tests.
+* **AppImage** ([`RELEASING.md`](RELEASING.md) §7): from `0.1.0a4` on, for x86_64 and
+  aarch64. It uses Qt's own file dialog rather than Plasma's (the Qt inside has no
+  KDE platform plugin; the dialog is fully translated), and needs glibc 2.34 or newer
+  (2.39 on aarch64). The aarch64 build is only checked by the release workflow's smoke
+  test, not on a real ARM desktop yet.
 
 ## 6. Inherited from Konsave (not fixed here)
 

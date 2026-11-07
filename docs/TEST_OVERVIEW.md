@@ -19,7 +19,7 @@ QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -t .   # or: mak
   `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails
   with `-9`.
 * Every test works in a temporary `$HOME`; nothing touches your real configuration.
-* Last full run: **887 tests in 35 modules, all passing, 3 skipped** (the
+* Last full run: **900 tests in 35 modules, all passing, 3 skipped** (the
   source-archive tests, which skip when `git` or `setuptools_scm` is missing). The
   checks that use `shellcheck`, `desktop-file-validate` or `appstreamcli` also
   skip when those tools are missing; install them to run everything. About 2
