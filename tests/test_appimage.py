@@ -313,6 +313,17 @@ class ReleaseWorkflowTests(unittest.TestCase):
         # check failed although the signature was valid (first dry run).
         self.assertIn("2>&1 | tee validate.log", run)
 
+    def test_reading_the_update_information_cannot_start_the_app(self):
+        # With APPIMAGE_EXTRACT_AND_RUN the runtime ignores its own
+        # --appimage-* options and starts KonGUI, which never ends offscreen:
+        # the first v0.1.0a4 run hung there. Every call also has a time limit.
+        run = self.steps("appimage")
+        self.assertNotIn('export HOME="$home" APPIMAGE_EXTRACT_AND_RUN=1', run)
+        line = next(l for l in run.splitlines() if "--appimage-updateinformation" in l)
+        self.assertNotIn("APPIMAGE_EXTRACT_AND_RUN", line)
+        self.assertIn("timeout", line)
+        self.assertEqual(self.jobs["appimage"]["timeout-minutes"], 30)
+
     def test_a_tag_without_the_key_fails_instead_of_publishing_unsigned(self):
         run = self.steps("appimage")
         self.assertRegex(

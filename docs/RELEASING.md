@@ -314,6 +314,14 @@ was built, passed its smoke test and its signature validated with the key above,
 the check step failed: `validate` writes its report to stderr and only stdout went
 into `validate.log`. Fixed (`2>&1 | tee`); the step then passed as written, locally.
 
+First tag (`v0.1.0a4`, 2026-11-07): the AppImages were built and smoke-tested, then
+the step hung on reading the update information. `APPIMAGE_EXTRACT_AND_RUN=1` was
+exported for the whole step, and with it the runtime ignores its own `--appimage-*`
+options and starts KonGUI, which never ends offscreen (a dry run skips that tag-only
+line). Nothing was published; the run was cancelled and the tag deleted. Now only the
+calls that run the app use extract-and-run, every call has a time limit and the job
+has `timeout-minutes: 30`. The fixed step passed as written in tag mode, locally.
+
 ## 8. Tests
 
 `tests.test_appimage`: the desktop entry (same keys as `install.sh`'s, one main
