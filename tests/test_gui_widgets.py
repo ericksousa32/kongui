@@ -235,7 +235,9 @@ class CommonWidgetTests(GuiTestCase):
         pixmap = QPixmap(badge.size())
         badge.render(pixmap)
 
-        self.assertNotEqual(badge.text(), full, "paint time must re-elide the stale cache")
+        self.assertNotEqual(
+            badge.text(), full, "paint time must re-elide the stale cache"
+        )
         self.assertTrue(badge.text().endswith("…"))
         self.assertEqual(
             badge._elided_for_width, badge.width()  # pylint: disable=protected-access
@@ -333,8 +335,12 @@ class CommonWidgetTests(GuiTestCase):
                 regular = button.fontMetrics().horizontalAdvance(button.text())
                 self.assertGreater(needed, regular)
                 qt_hint = QPushButton.sizeHint(button).width()
-                self.assertGreaterEqual(button.sizeHint().width(), qt_hint + needed - regular)
-                self.assertEqual(button.minimumSizeHint().width(), button.sizeHint().width())
+                self.assertGreaterEqual(
+                    button.sizeHint().width(), qt_hint + needed - regular
+                )
+                self.assertEqual(
+                    button.minimumSizeHint().width(), button.sizeHint().width()
+                )
                 self.assertGreaterEqual(button.width(), button.sizeHint().width())
         plain = Button("English")
         self.addCleanup(plain.deleteLater)
@@ -593,6 +599,25 @@ class DialogTests(GuiTestCase):
         dialog.resize(440, 700)
         self.flush()
         self.assertLess(dialog.name_edit.geometry().top(), 120)
+
+    def test_a_dialog_is_deleted_after_exec_but_its_answer_stays_readable(self):
+        import shiboken6
+        from PySide6.QtCore import QCoreApplication, QEvent, QTimer
+
+        from kongui.gui.widgets.dialogs import ProfileDialog
+
+        dialog = ProfileDialog(None, (), ())
+
+        def answer():
+            dialog.name_edit.setText("Work")
+            dialog.confirm_button.click()
+
+        QTimer.singleShot(0, answer)
+        self.assertEqual(dialog.exec(), QDialog.DialogCode.Accepted)
+        self.assertEqual(dialog.values()[0], "Work", "readable right after exec()")
+        self.assertTrue(shiboken6.isValid(dialog), "not deleted before the event loop")
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.assertFalse(shiboken6.isValid(dialog), "deleted once the event loop runs")
 
     def test_starts_invalid_without_scolding(self):
         dialog = self.dialog()

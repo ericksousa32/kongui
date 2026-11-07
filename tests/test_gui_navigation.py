@@ -80,6 +80,24 @@ class SidebarNavigationTests(GuiTestCase):
         self.assertEqual(len(window.top_bar.actions()), 2)
         self.assertTrue(all(w.isVisible() for w in window.top_bar.actions()))
 
+    def test_a_hidden_page_s_buttons_stay_inside_the_window(self):
+        # They used to be detached (setParent(None)) and live as parentless
+        # top-level widgets, destroyed separately from the window at exit.
+        from PySide6.QtWidgets import QApplication
+
+        window = self.make_window()
+        for key in TITLES:
+            window.show_page(key)
+        self.flush()
+        buttons = [
+            button for page in window.pages.values() for button in page.header_actions()
+        ]
+        self.assertTrue(buttons)
+        for button in buttons:
+            with self.subTest(button=button.text()):
+                self.assertTrue(window.isAncestorOf(button))
+        self.assertFalse([w for w in QApplication.topLevelWidgets() if w in buttons])
+
     def test_dashboard_buttons_navigate(self):
         window = self.make_window()
         page = window.pages["dashboard"]
