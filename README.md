@@ -4,6 +4,12 @@ A desktop application for saving, applying and sharing KDE Plasma configuration
 profiles. It is an independent fork of [Konsave](https://github.com/Prayag2/konsave):
 same engine, same profile folder, same `.knsv` files, plus a graphical interface.
 
+[![Download the AppImage](https://img.shields.io/github/v/release/ericksousa32/kongui?include_prereleases&sort=semver&label=AppImage&logo=linux&logoColor=white)](https://github.com/ericksousa32/kongui/releases)
+
+**Download:** grab `KonGUI-<version>-x86_64.AppImage` (or `-aarch64`) from the
+[newest release](https://github.com/ericksousa32/kongui/releases), make it executable
+and open it; nothing to install. Details in [AppImage](#appimage).
+
 ![KonGUI dashboard](docs/screenshots/Captura_de_tela_20261023_124016.png)
 
 *Screenshots are taken in demo mode, so every profile shown is fictitious. More in
@@ -45,12 +51,51 @@ What it does not do yet, and why, is in [`docs/LIMITATIONS.md`](docs/LIMITATIONS
 > **Alpha software.** Applying or importing a profile rewrites real configuration
 > files. **Back up `~/.config` first** and try `kongui --demo` before anything else.
 
-Two ways, both for your user only and without root: the `install.sh` script (below),
-which installs KonGUI in its own Python virtual environment and adds it to the
-application menu, or, from `0.1.0a4` on, a single [AppImage](#appimage) file. There is
-no RPM or Flatpak.
+Two ways, both for your user only and without root: a single [AppImage](#appimage)
+file (recommended, from `0.1.0a4` on), or the [`install.sh`](#installsh) script, which
+installs KonGUI in its own Python virtual environment and adds it to the application
+menu. There is no RPM or Flatpak.
 
-### Install
+### AppImage
+
+Each release (from `0.1.0a4` on) has `KonGUI-<version>-x86_64.AppImage` and
+`KonGUI-<version>-aarch64.AppImage`: everything in one file (about 50 MB), nothing to
+install. Download the one for your machine from the
+[releases page](https://github.com/ericksousa32/kongui/releases) (`uname -m` tells which),
+then:
+
+```bash
+chmod +x KonGUI-*-x86_64.AppImage
+./KonGUI-*-x86_64.AppImage            # the interface (add --demo for fictitious data)
+./KonGUI-*-x86_64.AppImage konsave -l # the bundled konsave command
+```
+
+In Dolphin you can instead tick *Properties → Permissions → Is executable* and
+double-click the file.
+
+It needs glibc 2.34 or newer on x86_64 and 2.39 or newer on aarch64 (any current
+Fedora), and nothing else on Wayland; on X11 also `libxcb-cursor` (Fedora:
+`xcb-util-cursor`, installed with Plasma). It does **not** need `libfuse2`. To add it
+to the menu and get updates, open it with [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever):
+the file knows where its newer versions are published. To remove it, delete the file
+(or remove it in Gear Lever); your data stays, as described in [Uninstall](#uninstall).
+
+**Checking the download.** Next to the files, each release has `SHA256SUMS`, its GPG
+signature `SHA256SUMS.asc` and the public key `kongui-signing-key.asc`; the AppImages
+also carry their own signature. Check that the key's fingerprint is the one in
+[`docs/RELEASING.md`](docs/RELEASING.md#signing-key), then:
+
+```bash
+gpg --import kongui-signing-key.asc
+gpg --verify SHA256SUMS.asc SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+Your profiles and preferences are the same files whichever way KonGUI was installed.
+
+### install.sh
+
+#### Install
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/ericksousa32/kongui/master/install.sh
@@ -75,7 +120,7 @@ again. It never replaces a file it did not create.
 Options: `--release VERSION` installs a given release, `--wheel FILE` installs a wheel
 you already downloaded, `--help` lists everything.
 
-### Open
+#### Open
 
 From the application menu (search for *KonGUI*), or in a terminal:
 
@@ -91,13 +136,13 @@ If the terminal says `kongui: command not found`, open a new terminal. With zsh 
 
 Applying a profile may need a log out and back in to take full effect.
 
-### Update
+#### Update
 
 Run `bash install.sh` again (optionally with `--release VERSION`). It updates the
 same environment, and rebuilds it if it stopped working (for example after a Fedora
 upgrade changed the Python version).
 
-### Uninstall
+#### Uninstall
 
 ```bash
 bash install.sh --uninstall
@@ -107,37 +152,6 @@ This removes the environment, the command, the menu entry and the icon. Your dat
 stays: profiles, safety copies and `conf.yaml` in `~/.config/konsave` (including
 `kongui-backups/`), and preferences in `~/.config/kongui/`. Delete them by hand if
 you no longer want them.
-
-### AppImage
-
-Each release (from `0.1.0a4` on) also has `KonGUI-<version>-x86_64.AppImage` and
-`KonGUI-<version>-aarch64.AppImage`: everything in one file (about 50 MB), nothing to
-install.
-
-```bash
-chmod +x KonGUI-*-x86_64.AppImage
-./KonGUI-*-x86_64.AppImage            # the interface (add --demo for fictitious data)
-./KonGUI-*-x86_64.AppImage konsave -l # the bundled konsave command
-```
-
-It needs glibc 2.34 or newer on x86_64 and 2.39 or newer on aarch64 (any current
-Fedora), and nothing else on Wayland; on X11 also `libxcb-cursor` (Fedora:
-`xcb-util-cursor`, installed with Plasma). It does **not** need `libfuse2`. To add it
-to the menu and get updates, open it with [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever):
-the file knows where its newer versions are published.
-
-**Checking the download.** Next to the files, each release has `SHA256SUMS`, its GPG
-signature `SHA256SUMS.asc` and the public key `kongui-signing-key.asc`; the AppImages
-also carry their own signature. Check that the key's fingerprint is the one in
-[`docs/RELEASING.md`](docs/RELEASING.md#signing-key), then:
-
-```bash
-gpg --import kongui-signing-key.asc
-gpg --verify SHA256SUMS.asc SHA256SUMS
-sha256sum --check --ignore-missing SHA256SUMS
-```
-
-Your profiles and preferences are the same files whichever way KonGUI was installed.
 
 ### Reporting problems
 
