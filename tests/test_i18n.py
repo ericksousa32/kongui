@@ -633,6 +633,78 @@ class FallbackTests(GuiTestCase):
 
 
 @unittest.skipUnless(HAVE_QT, "PySide6 is not installed")
+class QtCatalogTests(GuiTestCase):
+    """Qt's own texts (the file dialog) are translated, mnemonics included."""
+
+    LANGUAGE = "pt_BR"
+
+    def test_the_file_dialog_labels_are_all_translated(self):
+        from PySide6.QtWidgets import QFileDialog, QLabel
+
+        dialog = QFileDialog(None, "Escolher arquivo")
+        self.addCleanup(dialog.deleteLater)
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        dialog.show()
+        self.flush()
+        labels = [label.text() for label in dialog.findChildren(QLabel) if label.text()]
+        # Qt's pt_BR catalog only has these without the "&" the dialog asks for.
+        for english in ("&Look in:", "File &name:", "Files of &type:"):
+            with self.subTest(label=english):
+                self.assertNotIn(english, labels)
+        self.assertIn("&Procurar em:", labels)
+        self.assertIn("&Arquivos do tipo:", labels)
+
+    def test_kongui_s_own_catalog_still_answers(self):
+        # Regression: answering "" (instead of null) for a miss stopped Qt from
+        # asking KonGUI's catalog, so every KonGUI text came out empty, and
+        # duplicating a demo profile looped forever looking for a free name.
+        from PySide6.QtCore import QCoreApplication
+
+        self.assertEqual(
+            QCoreApplication.translate("FakeBackend", "{name} (copy)"), "{name} (cópia)"
+        )
+        self.assertEqual(
+            QCoreApplication.translate("Nope", "Not in any catalog"),
+            "Not in any catalog",
+        )
+
+    def test_the_fallback_only_fills_gaps(self):
+        from kongui.gui.i18n import QtCatalogTranslator
+
+        if shutil.which("pyside6-lrelease") is None:
+            self.skipTest("pyside6-lrelease is not installed")
+        folder = tempfile.mkdtemp(prefix="kongui-qtcat-")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        ts = os.path.join(folder, "probe.ts")
+        Path(ts).write_text(
+            '<?xml version="1.0" encoding="utf-8"?><!DOCTYPE TS><TS version="2.1" '
+            'language="pt_BR"><context><name>Ctx</name>'
+            "<message><source>Look in:</source><translation>Procurar em:</translation></message>"
+            "<message><source>&amp;Save</source><translation>Sa&amp;lvar</translation></message>"
+            "<message><source>Ask</source><translation>Pergun&amp;tar</translation></message>"
+            "</context></TS>",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["pyside6-lrelease", ts, "-qm", ts[:-3] + ".qm"],
+            check=True,
+            capture_output=True,
+        )
+        catalog = QtCatalogTranslator()
+        self.assertTrue(catalog.load(ts[:-3] + ".qm"))
+        for source, expected in (
+            ("&Look in:", "&Procurar em:"),  # the gap: falls back, mnemonic put back
+            ("Look in:", "Procurar em:"),  # found as is
+            ("&Save", "Sa&lvar"),  # found as is: its own mnemonic is kept
+            ("&Ask", "Pergun&tar"),  # fallback that already has a mnemonic
+            ("&Unknown", None),  # nothing to fall back to: null, not ""
+            ("Rock && &Roll", None),  # a literal "&&" is left alone
+            ("Unknown", None),
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(catalog.translate("Ctx", source), expected)
+
+
 class FormatTests(GuiTestCase):
     """Plurals, numbers and dates in each language."""
 

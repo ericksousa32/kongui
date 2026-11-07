@@ -230,7 +230,7 @@ language code shows the English source and never raises.
   so only an explicit choice is stored.
 
 **Switching.** `LanguageManager` (`i18n.manager()`) replaces the `QTranslator`s
-(KonGUI's and Qt's own `qtbase_<lang>`), sets `QLocale` and sends
+(KonGUI's and Qt's own `qtbase_<lang>`, through `QtCatalogTranslator`, which falls back to a text's version without its `&` mnemonic when Qt's catalog only has that one, as for the file dialog's "&Look in:" and "Files of &type:"), sets `QLocale` and sends
 `QEvent.LanguageChange` to every top-level widget. Widgets refresh without being
 recreated: `Label`, `Badge` and `Button` accept a text or a function returning it;
 `i18n.bind(owner, apply)` covers anything else; `Page` has `TITLE` / `SUBTITLE` and a
