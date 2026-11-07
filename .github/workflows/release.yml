@@ -211,8 +211,9 @@ jobs:
           curl -fsSL -o validate.AppImage \
             "https://github.com/AppImageCommunity/AppImageUpdate/releases/download/continuous/validate-${ARCH}.AppImage"
           chmod +x validate.AppImage
+          # validate writes its report to stderr: keep both in the log.
           APPIMAGE_EXTRACT_AND_RUN=1 ./validate.AppImage "dist/appimage/KonGUI-${VERSION}-${ARCH}.AppImage" \
-            | tee validate.log
+            2>&1 | tee validate.log
           grep -q "Validation result: validation successful" validate.log
           grep -q "$SIGN_KEY" validate.log
 

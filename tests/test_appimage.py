@@ -309,6 +309,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('"$appimage" konsave -v', run)
         self.assertIn("tools/smoke_test.py", run)
         self.assertIn("validation successful", run)
+        # validate reports on stderr; without 2>&1 the log was empty and the
+        # check failed although the signature was valid (first dry run).
+        self.assertIn("2>&1 | tee validate.log", run)
 
     def test_a_tag_without_the_key_fails_instead_of_publishing_unsigned(self):
         run = self.steps("appimage")
