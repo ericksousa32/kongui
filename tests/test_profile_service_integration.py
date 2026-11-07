@@ -127,6 +127,53 @@ class SaveIntegrationTests(IntegrationCase):
                 self.assertTrue(self.profiles.remove(good, confirmed=True).ok)
         self.assertEqual(os.listdir(self.engine.profiles_dir), [])
 
+    def test_categories_filter_through_the_real_engine(self):
+        """End to end against the original ``konsave.funcs.save_profile``.
+
+        BASE_CONF's "configs" has kdeglobals (system) and gtk-3.0 (gtk); its
+        "share_folder" has icons (icons). Keeping only "system" must save
+        kdeglobals, leave gtk-3.0 out, and leave icons out of what the saved
+        conf.yaml would later export.
+        """
+        result = self.profiles.save("work", categories=("system",))
+        self.assertTrue(result.ok, result.message)
+        folder = self.engine.profiles_dir / "work"
+        self.assertEqual(
+            tree(folder), ["conf.yaml", "configs", "configs/kdeglobals"]
+        )
+        saved_conf = self.config.resolve(folder / "conf.yaml")
+        self.assertEqual(saved_conf["save"]["configs"]["entries"], ["kdeglobals"])
+        self.assertEqual(saved_conf["export"]["share_folder"]["entries"], [])
+        # the active conf.yaml is untouched
+        self.assertEqual(
+            self.config.resolve()["save"]["configs"]["entries"],
+            ["kdeglobals", "gtk-3.0"],
+        )
+
+    def test_a_category_not_present_in_the_live_configuration_saves_nothing_extra(
+        self,
+    ):
+        result = self.profiles.save("work", categories=("icons", "wallpaper"))
+        self.assertTrue(result.ok, result.message)
+        folder = self.engine.profiles_dir / "work"
+        # both groups still exist (so apply/export work), with no files
+        self.assertEqual(tree(folder), ["conf.yaml", "configs"])
+
+    def test_a_selectively_saved_profile_can_still_be_exported_and_imported(self):
+        self.profiles.save("work", categories=("system",)).raise_for_status()
+        export = self.profiles.export("work", directory=self.work)
+        self.assertTrue(export.ok, export.message)
+        other_engine, other_config, other_profiles = self.second_home()
+        (other_engine.home / ".config").mkdir(parents=True, exist_ok=True)
+        result = other_profiles.import_profile(
+            str(self.work / "work.knsv"), confirmed=True
+        )
+        self.assertTrue(result.ok, result.message)
+        imported = other_engine.profiles_dir / "work"
+        self.assertEqual(
+            tree(imported), ["conf.yaml", "configs", "configs/kdeglobals"]
+        )
+
     def test_existing_profile_requires_overwrite(self):
         self.profiles.save("work").raise_for_status()
         with self.assertRaises(ProfileExistsError):

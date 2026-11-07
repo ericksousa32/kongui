@@ -8,7 +8,7 @@ from tests.gui_helpers import HAVE_QT, GuiTestCase, pin_language
 
 if HAVE_QT:
     from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
-    from PySide6.QtGui import QColor, QDropEvent, QPalette
+    from PySide6.QtGui import QColor, QDropEvent, QPalette, QPixmap
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QDialog, QWidget
 
@@ -196,6 +196,149 @@ class CommonWidgetTests(GuiTestCase):
         self.assertEqual(badge.property("tone"), "accent")
         badge.set_tone("danger")
         self.assertEqual(badge.property("tone"), "danger")
+
+    def test_badge_elides_long_text_when_too_narrow(self):
+        from kongui.gui.widgets.common import Badge
+
+        full = "Panels and desktop layout"
+        badge = Badge(full)
+        badge.show()
+        self.addCleanup(badge.deleteLater)
+        badge.resize(60, 20)
+        self.flush()
+        self.assertNotEqual(badge.text(), full)
+        self.assertTrue(badge.text().endswith("…"))
+        self.assertEqual(badge.toolTip(), full)
+        badge.resize(300, 20)
+        self.flush()
+        self.assertEqual(badge.text(), full)
+
+    def test_badge_reelides_at_paint_time_if_the_cached_width_is_stale(self):
+        from PySide6.QtWidgets import QLabel as QLabelBase
+
+        from kongui.gui.widgets.common import Badge
+
+        full = "Panels and desktop layout"
+        badge = Badge(full)
+        badge.resize(300, 24)
+        self.assertEqual(badge.text(), full)
+
+        # Reproduce the exact race the fix closes: during a live window drag,
+        # Qt can paint a width that the elision cached by the last
+        # resizeEvent() no longer matches. Force that stale state directly,
+        # bypassing setText()/resizeEvent() (which would otherwise re-elide
+        # it immediately and hide the bug this guards against).
+        badge.resize(50, 24)
+        QLabelBase.setText(badge, full)
+        badge._elided_for_width = 300  # pylint: disable=protected-access
+
+        pixmap = QPixmap(badge.size())
+        badge.render(pixmap)
+
+        self.assertNotEqual(badge.text(), full, "paint time must re-elide the stale cache")
+        self.assertTrue(badge.text().endswith("…"))
+        self.assertEqual(
+            badge._elided_for_width, badge.width()  # pylint: disable=protected-access
+        )
+
+    LABELS = [
+        "System settings",
+        "Panels and desktop layout",
+        "Themes and appearance",
+        "Icons and cursors",
+        "Wallpaper",
+    ]
+
+    def _badge_row(self, labels, max_shown=3):
+        """A ``BadgeRow``, shown as its own top-level widget so resizing it
+        isn't clamped by an outer layout's minimum size."""
+        from kongui.gui.widgets.common import BadgeRow
+
+        row = BadgeRow(labels, max_shown)
+        row.show()
+        self.addCleanup(row.deleteLater)
+        self.flush()
+        return row
+
+    def _resize(self, row, width):
+        row.resize(max(width, row.minimumSizeHint().width()), 40)
+        self.flush()
+        return row.shown_texts()
+
+    def test_badge_row_shows_every_label_in_full_when_they_fit(self):
+        labels = self.LABELS[:3]
+        row = self._badge_row(labels)
+        self.assertEqual(self._resize(row, 900), labels)
+        self.assertTrue(row.overflow.isHidden(), "nothing left out, so no +N")
+
+    def test_badge_row_caps_at_max_shown_then_counts_the_rest(self):
+        row = self._badge_row(self.LABELS)
+        self.assertEqual(self._resize(row, 900), self.LABELS[:3] + ["+2"])
+
+    def test_badge_row_never_elides_a_later_badge_it_moves_it_into_plus_n(self):
+        row = self._badge_row(self.LABELS)
+        badge = row.findChildren(type(row.overflow))[0]
+        # Room for the first badge and "+N" only, not for the second badge.
+        width = badge.sizeHint().width() + 40 + 2 * row.SPACING
+        self.assertEqual(self._resize(row, width), ["System settings", "+4"])
+
+    def test_badge_row_keeps_plus_n_visible_at_any_width(self):
+        row = self._badge_row(self.LABELS)
+        for width in (900, 400, 250, 150, 1):
+            with self.subTest(width=width):
+                shown = self._resize(row, width)
+                self.assertFalse(row.overflow.isHidden())
+                self.assertEqual(shown[-1], f"+{len(self.LABELS) - (len(shown) - 1)}")
+                self.assertGreaterEqual(len(shown), 2, "never just the counter")
+                right = row.overflow.geometry().right()
+                self.assertLessEqual(right, row.width() - 1, "+N is not cut off")
+
+    def test_badge_row_only_elides_the_first_badge_when_nothing_else_fits(self):
+        row = self._badge_row(self.LABELS)
+        shown = self._resize(row, 1)
+        self.assertNotEqual(shown[0], self.LABELS[0])
+        self.assertTrue(shown[0].endswith("…"))
+
+    def test_badge_row_tooltip_on_plus_n_lists_every_label(self):
+        row = self._badge_row(self.LABELS)
+        for width in (900, 150):
+            self._resize(row, width)
+            self.assertEqual(row.overflow.toolTip(), "\n".join(self.LABELS))
+
+    def test_badge_row_with_a_single_label_has_no_plus_n(self):
+        row = self._badge_row(["System settings"])
+        self.assertIsNone(row.overflow)
+        self.assertEqual(self._resize(row, 900), ["System settings"])
+
+    def test_a_segment_reserves_room_for_its_semibold_checked_label(self):
+        from PySide6.QtGui import QFont, QFontMetrics
+        from PySide6.QtWidgets import QPushButton
+
+        from kongui.gui.widgets.common import Button, SegmentedControl
+
+        control = SegmentedControl(
+            [("en", "English", None), ("pt", "Português (Brasil)", None)]
+        )
+        self.addCleanup(control.deleteLater)
+        # A wide font, where semibold is clearly wider than regular.
+        control.setFont(QFont("DejaVu Sans", 10))
+        control.show()
+        control.set_value("en")
+        self.flush()
+        for button in control._buttons.values():  # pylint: disable=protected-access
+            with self.subTest(text=button.text()):
+                bold = QFont(button.font())
+                bold.setWeight(QFont.Weight.DemiBold)
+                needed = QFontMetrics(bold).horizontalAdvance(button.text())
+                regular = button.fontMetrics().horizontalAdvance(button.text())
+                self.assertGreater(needed, regular)
+                qt_hint = QPushButton.sizeHint(button).width()
+                self.assertGreaterEqual(button.sizeHint().width(), qt_hint + needed - regular)
+                self.assertEqual(button.minimumSizeHint().width(), button.sizeHint().width())
+                self.assertGreaterEqual(button.width(), button.sizeHint().width())
+        plain = Button("English")
+        self.addCleanup(plain.deleteLater)
+        self.assertEqual(plain.sizeHint(), QPushButton.sizeHint(plain))
 
     def test_segmented_control(self):
         from kongui.gui.widgets.common import SegmentedControl
@@ -386,12 +529,70 @@ class DialogTests(GuiTestCase):
     """Profile and confirmation dialogs."""
 
     def dialog(self, existing=("Work",)):
-        from kongui.gui.mock_data import sections
+        from kongui.core import CATEGORIES
         from kongui.gui.widgets.dialogs import ProfileDialog
 
-        dialog = ProfileDialog(None, existing, sections())
+        dialog = ProfileDialog(None, existing, CATEGORIES)
         self.addCleanup(dialog.deleteLater)
         return dialog
+
+    def _visible_rect(self, dialog, widget):
+        from PySide6.QtCore import QRect
+
+        seen = widget.visibleRegion().boundingRect()
+        return QRect(widget.mapTo(dialog, seen.topLeft()), seen.size())
+
+    def test_only_the_section_list_scrolls_and_nothing_overlaps_at_minimum_size(self):
+        from PySide6.QtWidgets import QCheckBox, QLabel, QPushButton
+
+        dialog = self.dialog()
+        dialog.show()
+        self.flush()
+        self.assertTrue(dialog.sections_area.widgetResizable())
+        for check in dialog.section_checks:
+            self.assertTrue(dialog.sections_area.widget().isAncestorOf(check))
+        for size in ((440, 1), (440, 900), (700, 1)):
+            with self.subTest(size=size):
+                dialog.resize(*size)
+                self.flush()
+                dialog.resize(dialog.minimumSize() if size[1] == 1 else dialog.size())
+                self.flush()
+                widgets = [
+                    w
+                    for w in dialog.findChildren(QLabel)
+                    + dialog.findChildren(QPushButton)
+                    + dialog.findChildren(QCheckBox)
+                    if w.isVisible() and not w.visibleRegion().isEmpty()
+                ]
+                rects = [(w, self._visible_rect(dialog, w)) for w in widgets]
+                for i, (a, ra) in enumerate(rects):
+                    for b, rb in rects[i + 1 :]:
+                        if a.isAncestorOf(b) or b.isAncestorOf(a):
+                            continue
+                        overlap = ra.intersected(rb)
+                        self.assertFalse(
+                            overlap.width() > 2 and overlap.height() > 2,
+                            f"{a.text()!r} overlaps {b.text()!r}",
+                        )
+                summary = dialog.warning_label
+                self.assertGreaterEqual(
+                    summary.height(), summary.heightForWidth(summary.width())
+                )
+                self.assertLessEqual(
+                    self._visible_rect(dialog, summary).bottom(),
+                    self._visible_rect(dialog, dialog.cancel_button).top(),
+                )
+
+    def test_a_dialog_without_sections_keeps_its_content_at_the_top(self):
+        from kongui.gui.widgets.dialogs import ProfileDialog
+
+        dialog = ProfileDialog(None, (), (), ask_sections=False)
+        self.addCleanup(dialog.deleteLater)
+        self.assertFalse(hasattr(dialog, "sections_area"))
+        dialog.show()
+        dialog.resize(440, 700)
+        self.flush()
+        self.assertLess(dialog.name_edit.geometry().top(), 120)
 
     def test_starts_invalid_without_scolding(self):
         dialog = self.dialog()
@@ -453,6 +654,50 @@ class DialogTests(GuiTestCase):
         name, description, sections = dialog.values()
         self.assertEqual((name, description), ("Novo", "uma descrição"))
         self.assertEqual(len(sections), 2)
+
+    def test_values_returns_category_keys_not_labels(self):
+        from kongui.core import CATEGORIES
+
+        dialog = self.dialog()
+        for check in dialog.section_checks:
+            check.setChecked(check.property("sectionKey") == CATEGORIES[0])
+        _, _, sections = dialog.values()
+        self.assertEqual(sections, (CATEGORIES[0],))
+
+    def test_select_all_and_clear_all_toggle_every_box(self):
+        dialog = self.dialog()
+        clear_all, select_all = None, None
+        for button in dialog.findChildren(type(dialog.confirm_button)):
+            if button.text() == "Desmarcar tudo":
+                clear_all = button
+            elif button.text() == "Selecionar tudo":
+                select_all = button
+        self.assertIsNotNone(select_all)
+        self.assertIsNotNone(clear_all)
+        clear_all.click()
+        self.assertFalse(any(check.isChecked() for check in dialog.section_checks))
+        select_all.click()
+        self.assertTrue(all(check.isChecked() for check in dialog.section_checks))
+
+    def test_dependency_warning_names_the_missing_category(self):
+        from kongui.core import ICONS
+
+        dialog = self.dialog()
+        for check in dialog.section_checks:
+            key = check.property("sectionKey")
+            check.setChecked(key == ICONS)
+        self.assertIn("Configurações do sistema", dialog.warning_label.text())
+
+    def test_no_warning_once_the_dependency_is_also_checked(self):
+        from kongui.core import ICONS, SYSTEM
+
+        dialog = self.dialog()
+        for check in dialog.section_checks:
+            key = check.property("sectionKey")
+            check.setChecked(key in (ICONS, SYSTEM))
+        self.assertNotIn("Selecione também", dialog.warning_label.text())
+        self.assertTrue(dialog.warning_label.text().startswith("Vai incluir:"))
+        self.assertIn("Ícones e cursores", dialog.warning_label.text())
 
     def test_enter_is_ignored_while_invalid(self):
         dialog = self.dialog()

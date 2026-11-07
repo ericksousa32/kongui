@@ -8,17 +8,21 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
+    QFrame,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
-from kongui.core import MAX_DESCRIPTION_CHARS
+from kongui.core import CATEGORY_DEPENDENCIES, MAX_DESCRIPTION_CHARS
 from kongui.gui.formatting import format_datetime, format_kib
+from kongui.gui.messages import section_label
 from kongui.gui.validation import profile_name_problem
 from kongui.gui.widgets.common import Button, Label, repolish
 
@@ -49,7 +53,9 @@ class BaseDialog(QDialog):
         self.body = QVBoxLayout()
         self.body.setSpacing(10)
         outer.addLayout(self.body)
+        self._outer = outer
         outer.addStretch(1)
+        self._body_spacer = outer.itemAt(outer.count() - 1)
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
         buttons.addStretch(1)
@@ -62,6 +68,43 @@ class BaseDialog(QDialog):
         buttons.addWidget(self.confirm_button)
         self.button_row = buttons
         outer.addLayout(buttons)
+
+    def fit_wrapped_labels(self) -> None:
+        """Reserves the height each wrapped label needs at its current width.
+
+        Qt sizes a window from its children's minimum sizes, and a word-wrapped
+        label's minimum height does not follow its width. A dialog squeezed to
+        that minimum (a short screen, or a long summary) then gives such labels
+        fewer lines than they need and they paint over their neighbors. Pinning
+        each visible wrapped label's minimum height to ``heightForWidth`` keeps
+        the dialog from ever being made shorter than its text.
+        """
+        for label in self.findChildren(QLabel):
+            if not label.wordWrap() or label.isHidden() or label.width() <= 0:
+                continue
+            needed = label.heightForWidth(label.width())
+            if needed > 0 and label.minimumHeight() != needed:
+                label.setMinimumHeight(needed)
+
+    def resizeEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Keeps wrapped labels' room in step with the new width."""
+        super().resizeEvent(event)
+        self.fit_wrapped_labels()
+
+    def showEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Sizes wrapped labels once their real width is known."""
+        super().showEvent(event)
+        self.fit_wrapped_labels()
+
+    def _let_body_grow(self) -> None:
+        """Gives the body the room below it, for a body holding a scroll area.
+
+        By default the free space under the body goes to an empty spacer, so
+        short dialogs keep their content at the top. A dialog whose body holds
+        a ``QScrollArea`` calls this so the scroll area gets that room instead.
+        """
+        self._outer.removeItem(self._body_spacer)
+        self._outer.setStretchFactor(self.body, 1)
 
 
 class ConfirmDialog(BaseDialog):
@@ -238,8 +281,7 @@ class ProfileDialog(BaseDialog):
             ask_details: Show the description box. Off when the backend cannot
                 store descriptions.
             ask_sections: Show the section check boxes. ``None`` (the default)
-                follows ``ask_details``; real backends cannot choose what a
-                profile contains, so they pass ``False``.
+                follows ``ask_details``.
         """
         super().__init__(
             parent,
@@ -259,21 +301,78 @@ class ProfileDialog(BaseDialog):
         self.description_edit.setFixedHeight(64)
         self.description_edit.setAccessibleName(self.tr("Profile description"))
         self.section_checks: List[QCheckBox] = []
+        self.warning_label = Label("", "muted", wrap=True)
         if ask_details:
             self.body.addWidget(Label(self.tr("Description (optional)"), "muted"))
             self.body.addWidget(self.description_edit)
             self.description_edit.textChanged.connect(self._update)
         if ask_details if ask_sections is None else ask_sections:
+            # Heading, the select/clear buttons, the summary and the dialog's
+            # own buttons stay put; only the list of check boxes scrolls, so
+            # nothing overlaps however short the window gets.
             self.body.addWidget(Label(self.tr("What to include"), "muted"))
+            picker_buttons = QHBoxLayout()
+            select_all = Button(self.tr("Select all"), variant="ghost")
+            clear_all = Button(self.tr("Clear all"), variant="ghost")
+            select_all.clicked.connect(lambda: self._check_all(True))
+            clear_all.clicked.connect(lambda: self._check_all(False))
+            picker_buttons.addWidget(select_all)
+            picker_buttons.addWidget(clear_all)
+            picker_buttons.addStretch(1)
+            self.body.addLayout(picker_buttons)
+            checks = QWidget()
+            checks.setObjectName("DialogBody")  # themed like the dialog itself
+            checks_layout = QVBoxLayout(checks)
+            checks_layout.setContentsMargins(0, 0, 0, 0)
+            checks_layout.setSpacing(10)
             for section in sections:
-                check = QCheckBox(section)
+                check = QCheckBox(section_label(section))
+                check.setProperty("sectionKey", section)
                 check.setChecked(True)
                 check.toggled.connect(self._update)
-                self.body.addWidget(check)
+                checks_layout.addWidget(check)
                 self.section_checks.append(check)
+            checks_layout.addStretch(1)
+            self.sections_area = QScrollArea()
+            self.sections_area.setObjectName("SectionChecksArea")
+            self.sections_area.setWidgetResizable(True)
+            self.sections_area.setFrameShape(QFrame.Shape.NoFrame)
+            self.sections_area.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            self.sections_area.setWidget(checks)
+            # Always room for a few boxes, so the list never collapses.
+            row = self.section_checks[0].sizeHint().height() if sections else 0
+            self.sections_area.setMinimumHeight(min(len(sections), 3) * (row + 10))
+            self.body.addWidget(self.sections_area, 1)
+            self.body.addWidget(self.warning_label)
+            self._let_body_grow()
         self.name_edit.textChanged.connect(self._update)
         self._update()
         self.name_edit.setFocus()
+
+    def _check_all(self, checked: bool) -> None:
+        """Checks or unchecks every section box at once."""
+        for check in self.section_checks:
+            check.setChecked(checked)
+
+    def _chosen_keys(self) -> Tuple[str, ...]:
+        """Keys (not labels) of the currently checked section boxes."""
+        return tuple(
+            check.property("sectionKey")
+            for check in self.section_checks
+            if check.isChecked()
+        )
+
+    def _missing_dependencies(self) -> Tuple[str, ...]:
+        """Keys chosen whose dependency (``CATEGORY_DEPENDENCIES``) is not."""
+        chosen = set(self._chosen_keys())
+        missing = []
+        for key in self._chosen_keys():
+            for needed in CATEGORY_DEPENDENCIES.get(key, ()):
+                if needed not in chosen and needed not in missing:
+                    missing.append(needed)
+        return tuple(missing)
 
     def validation_error(self) -> Optional[str]:
         """Returns the first problem with the form, or ``None``."""
@@ -293,7 +392,7 @@ class ProfileDialog(BaseDialog):
         )
 
     def _update(self) -> None:
-        """Refreshes the error text and the confirm button."""
+        """Refreshes the error text, the dependency warning and the confirm button."""
         error = self.validation_error()
         typed = bool(self.name_edit.text())
         # Do not scold before the user typed anything.
@@ -311,22 +410,38 @@ class ProfileDialog(BaseDialog):
         self.error_label.setVisible(bool(shown))
         self.name_edit.setProperty("invalid", bool(error and typed))
         repolish(self.name_edit)
+        if self.section_checks:
+            missing = self._missing_dependencies()
+            if missing:
+                names = ", ".join(section_label(key) for key in missing)
+                self.warning_label.setText(
+                    self.tr("Also select: {names} (needed by your choices).").format(
+                        names=names
+                    )
+                )
+            else:
+                chosen = ", ".join(
+                    section_label(key) for key in self._chosen_keys()
+                ) or self.tr("nothing yet")
+                self.warning_label.setText(self.tr("Will include: {names}.").format(
+                    names=chosen
+                ))
+            self.warning_label.setVisible(True)
         self.confirm_button.setEnabled(error is None)
+        self.fit_wrapped_labels()
 
     def values(self) -> Tuple[str, str, Tuple[str, ...]]:
         """Returns what the user entered.
 
         Returns:
             Tuple[str, str, Tuple[str, ...]]: Name, description and the checked
-            sections.
+            section keys (``kongui.core.categories.CATEGORIES`` members, or
+            whatever keys were passed in).
         """
-        chosen = tuple(
-            check.text() for check in self.section_checks if check.isChecked()
-        )
         return (
             self.name_edit.text(),
             self.description_edit.toPlainText().strip(),
-            chosen,
+            self._chosen_keys(),
         )
 
     def keyPressEvent(self, event) -> None:  # pylint: disable=invalid-name

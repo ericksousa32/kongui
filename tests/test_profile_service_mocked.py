@@ -11,6 +11,8 @@ import shutil
 import unittest
 import zipfile
 
+import yaml
+
 from kongui.core import (
     NOT_IMPLEMENTED_OPERATIONS,
     ArchiveExistsError,
@@ -113,6 +115,63 @@ class SaveTests(MockedServiceCase):
         self.profiles.save("p", overwrite=True)
         (call,) = self.calls_of(patched, "save_profile")
         self.assertEqual(call.kwargs, {"force": True})
+
+    def test_categories_build_a_filtered_config_path(self):
+        self.make_profile("other")
+        seen = {}
+
+        def capture(name, names, force, config_path):
+            with open(config_path, encoding="utf-8") as handle:
+                seen["content"] = yaml.safe_load(handle)
+            seen["path"] = config_path
+            return fake_call()
+
+        patch_engine_call(self.engine, {"save_profile": capture})
+        self.profiles.save("new", categories=("system",))
+        # BASE_CONF has kdeglobals (system) and gtk-3.0 (gtk) in "configs",
+        # and icons (icons) in "share_folder": only kdeglobals survives.
+        self.assertEqual(seen["content"]["save"]["configs"]["entries"], ["kdeglobals"])
+        self.assertEqual(seen["content"]["export"]["share_folder"]["entries"], [])
+        # the temporary file is gone once save() returns
+        self.assertFalse(os.path.exists(seen["path"]))
+
+    def test_excluded_entries_remove_one_file_from_a_kept_category(self):
+        self.make_profile("other")
+        seen = {}
+
+        def capture(name, names, force, config_path):
+            with open(config_path, encoding="utf-8") as handle:
+                seen["content"] = yaml.safe_load(handle)
+            return fake_call()
+
+        patch_engine_call(self.engine, {"save_profile": capture})
+        self.profiles.save(
+            "new",
+            categories=("system", "gtk"),
+            excluded_entries=(("save", "configs", "gtk-3.0"),),
+        )
+        self.assertEqual(seen["content"]["save"]["configs"]["entries"], ["kdeglobals"])
+
+    def test_bad_categories_are_refused_before_the_original_runs(self):
+        patched = patch_engine_call(
+            self.engine, {"save_profile": lambda *a, **k: fake_call()}
+        )
+        with self.assertRaises(ValidationError):
+            self.profiles.save("new", categories=())
+        with self.assertRaises(ValidationError):
+            self.profiles.save("new", categories=("not-a-category",))
+        self.assertEqual(self.calls_of(patched, "save_profile"), [])
+
+    def test_no_categories_means_no_config_path_at_all(self):
+        # The exact behavior of an unpatched konsave.funcs.save_profile: the
+        # extra kwarg must not even be passed when nothing was chosen.
+        self.make_profile("other")
+        patched = patch_engine_call(
+            self.engine, {"save_profile": lambda *a, **k: fake_call()}
+        )
+        self.profiles.save("new")
+        (call,) = self.calls_of(patched, "save_profile")
+        self.assertNotIn("config_path", call.kwargs)
 
     def test_success_requires_the_profile_conf(self):
         def creates_conf(name, names, force):

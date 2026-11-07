@@ -3,13 +3,14 @@
 A script for trying KonGUI on a real Fedora KDE / Plasma session, and a template to
 report the result. **Anyone can use it**: the project owner used it for the first
 report (2026-10-22), and users are asked to send theirs, especially for what that
-first test did not cover (X11, SELinux, Flatpak, quitting during an operation). It exists because the automated tests never apply anything to a
-real session ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6): what they prove is that the
-code behaves in a temporary home, not that Plasma ends up looking right.
+first test did not cover (X11, SELinux, Flatpak, quitting during an operation). It
+exists because the automated tests never apply anything to a real session
+([`TEST_OVERVIEW.md`](TEST_OVERVIEW.md)): what they prove is that the code behaves in a
+temporary home, not that Plasma ends up looking right.
 
 How to send a report: open an issue with the **Plasma test report** template
-(*New issue → Plasma test report*), which holds the template below. Reports are kept
-in [`reports/`](reports/) and summarized in [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §7.
+(*New issue → Plasma test report*), which holds the template below. Results are
+summarized in [Results so far](#results-so-far) at the end of this document.
 
 ## Before you start
 
@@ -128,3 +129,23 @@ A problem that **loses or corrupts the user's configuration**, an apply or impor
 changes files outside the profile, a safety copy that is missing or cannot be
 restored, or a crash on start. Cosmetic problems and missing features are recorded
 but do not block an alpha ([`LIMITATIONS.md`](LIMITATIONS.md)).
+
+## Results so far
+
+**2026-10-22, quick test by the project owner** (run from a clone of `dev`, before
+the first tag):
+
+| | |
+|---|---|
+| Environment | Fedora 44, Plasma 6.7.5, Qt 6.11.2, Wayland; Python 3.14.8 with Fedora's PySide6 6.11.2 (not in the automated test matrix; it worked) |
+| Start and look | ok; minor layout and text alignment adjustments wanted (since then, text clipping and overlaps on resize were fixed, see `CHANGELOG.md`) |
+| Save and apply | ok; a safety copy was made and going back from it worked |
+| Export and import | ok; drag and drop ok on Wayland, **X11 not tested** |
+| `conf.yaml` edited by hand | ok |
+| Two operations at once | ok |
+| SELinux, Flatpak, quitting during an operation | **not tested** |
+| Problems found | none |
+
+No blocker in the sense above: nothing was lost or corrupted, and the safety copies
+were made and could be restored. What is still untested is item B-3 of
+[`LIMITATIONS.md`](LIMITATIONS.md).

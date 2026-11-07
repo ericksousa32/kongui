@@ -267,7 +267,9 @@ class ProfileJourneyTests(OverviewCase):
         )
         card = self.card("Trabalho")
         self.assertEqual(card.description_label.text(), "Tema A")
-        self.assertIn("configs", self.window.context.store.get("Trabalho").sections)
+        # "kdeglobals" lives in Konsave's one "configs" group, but the badge
+        # is the finer-grained category it was re-classified into: System.
+        self.assertIn("system", self.window.context.store.get("Trabalho").sections)
         self.assertEqual(self.stat("count"), "1")
 
         # Change the session, then apply the profile from its card.
@@ -447,8 +449,11 @@ class HandEditedConfigJourneyTests(OverviewCase):
         with self.user.answers((ProfileDialog, new_profile("Depois"))):
             self.page("profiles").new_button.click()
         store = self.window.context.store
-        self.assertIn("widgets", store.get("Depois").sections)
-        self.assertNotIn("widgets", store.get("Antes").sections)
+        # The hand-added "widgets" group's own name is not a badge any more;
+        # its one entry ("plasma") is categorized as "themes" like any other
+        # entry with that name, wherever it is physically grouped.
+        self.assertIn("themes", store.get("Depois").sections)
+        self.assertNotIn("themes", store.get("Antes").sections)
         self.assertEqual(
             (self.profile_dir("Depois") / "widgets/plasma/look.txt").read_text(),
             "look-A",

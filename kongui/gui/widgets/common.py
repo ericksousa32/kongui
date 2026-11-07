@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPaintEvent
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPaintEvent
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QPushButton,
+    QSizePolicy,
     QWidget,
 )
 
@@ -103,8 +104,29 @@ class Label(QLabel):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
 
+#: Horizontal padding (``theme.py``'s ``padding: 2px 9px``, both sides) to
+#: leave out of a Badge's elision width, so the shown text does not crowd the
+#: rounded background.
+_BADGE_HPADDING = 18
+
+#: Extra slack added on top of a text's exact measured advance when asking
+#: for room for it (``sizeHint``/``minimumSizeHint``). ``QFontMetrics``'s
+#: ``elidedText`` can still elide a string given *exactly* its own advance as
+#: the available width (a sub-pixel rounding guard inside Qt), so without
+#: this, a badge resized to precisely its own ``sizeHint`` could still show
+#: "…" instead of its full text.
+_BADGE_SLACK = 2
+
+
 class Badge(QLabel):
-    """A small rounded status label."""
+    """A small rounded status label.
+
+    When there is not enough room for the full text (a narrow card, a small
+    window), it is elided with "…" instead of being cut off raw mid-word —
+    the full text is still available as a tooltip. ``minimumSizeHint`` only
+    asks for room for the ellipsis, so a row of several badges shrinks each
+    one gracefully instead of overlapping its neighbors.
+    """
 
     def __init__(self, text: Text = "", tone: str = "neutral") -> None:
         """Creates the badge.
@@ -113,13 +135,89 @@ class Badge(QLabel):
             text: Badge text, or a function returning it in the current language.
             tone: ``neutral``, ``accent``, ``success``, ``warning`` or ``danger``.
         """
-        super().__init__(resolve_text(text))
-        if callable(text):
-            i18n.bind(self, lambda: self.setText(text()), now=False)
+        super().__init__()
+        self._full_text = ""
+        self._elided_for_width = -1
         self.setTextFormat(Qt.TextFormat.PlainText)
         self.setProperty("role", "badge")
         self.setProperty("tone", tone)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if callable(text):
+            i18n.bind(self, lambda: self._set_full_text(text()), now=False)
+        self._set_full_text(resolve_text(text))
+
+    def _set_full_text(self, text: str) -> None:
+        """Stores the untruncated text and re-elides it for the current width."""
+        self._full_text = text
+        self.setToolTip(text)
+        self._apply_elision()
+
+    def _apply_elision(self) -> None:
+        """Shows as much of the full text as the current width allows.
+
+        Never ends up fully blank: in a crowded row (several badges sharing
+        too little space), Qt's layout can give one less room than even its
+        own ``minimumSizeHint`` asked for, which would otherwise elide an
+        already-short text (such as "+7") down to nothing at all. The full
+        text is always in the tooltip regardless.
+        """
+        available = self.width() - _BADGE_HPADDING
+        metrics = self.fontMetrics()
+        if available <= 0:
+            shown = self._full_text
+        else:
+            shown = metrics.elidedText(
+                self._full_text, Qt.TextElideMode.ElideRight, available
+            )
+            if not shown and self._full_text:
+                shown = "…"
+        super().setText(shown)
+        self._elided_for_width = self.width()
+
+    def setText(self, text: str) -> None:  # pylint: disable=invalid-name
+        """Like ``QLabel.setText``, but keeps the new text elidable too."""
+        self._set_full_text(text)
+
+    def resizeEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Re-elides the text for the new width."""
+        super().resizeEvent(event)
+        self._apply_elision()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # pylint: disable=invalid-name
+        """Re-elides first if the width has moved since the last computation.
+
+        During a live, interactive window drag, Qt can deliver several resizes
+        between two paints (or paint before ``resizeEvent`` has caught up), so
+        the text cached by ``resizeEvent`` may no longer match the box actually
+        being painted. Re-checking here, right before painting, guarantees the
+        shown text is always elided for the real, final width -- never a raw
+        mid-word slice with no "…" from an earlier, now-stale width.
+        """
+        if self.width() != self._elided_for_width:
+            self._apply_elision()
+        super().paintEvent(event)
+
+    def sizeHint(self) -> QSize:  # pylint: disable=invalid-name
+        """Room for the *full* text, from ``self._full_text`` rather than
+        whatever is currently displayed — so a badge that is elided today
+        still asks for its real width, and grows back once a resize gives a
+        crowded row enough room again."""
+        height = super().sizeHint().height()
+        width = (
+            self.fontMetrics().horizontalAdvance(self._full_text)
+            + _BADGE_HPADDING
+            + _BADGE_SLACK
+        )
+        return QSize(width, height)
+
+    def minimumSizeHint(self) -> QSize:  # pylint: disable=invalid-name
+        """Room for just the ellipsis, so a crowded row can shrink this badge
+        instead of overlapping it with its neighbors."""
+        height = super().sizeHint().height()
+        ellipsis = (
+            self.fontMetrics().horizontalAdvance("…") + _BADGE_HPADDING + _BADGE_SLACK
+        )
+        return QSize(ellipsis, height)
 
     def set_tone(self, tone: str) -> None:
         """Changes the tone.
@@ -129,6 +227,159 @@ class Badge(QLabel):
         """
         self.setProperty("tone", tone)
         repolish(self)
+
+
+class BadgeRow(QWidget):
+    """A row of section badges: at most ``max_shown`` of them, then "+N".
+
+    A plain ``QHBoxLayout`` of badges shrinks every item together once they
+    no longer all fit, eliding even the ones that had room to spare. This
+    instead lays the badges out in order, each at its full width while there
+    is room for it. Badges that do not fit are not squeezed or cut: they are
+    left out and counted in a trailing "+N" badge, whose room is reserved
+    first so it is never hidden, and whose tooltip lists every label. Only
+    when not even the first badge fits next to "+N" is that one elided, so
+    the row is never just a counter.
+    """
+
+    #: Horizontal gap between badges, matching the old ``QHBoxLayout`` spacing.
+    SPACING = 6
+
+    def __init__(self, labels: Sequence[str], max_shown: int = 3) -> None:
+        """Creates the row.
+
+        Args:
+            labels: Every label, in priority order.
+            max_shown: The most badges shown before "+N", whatever the width.
+        """
+        super().__init__()
+        self._labels: List[str] = list(labels)
+        self._badges: List[Badge] = []
+        for label in self._labels[: max(1, max_shown)]:
+            badge = Badge(label)
+            badge.setParent(self)
+            self._badges.append(badge)
+        self._overflow: Optional[Badge] = None
+        if len(self._labels) > 1:
+            self._overflow = Badge("")
+            self._overflow.setParent(self)
+            self._overflow.hide()
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._laid_out_for_width = -1
+
+    @property
+    def overflow(self) -> Optional[Badge]:
+        """The "+N" badge, or ``None`` when there is a single label."""
+        return self._overflow
+
+    def shown_texts(self) -> List[str]:
+        """Texts of the badges currently laid out, "+N" included."""
+        if self.width() != self._laid_out_for_width:
+            self._relayout()
+        texts = [badge.text() for badge in self._badges if not badge.isHidden()]
+        if self._overflow is not None and not self._overflow.isHidden():
+            texts.append(self._overflow.text())
+        return texts
+
+    def _overflow_width(self) -> int:
+        """Room for the widest "+N" this row can show."""
+        if self._overflow is None:
+            return 0
+        metrics = self._overflow.fontMetrics()
+        return (
+            metrics.horizontalAdvance(f"+{len(self._labels)}")
+            + _BADGE_HPADDING
+            + _BADGE_SLACK
+        )
+
+    def _needs_overflow(self, width: int) -> bool:
+        """Whether some label must be counted in "+N" at this width."""
+        if len(self._badges) < len(self._labels):
+            return True
+        needed = sum(badge.sizeHint().width() for badge in self._badges)
+        needed += self.SPACING * (len(self._badges) - 1)
+        return needed > width
+
+    def sizeHint(self) -> QSize:  # pylint: disable=invalid-name
+        """Room for the shown badges at full width, plus "+N" if needed."""
+        height = max((badge.sizeHint().height() for badge in self._badges), default=0)
+        width = sum(badge.sizeHint().width() for badge in self._badges)
+        width += self.SPACING * max(0, len(self._badges) - 1)
+        if len(self._badges) < len(self._labels):
+            width += self.SPACING + self._overflow_width()
+        return QSize(width, height)
+
+    def minimumSizeHint(self) -> QSize:  # pylint: disable=invalid-name
+        """Room for the first badge elided down to "…", plus "+N"."""
+        if not self._badges:
+            return QSize(0, 0)
+        first = self._badges[0].minimumSizeHint()
+        if self._overflow is None:
+            return first
+        return QSize(
+            first.width() + self.SPACING + self._overflow_width(), first.height()
+        )
+
+    def resizeEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Re-lays out the badges for the new width."""
+        super().resizeEvent(event)
+        self._relayout()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # pylint: disable=invalid-name
+        """Re-lays out first if the width has moved since the last pass.
+
+        Closes the same resize/paint race ``Badge.paintEvent`` closes for a
+        single badge's text: a live, interactive window drag can deliver a
+        paint for a width this row has not relaid out for yet.
+        """
+        if self.width() != self._laid_out_for_width:
+            self._relayout()
+        super().paintEvent(event)
+
+    def _relayout(self) -> None:
+        """Places full badges in order, then "+N" for whatever is left out."""
+        available = self.width()
+        height = self.height()
+        self._laid_out_for_width = available
+        if not self._needs_overflow(available):
+            x = 0
+            for badge in self._badges:
+                width = badge.sizeHint().width()
+                badge.setGeometry(x, 0, width, height)
+                badge.show()
+                x += width + self.SPACING
+            if self._overflow is not None:
+                self._overflow.hide()
+            return
+        budget = available - self._overflow_width() - self.SPACING
+        x = 0
+        shown = 0
+        for badge in self._badges:
+            width = badge.sizeHint().width()
+            if x + width > budget:
+                break
+            badge.setGeometry(x, 0, width, height)
+            badge.show()
+            x += width + self.SPACING
+            shown += 1
+        if shown == 0 and self._badges:
+            first = self._badges[0]
+            room = max(budget, first.minimumSizeHint().width())
+            first.setGeometry(0, 0, room, height)
+            first.show()
+            x = room + self.SPACING
+            shown = 1
+        for badge in self._badges[shown:]:
+            badge.hide()
+        if self._overflow is None:
+            return
+        self._overflow.setText(f"+{len(self._labels) - shown}")
+        # setText resets the tooltip to the text; keep the full list instead.
+        self._overflow.setToolTip("\n".join(self._labels))
+        width = max(self._overflow.minimumSizeHint().width(), available - x)
+        width = min(self._overflow.sizeHint().width(), width)
+        self._overflow.setGeometry(x, 0, width, height)
+        self._overflow.show()
 
 
 class Button(QPushButton):
@@ -193,6 +444,35 @@ class Button(QPushButton):
             self.setToolTip(tip)
             if not resolve_text(self._text):
                 self.setAccessibleName(tip)
+
+    def _checked_text_extra(self) -> int:
+        """Extra width the label needs when drawn in its checked font.
+
+        ``theme.py`` draws a checked segment in semibold (``font-weight: 600``
+        on ``:checked``), but Qt applies that weight only while painting: the
+        widget's font, and so ``QPushButton.sizeHint``, stay regular. A
+        checked segment was then a few pixels too narrow for its own label
+        (more with wide fonts such as Noto Sans), and both ends of the text
+        were clipped. The room is reserved in both states, so picking an
+        option does not make the control jump either.
+        """
+        text = self.text()
+        if self._variant != "segment" or not text:
+            return 0
+        bold = QFont(self.font())
+        bold.setWeight(QFont.Weight.DemiBold)
+        extra = QFontMetrics(bold).horizontalAdvance(
+            text
+        ) - self.fontMetrics().horizontalAdvance(text)
+        return max(0, extra) + _BADGE_SLACK
+
+    def sizeHint(self) -> QSize:  # pylint: disable=invalid-name
+        """Qt's size, widened for a segment's semibold checked label.
+
+        ``QPushButton.minimumSizeHint`` is derived from this, so it follows.
+        """
+        hint = super().sizeHint()
+        return QSize(hint.width() + self._checked_text_extra(), hint.height())
 
     def set_icon_name(self, name: Optional[str]) -> None:
         """Changes the icon.

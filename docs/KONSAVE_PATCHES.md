@@ -8,7 +8,7 @@ incorporated without guesswork: redo the changes below, run the verification lis
 **Baseline of the changes:** Konsave with `konsave/__main__.py` as in commit
 `5179e0f` of this repository (before any lock change).
 Every changed line in an original file carries the marker `KONGUI-PATCH(lock)` (or
-`KONGUI-PATCH(rename)`, §3.5); to
+`KONGUI-PATCH(rename)`, §3.5, or `KONGUI-PATCH(selective-save)`, §3.6); to
 find them all: `grep -rn "KONGUI-PATCH" konsave/` (the one-line change in
 `setup.py` carries no marker; see §1).
 
@@ -19,13 +19,13 @@ find them all: `grep -rn "KONGUI-PATCH" konsave/` (the one-line change in
 | `konsave/lock.py` | **new** (standard library only) | ~420 lines | mechanism of the cross-process lock (`fcntl.flock`) |
 | `konsave/__main__.py` | changed | +56 / −8 lines | the CLI now runs every command under the lock |
 | `konsave/__init__.py` | changed | +6 lines | the package is distributed as `kongui`, so the version lookup by the name `konsave` finds nothing (§3.5) |
+| `konsave/funcs.py` | changed | +7 / −2 lines | `save_profile` can read a given configuration file instead of the active one (§3.6), for selective profile creation |
 | `setup.py` | changed | 1 line | `python_requires` from `>=3.6` to `>=3.9` |
 
 The rest of `setup.py` (name `kongui`, author, URLs, classifiers) is KonGUI's own
-metadata. No other file in `konsave/` was touched (`funcs.py`, `consts.py`,
-`parse.py` and `conf_*.yaml` are identical to the original). The behavior of the
-commands does not change when nobody else is using Konsave; the only visible
-differences are in §4.
+metadata. No other file in `konsave/` was touched (`consts.py`, `parse.py` and
+`conf_*.yaml` are identical to the original). The behavior of the commands does not
+change when nobody else is using Konsave; the only visible differences are in §4.
 
 ## 2. `konsave/lock.py` (new file)
 
@@ -139,6 +139,45 @@ before (no `__version__`; KonGUI's engine loader supplies a placeholder). Covere
 > **When adapting:** keep the lookup of the `kongui` distribution, and update the
 > version string to the Konsave release the code was taken from.
 
+### 3.6 `konsave/funcs.py` (marker `KONGUI-PATCH(selective-save)`)
+
+`save_profile` always read the one active `CONFIG_FILE` (a fixed path from
+`konsave.consts`) and always copied *that* file into the profile folder as its own
+`conf.yaml`. There was no way to save a profile with only some of a `conf.yaml`'s
+entries without first editing the user's real, active configuration — which KonGUI
+does not do (`kongui/core/config.py`'s own rule: KonGUI never writes `conf.yaml`).
+
+```diff
+-def save_profile(name, profile_list, force=False):
++def save_profile(name, profile_list, force=False, config_path=None):
+     ...
+-    konsave_config = read_konsave_config(CONFIG_FILE)["save"]
++    # KONGUI-PATCH(selective-save): read the given configuration, if any,
++    # instead of always the live one.
++    source_config = config_path or CONFIG_FILE
++    konsave_config = read_konsave_config(source_config)["save"]
+     ...
+-    shutil.copy(CONFIG_FILE, profile_dir)
++    # KONGUI-PATCH(selective-save): the profile keeps the configuration it was
++    # actually saved with, always under the name "conf.yaml" regardless of
++    # source_config's own name.
++    shutil.copy(source_config, os.path.join(profile_dir, "conf.yaml"))
+```
+
+Behavior: `save_profile(name, profile_list, force)` (no `config_path`, the only way
+anything outside `kongui.core.categories` calls it) is **identical** to before —
+same file read, same file copied, same name. With `config_path` given,
+`kongui.core.profiles.ProfileService.save` passes a temporary file that holds a
+*filtered* copy of the resolved active configuration (`docs/INTEGRATION.md` §12):
+Konsave never sees, reads from, or writes to that temporary file's path for
+anything but this one call, and the active `~/.config/konsave/conf.yaml` is never
+opened for writing by this patch. Covered by `tests.test_profile_service_mocked`
+(the exact call arguments) and `tests.test_profile_service_integration` (end to end,
+the real function, including that the saved profile still exports and imports).
+
+> **When adapting:** keep `config_path=None` as the default and the fallback to
+> `CONFIG_FILE`; nothing else in `funcs.py` needs to know this parameter exists.
+
 ## 4. Visible behavior differences in the CLI
 
 | Situation | Original | With the patch |
@@ -161,13 +200,18 @@ before (no `__version__`; KonGUI's engine loader supplies a placeholder). Covere
    = one lock; the profile list is read after the lock*.
 4. In `setup.py`, keep `python_requires=">=3.9"` (or whatever the new Konsave
    requires). In `konsave/__init__.py` keep the `KONGUI-PATCH(rename)` block (§3.5).
-5. Check that `konsave/funcs.py`/`consts.py` still have the same functions that
+5. Reapply the two-line change of §3.6 to `konsave/funcs.py`'s `save_profile`
+   (`config_path=None` parameter, read and final copy use it instead of
+   `CONFIG_FILE` when given).
+6. Check that `konsave/funcs.py`/`consts.py` still have the same functions that
    `kongui/core/engine.py` uses (`docs/INTEGRATION.md` §2). KonGUI's lock does
    **not** depend on `__main__`: it wraps the calls in `kongui/core/` (see
    [`CONCURRENCY.md`](CONCURRENCY.md) §3).
-6. Run the verification:
+7. Run the verification:
    * `python -m unittest tests.test_locking tests.test_cli_runner tests.test_profile_service_integration`
      (real processes; fails if the CLI or the service stop using the lock);
+   * `python -m unittest tests.test_categories tests.test_profile_service_mocked`
+     (the selective-save catalog and filter still agree with §3.6's patch);
    * `python -m unittest discover -s tests -t .` (whole suite, **as a regular user**);
    * `git diff <old-version> -- konsave/` must show only what is in this document.
 
@@ -177,3 +221,4 @@ before (no `__version__`; KonGUI's engine loader supplies a placeholder). Covere
 |---|---|
 | earlier stage | cross-process lock (`lock.py`, `__main__.py`, `setup.py`) |
 | pre-release preparation | package renamed to `kongui`: version lookup in `konsave/__init__.py` (§3.5) |
+| selective-save feature | `save_profile` accepts an optional `config_path` (§3.6), for saving a profile from a filtered, temporary configuration instead of the active one |

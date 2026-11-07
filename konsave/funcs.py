@@ -164,13 +164,17 @@ def list_profiles(profile_list, profile_count):
 
 
 @exception_handler
-def save_profile(name, profile_list, force=False):
+def save_profile(name, profile_list, force=False, config_path=None):
     """Saves necessary config files in ~/.config/konsave/profiles/<name>.
 
     Args:
         name: name of the profile
         profile_list: the list of all created profiles
         force: force overwrite already created profile, optional
+        config_path: KONGUI-PATCH(selective-save): configuration file to read
+            instead of the active ``CONFIG_FILE``, and the one saved as the
+            profile's own ``conf.yaml``. ``None`` (the default) is the
+            original behavior.
     """
 
     # assert
@@ -181,7 +185,10 @@ def save_profile(name, profile_list, force=False):
     profile_dir = os.path.join(PROFILES_DIR, name)
     mkdir(profile_dir)
 
-    konsave_config = read_konsave_config(CONFIG_FILE)["save"]
+    # KONGUI-PATCH(selective-save): read the given configuration, if any,
+    # instead of always the live one.
+    source_config = config_path or CONFIG_FILE
+    konsave_config = read_konsave_config(source_config)["save"]
 
     for section in konsave_config:
         location = konsave_config[section]["location"]
@@ -196,7 +203,10 @@ def save_profile(name, profile_list, force=False):
                 else:
                     shutil.copy(source, dest)
 
-    shutil.copy(CONFIG_FILE, profile_dir)
+    # KONGUI-PATCH(selective-save): the profile keeps the configuration it was
+    # actually saved with (so a later apply or export matches what was chosen),
+    # always under the name "conf.yaml" regardless of source_config's own name.
+    shutil.copy(source_config, os.path.join(profile_dir, "conf.yaml"))
 
     log("Profile saved successfully!")
 

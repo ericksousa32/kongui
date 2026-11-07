@@ -24,7 +24,13 @@ class Profile:  # pylint: disable=too-many-instance-attributes
     Attributes:
         name: Unique profile name.
         description: Free text shown on the card.
-        sections: Names of the configuration areas the profile covers.
+        sections: Keys of the configuration areas the profile covers, shown as
+            badges (``messages.section_label`` for the friendly name). The real
+            backend prefers the fine-grained export categories
+            (``kongui.core.CATEGORIES``) re-derived from the profile's own
+            files when any were recognized, falling back to Konsave's own,
+            coarser ``save`` group names otherwise (``ServiceBackend.
+            list_profiles``).
         size_mb: Size on disk in megabytes.
         modified: Last modification time.
         active: Whether this is the profile applied most recently.

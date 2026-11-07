@@ -15,11 +15,27 @@ from unittest import mock
 from PySide6.QtWidgets import QDialog
 
 from kongui.core.profilemeta import META_FILENAME
-from kongui.gui.widgets.common import Badge
 from kongui.gui.widgets.dialogs import DetailsDialog, ProfileDialog
 from tests.helpers import install_conf, write
 from tests.test_gui_real_backend import RealBackendCase
 from tests.test_profile_details import TWO_GROUPS
+
+#: A save group covering more than ``MAX_CHIPS`` categories (system, panels,
+#: themes, gtk, plus icons via export), to exercise the "+N" overflow badge.
+MANY_CATEGORIES = """save:
+    configs:
+        location: "$HOME/.config"
+        entries:
+            - kdeglobals
+            - plasma-org.kde.plasma.desktop-appletsrc
+            - plasmarc
+            - gtk-3.0
+export:
+    share_folder:
+        location: "$HOME/.local/share"
+        entries:
+            - icons
+"""
 
 
 def full_disk():
@@ -41,7 +57,10 @@ class DetailsControllerTests(RealBackendCase):
         self.assertFalse(self.last().warning)
         profile = self.store.get("work")
         self.assertEqual(profile.description, "Dark theme")
-        self.assertEqual(profile.sections, ("configs",))
+        # BASE_CONF + live(): kdeglobals (System), icons/theme.txt (Icons,
+        # export), gtk-3.0/settings.ini (GTK) -- the real categories, not the
+        # single coarse "configs" group name they all happen to live inside.
+        self.assertEqual(profile.sections, ("system", "icons", "gtk"))
 
     def test_editing_and_clearing(self):
         self.controller.save("work", "First", ())
@@ -160,11 +179,14 @@ class DetailsWindowTests(RealBackendCase):
         self.assertFalse(dialog.confirm_button.isEnabled())
         self.assertIn("too long", dialog.error_label.text())
 
-    def test_the_save_dialog_asks_for_a_description_but_not_for_sections(self):
+    def test_the_save_dialog_asks_for_a_description_and_the_real_categories(self):
+        from kongui.core import CATEGORIES
+
         seen = {}
 
         def fake_exec(dialog):
             seen["checks"] = len(dialog.section_checks)
+            seen["all_checked"] = all(c.isChecked() for c in dialog.section_checks)
             seen["description"] = dialog.description_edit.isVisibleTo(dialog)
             dialog.name_edit.setText("second")
             dialog.description_edit.setPlainText("From the dialog")
@@ -173,7 +195,10 @@ class DetailsWindowTests(RealBackendCase):
         with mock.patch.object(ProfileDialog, "exec", new=fake_exec):
             self.page.new_button.click()
         self.flush()
-        self.assertEqual(seen, {"checks": 0, "description": True})
+        self.assertEqual(
+            seen,
+            {"checks": len(CATEGORIES), "all_checked": True, "description": True},
+        )
         self.assertEqual(self.window.store.get("second").description, "From the dialog")
 
     def test_a_save_without_its_description_shows_a_warning_toast(self):
@@ -197,23 +222,32 @@ class DetailsWindowTests(RealBackendCase):
 
 
 class SectionChipsTests(RealBackendCase):
-    """The sections shown on the cards: friendly names, no empty groups."""
+    """The badges shown on the cards: the real export categories re-derived
+    from the profile's own conf.yaml (``docs/INTEGRATION.md`` §11), friendly
+    names, falling back to Konsave's own coarse group names only when nothing
+    is recognized at all."""
 
     LANGUAGE = "en_US"
 
     def chips(self, card):
-        return [badge.text() for badge in card.findChildren(Badge)]
+        # What is actually laid out: badges that do not fit at this width are
+        # counted in "+N" rather than shown (BadgeRow).
+        return card.chips.shown_texts()
 
-    def test_known_groups_get_friendly_names_and_empty_ones_are_hidden(self):
+    def test_recognized_entries_get_fine_grained_category_chips(self):
         install_conf(self.config, TWO_GROUPS)
         self.service.save("work").raise_for_status()
         window = self.make_window(backend=self.backend)
         window.controller.refresh()
         self.flush()
         card = window.pages["profiles"].cards()[0]
-        self.assertEqual(self.chips(card), ["Desktop settings"])
+        # kdeglobals (save/configs, written by live()) -> System; dolphin
+        # (save/app_layouts) was never written -> not counted; icons
+        # (export/share_folder) is simply listed -> Icons. Both live inside
+        # Konsave's single "configs" group, but get their own, separate chips.
+        self.assertEqual(self.chips(card), ["System settings", "Icons and cursors"])
 
-    def test_unknown_groups_keep_their_own_name(self):
+    def test_unrecognized_entries_fall_back_to_other_settings(self):
         install_conf(
             self.config,
             'save:\n  my_vim:\n    location: "$HOME/.config"\n    entries:\n      - vimrc\n'
@@ -225,9 +259,12 @@ class SectionChipsTests(RealBackendCase):
         window.controller.refresh()
         self.flush()
         card = window.pages["profiles"].cards()[0]
-        self.assertEqual(self.chips(card), ["my_vim"])
+        # "vimrc" under a custom group is not in the catalog, so it is the
+        # catch-all "Other settings" -- never silently dropped, but the
+        # custom group's own name ("my_vim") is no longer shown as such.
+        self.assertEqual(self.chips(card), ["Other settings"])
 
-    def test_the_search_finds_by_description_and_by_friendly_section(self):
+    def test_the_search_finds_by_description_and_by_friendly_category(self):
         self.service.save("work", description="Single panel").raise_for_status()
         self.service.save("other").raise_for_status()
         window = self.make_window(backend=self.backend)
@@ -236,13 +273,44 @@ class SectionChipsTests(RealBackendCase):
         page = window.pages["profiles"]
         for query, expected in (
             ("single panel", ["work"]),
-            ("desktop settings", ["other", "work"]),
-            ("configs", ["other", "work"]),
+            ("icons and cursors", ["other", "work"]),
+            ("gtk", ["other", "work"]),
         ):
             with self.subTest(query=query):
                 page.search.setText(query)
                 self.flush()
                 self.assertEqual(sorted(c.profile_name for c in page.cards()), expected)
+
+    def test_more_than_max_chips_gets_an_overflow_badge_listing_every_section(self):
+        from kongui.gui.widgets.cards import MAX_CHIPS
+
+        install_conf(self.config, MANY_CATEGORIES)
+        write(self.root / ".config/plasma-org.kde.plasma.desktop-appletsrc", "x")
+        write(self.root / ".config/plasmarc", "x")
+        self.service.save("work").raise_for_status()
+        window = self.make_window(backend=self.backend)
+        window.controller.refresh()
+        self.flush()
+        window.resize(1400, 800)
+        self.flush()
+        card = window.pages["profiles"].cards()[0]
+        all_labels = [
+            "System settings",
+            "Panels and desktop layout",
+            "Themes and appearance",
+            "Icons and cursors",
+            "GTK settings",
+        ]
+        shown = card.chips.shown_texts()
+        # At most MAX_CHIPS full labels, in order, then "+N" for the rest.
+        self.assertLessEqual(len(shown) - 1, MAX_CHIPS)
+        self.assertEqual(shown[:-1], all_labels[: len(shown) - 1])
+        overflow = card.chips.overflow
+        self.assertEqual(shown[-1], overflow.text())
+        self.assertEqual(overflow.text(), f"+{len(all_labels) - (len(shown) - 1)}")
+        # Hovering the overflow badge must tell the whole story, not just the
+        # chips it stands in for -- every section the profile covers.
+        self.assertEqual(overflow.toolTip(), "\n".join(all_labels))
 
     def test_the_friendly_name_follows_the_language(self):
         self.service.save("work").raise_for_status()
@@ -254,7 +322,10 @@ class SectionChipsTests(RealBackendCase):
         window.controller.refresh()
         self.flush()
         card = window.pages["profiles"].cards()[0]
-        self.assertEqual(self.chips(card), ["Configurações da área de trabalho"])
+        self.assertEqual(
+            self.chips(card),
+            ["Configurações do sistema", "Ícones e cursores", "Configurações GTK"],
+        )
 
 
 class DemoBackendTests(unittest.TestCase):

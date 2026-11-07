@@ -1,11 +1,46 @@
 # Test overview
 
-One map of what the tests cover, feature by feature, and the result of the general
-review of the test suite made on 2026-10-19, updated the same day after the
-`conf.yaml` management was removed (§5). It builds on the feature list in the
-[README](../README.md), the pages in [`GUI_PROTOTYPE.md`](GUI_PROTOTYPE.md) §2 and the
-requirements matrix in [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §3, and does not repeat
-them.
+How to run the tests, what they cover feature by feature, and what is known about
+the suite. The features themselves are described in the [README](../README.md) and
+the pages in [`GUI.md`](GUI.md).
+
+## How to run
+
+```bash
+QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -t .   # or: make tests
+```
+
+* **Run as an ordinary user, in the foreground.** Tests that write files refuse to
+  run as root and are *skipped* (not failed), so a run as root looks green while
+  testing much less. In a container where you are root, run the suite as another
+  user (for example `setpriv --reuid=1000 --regid=1000 --init-groups
+  --no-new-privs python3 -m unittest …`). Started as a background job, the shell
+  makes child processes ignore Ctrl+C and
+  `tests.test_locking.CliTests.test_a_waiting_command_can_be_interrupted` fails
+  with `-9`.
+* Every test works in a temporary `$HOME`; nothing touches your real configuration.
+* Last full run: **874 tests in 34 modules, all passing, 4 skipped**: the three
+  source-archive tests skip when `git` or `setuptools_scm` is missing, and the
+  `install.sh` lint test when `shellcheck` is missing. About 2 minutes.
+* **Known sensitivities:** one language test compares relative dates ("2 days ago")
+  and can fail once when a run crosses midnight; one lock test can fail once under
+  heavy load. If a test fails once, rerun it alone, in the foreground, before
+  treating it as a regression.
+
+### Python and PySide6
+
+The full suite passed on (measured 2026-10-18/19):
+
+| Python | PySide6 | Result |
+|---|---|---|
+| 3.9 | 6.8.3, 6.9.3 | OK |
+| 3.10, 3.11 | 6.9.3 | OK |
+| 3.12, 3.13, 3.14 | 6.12.0 | OK |
+
+PySide6 6.10 and newer crash Python older than 3.12 (a segfault in PySide6 itself, or
+an abort while the interpreter shuts down), hence the version limit in the `gui`
+extra ([`LIMITATIONS.md`](LIMITATIONS.md) §5). Fedora's own PySide6 6.11.2 on Python
+3.14 also worked in a real session ([`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md)).
 
 ## 1. Two kinds of interface tests
 
@@ -98,18 +133,13 @@ the two exports and the import.
 
 ## 4. Review of the existing tests
 
-Measured on 2026-10-19, after the removal of §5, as an unprivileged user, in the
-foreground (method in [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
+A general review of the suite was made on 2026-10-19.
 
-* **805 tests in 32 modules, all passing** (802 run and 3 skipped where
-  `setuptools_scm` is missing), on Python 3.13 (system and virtual environment,
-  PySide6 6.12.0), 3.9 and 3.11 (PySide6 6.9.3) and 3.14 (PySide6 6.12.0). About
-  2.5 minutes. (Before the removal: 955 tests in 34 modules.)
-* **Coverage** of `kongui/` (`coverage run --branch`): **96 %** for the whole suite
-  (5,174 statements, 137 not run). The four overview tests alone reach **77 %**
-  (79 % of `kongui/gui`). The least covered modules: `gui/__main__.py` (three lines,
-  the `python -m` entry), `core/config.py` 88 % (unreadable-file paths),
-  `gui/widgets/dropzone.py` 88 %, `gui/backend.py` 90 %.
+* **Coverage** of `kongui/` (`coverage run --branch`, 2026-10-19): **96 %** for the
+  whole suite. The four overview tests alone reach **77 %**. The least covered
+  modules were `kongui/gui/__main__.py` (three lines, the `python -m` entry),
+  `kongui/core/config.py` (unreadable-file paths), `kongui/gui/widgets/dropzone.py`
+  and `kongui/gui/backend.py`.
 * **Every test checks something.** A static pass over the syntax tree found three
   tests with no assertion call; all three check that a call does *not* raise
   (`ensure_not_root` for an ordinary user and on a platform without `geteuid`;
@@ -126,47 +156,19 @@ foreground (method in [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
   process is really root, the GUI tests when PySide6 is missing, and the source
   archive tests when `git` or `setuptools_scm` is missing.
 * **Documentation**: every test module is named in `docs/` (`tests.test_docs`
-  enforces it), and the table in [`GUI_PROTOTYPE.md`](GUI_PROTOTYPE.md) §5 lists the
-  interface modules.
-* **Known sensitivities** (from [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6): run the suite
-  in the foreground (a background job makes one lock test fail with `-9`); one
-  language test compares relative dates and can fail once when a run crosses
-  midnight.
+  enforces it), and [`GUI.md`](GUI.md) lists the interface modules.
 
 ## 5. After removing the `conf.yaml` management (2026-10-19)
 
-The owner decided to stay within Konsave's scope: no editor, no backups of
-`conf.yaml`, no validation of it by KonGUI, no A-4 warning
-([`LIMITATIONS.md`](LIMITATIONS.md) §2). Nothing else was to be removed. What was
-checked:
-
-* **Removed with it:** `tests.test_config_editor` and `tests.test_gui_config`
-  (59 + 37 tests, only the editor), the editor's dialogs in `tests.test_gui_dialogs`,
-  its failure paths and the A-4 tests in `tests.test_gui_audit` and
-  `tests.test_core_audit`, and the validation tests of `tests.test_config_service`
-  (rewritten for what is left: the default file and reading through Konsave).
-* **Behaviour that changed, and is now tested as it is:** a broken or unusual
-  `conf.yaml` is no longer refused beforehand. Saving with it fails with Konsave's
-  own reason and leaves no partial profile (nested entry, broken YAML,
-  `tests.test_profile_service_integration`); an unmatched `${ENDS_WITH=…}` is saved
-  as an empty group, as Konsave does, and applying it is refused because that
-  location is not inside the home. `HandEditedConfigJourneyTests` replaces the
-  editor journey: a broken file, then a group added by hand, saved and applied
-  through the interface.
-* **Kept, and still tested:** the safety copies, the free-space checks, the
-  sections on the cards, the refusal of archives or profiles that would write
-  outside the home (now also any entry that is not a single name, which the
-  removed validation used to catch), and the refusal to apply to a destination
-  whose parent does not exist.
-* **Every other feature:** the three other overview journeys (profiles and safety
-  copies; export, import and clear all; the `kongui` command's assembly with its
-  worker thread and preferences) pass unchanged, and so do the detailed modules.
-* **Installed package:** a wheel built from a tagged copy contains none of the
-  removed modules; installed with `[gui]` on Python 3.11 and 3.13 it passes
-  `tools/smoke_test.py` (five pages), and in a temporary home it saved, applied,
-  restored the safety copy, exported, removed and imported a profile, refused to
-  save with a broken `conf.yaml` (Konsave's reason, nothing left), saved after a
-  group was added by hand, and wrote no file next to `conf.yaml`.
+KonGUI stays within Konsave's scope: no `conf.yaml` editor, backups or validation
+([`LIMITATIONS.md`](LIMITATIONS.md) §2). The editor's own test modules were removed
+with it; `tests.test_config_service` now covers only the default file and reading
+through Konsave. A broken or unusual `conf.yaml` is no longer refused beforehand:
+saving fails with Konsave's own reason and leaves no partial profile
+(`tests.test_profile_service_integration`), and `HandEditedConfigJourneyTests`
+checks a group added by hand, saved and applied through the interface. The safety
+copies, free-space checks, section badges and the refusal to write outside the home
+were kept and are still tested.
 
 ## 6. Limits
 

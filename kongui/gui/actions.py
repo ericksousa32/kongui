@@ -13,11 +13,10 @@ from __future__ import annotations
 from PySide6.QtCore import QCoreApplication, QObject
 from PySide6.QtWidgets import QDialog, QWidget
 
-from kongui.core import LockCancelledError
+from kongui.core import CATEGORIES, LockCancelledError
 from kongui.gui.context import AppContext
 from kongui.gui.controller import Outcome
 from kongui.gui.formatting import format_datetime
-from kongui.gui.mock_data import sections as demo_sections
 from kongui.gui.widgets.dialogs import ConfirmDialog, DetailsDialog, ProfileDialog
 
 
@@ -107,7 +106,7 @@ class ProfileActions(QObject):
         dialog = ProfileDialog(
             parent,
             self.ctx.store.names(),
-            demo_sections(),
+            CATEGORIES,
             ask_details=caps.descriptions,
             ask_sections=caps.sections,
         )

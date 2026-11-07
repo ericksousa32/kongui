@@ -123,11 +123,11 @@ class StartupTests(GuiTestCase):
 
 
 class DocumentationTests(unittest.TestCase):
-    """The prototype document must name what exists."""
+    """The interface document (docs/GUI.md) must name what exists."""
 
     @classmethod
     def setUpClass(cls):
-        cls.text = (ROOT / "docs" / "GUI_PROTOTYPE.md").read_text(encoding="utf-8")
+        cls.text = (ROOT / "docs" / "GUI.md").read_text(encoding="utf-8")
 
     def test_pages_shortcuts_and_commands_are_documented(self):
         for item in (

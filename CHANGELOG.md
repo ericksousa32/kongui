@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- (KonGUI) `kongui/core/categories.py`: a catalog of 12 export categories (system, panels, themes, icons, wallpaper, fonts, apps, window management, GTK, shortcuts, autostart, other) that classify Konsave's `save`/`export` entries one by one, finer-grained than Konsave's own groups; `validate_categories`, `categorize`, `build_catalog` and `filter_groups` work on the already-resolved configuration (`ConfigService.resolve()`). A small dependency table (`CATEGORY_DEPENDENCIES`) records which category needs another to make sense (icons/wallpaper/fonts/themes all need system). See `docs/INTEGRATION.md` §12. Tests: `tests.test_categories`
+- (KonGUI) `ProfileService.save()` accepts `categories` and `excluded_entries`: when given, the profile is saved from a temporary, filtered copy of the active configuration instead of the active one, so it only contains the chosen categories (and any individually excluded entries within a kept category); the active `~/.config/konsave/conf.yaml` is only ever read, never written. `categories=None` (the default) is unchanged behavior. Because Konsave's `export()` reads a profile's `export` groups from the profile's own stored `conf.yaml`, a selectively-saved profile also exports only what was selected, with no change to `export()` itself. Tests: `tests.test_profile_service_mocked.SaveTests`, `tests.test_profile_service_integration.SaveIntegrationTests` (end to end against the real Konsave code, including a selective save that is exported and re-imported)
+- (KonGUI patch) `konsave/funcs.py`: `save_profile` takes an optional `config_path`, the configuration file to read and copy as the profile's `conf.yaml` instead of the active `CONFIG_FILE`; without it, behavior is unchanged. See `docs/KONSAVE_PATCHES.md` §3.6
+- (KonGUI) `ServiceBackend.save()` no longer discards its `sections` argument: it is now passed through to `ProfileService.save()` as `categories`, so the real backend saves a filtered profile when given category keys. `Capabilities.sections` is now `True` for `ServiceBackend`. Tests: `tests.test_gui_real_backend.RealSaveTests`
+- (KonGUI) **Save profile** now lets you choose what goes into a profile: `ProfileDialog` offers the 12 export categories as checkboxes (translated labels, via a new `kongui.gui.messages.SECTION_LABELS` extension), with **Select all** / **Clear all** buttons, a non-blocking warning when a checked category needs another that is not checked (e.g. Icons and Cursors needs System Settings), and a running summary of what will be included. The chosen categories reach `ProfileService.save()` through `ServiceBackend.save()` above; saving without touching any checkbox still saves everything, as before. Demo mode's save dialog and "import preview" now use the same 12 categories instead of seven fictitious area names (`kongui/gui/mock_data.py`'s `sections()` is unchanged and still backs only the seven ready-made demo profiles shown on first launch). See `docs/INTEGRATION.md` §11 and §12. Tests: `tests.test_gui_widgets.DialogTests`, `tests.test_i18n`
+- (KonGUI) `kongui.core.profilemeta.profile_categories()`: re-derives a profile's export categories entry by entry from its own saved `conf.yaml` (`save` entries that are actually present in the profile, plus every `export` entry it lists, since Konsave only ever copies `export` files in at export time) — read-only, nothing is written or changed in the profile or in `conf.yaml`. `ProfileDetails` gets a new `categories` field carrying this. **Fixes the profile cards always showing a single generic "Desktop settings" badge** regardless of which categories were chosen at save time: `ServiceBackend.list_profiles()` now prefers `categories` for a profile's badges (falling back to the coarse Konsave `save` group names, `sections`, only when nothing is recognized at all), so a profile saved with System and GTK checked shows exactly those two badges instead of the one group name ("configs") they both happened to live inside — and this applies to every profile, not only a selectively-saved one. One behavior change: a custom, hand-added group with entries the catalog does not recognize now shows as "Other settings" rather than under its own group name. See `docs/INTEGRATION.md` §11. Tests: `tests.test_profile_details.CategoriesTests`, `tests.test_gui_details.SectionChipsTests`
+
+This lands the whole selective-save feature end to end: the 12-category catalog
+and filtering, the Konsave patch, the service layer, the real backend, the save
+dialog, and accurate per-category badges on every profile card. What is still
+not offered is picking individual files within a category (see
+`docs/LIMITATIONS.md` §4).
+
+### Fixed
+- (KonGUI) `kongui/gui/widgets/common.py`: `Badge` (the profile card chips) could show raw, un-ellipsized, truncated text — missing characters from *both* ends, e.g. "Panels and desktop layout" rendered as "s and desktop l" — during interactive window resizing. The elision was only recomputed on `resizeEvent`, which caches the shown text for the width known at that moment; a live, continuous drag can deliver a paint for a width the last `resizeEvent` hasn't caught up to yet, so the stale, wrongly-sized string got centered and clipped by the real (narrower) paint rect instead of being elided for it. `Badge` now also re-checks and, if needed, recomputes the elision in a `paintEvent` override, immediately before painting, so what is drawn always matches the widget's true current width — closing the race regardless of how many resizes land between two paints. Tests: `tests.test_gui_widgets.CommonWidgetTests.test_badge_elides_long_text_when_too_narrow`, `tests.test_gui_widgets.CommonWidgetTests.test_badge_reelides_at_paint_time_if_the_cached_width_is_stale`
+- (KonGUI) Profile card chips also all shrank together once they stopped fitting as a group, so a card could show three half-elided badges side by side even when the first one or two would have fit at their full width with room to spare — and, because the old `QHBoxLayout` row was never actually given the card's full width, no badge showed its full text even with the window maximized. New `kongui/gui/widgets/common.py::BadgeRow` lays badges out by priority instead: each one gets its full width as long as there's room left, only the first one that doesn't fully fit is elided (to whatever space remains), and any badge after that is hidden rather than squeezed to an unreadable sliver — this also fixed an off-by-one in `Badge.sizeHint`/`minimumSizeHint` where `QFontMetrics.elidedText` could still elide a string given exactly its own measured width. `kongui/gui/widgets/cards.py::ProfileCard` uses `BadgeRow` for its chips row, and the overflow "+N" badge's tooltip now lists every section the profile covers (not just the hidden ones), so hovering it tells the whole story regardless of which other badges got elided. Tests: `tests.test_gui_widgets.CommonWidgetTests` (`BadgeRow` layout cases), `tests.test_gui_details.SectionChipsTests.test_more_than_max_chips_gets_an_overflow_badge_listing_every_section`
+- (KonGUI) Section badges, now the same everywhere (profile cards, the Dashboard's **Active profile** card, and the **Import** preview): `BadgeRow` (`kongui/gui/widgets/common.py`) now takes the labels and shows at most 3 of them at full width, followed by a "+N" badge counting every section left out. The Dashboard card used to show one badge per section, so with many sections they all collapsed into a row of bare "…"; it now uses the same row. The "+N" badge could also disappear when the window was resized; its room is now reserved first, so it is always visible and never cut off, and a badge that does not fit is counted in "+N" instead of being shown elided (only the first badge is ever elided, when not even it fits next to "+N"). Hovering "+N" lists every section. New `kongui.gui.messages.section_short_label` gives the badge text (the section name without the explanation in parentheses).
+- (KonGUI) **Save current profile** / **New profile** dialog: on a short screen or with a long "Will include" summary, "What to include" was drawn over the description box and the summary over the **Cancel** / **Save** buttons. Only the list of section checkboxes now scrolls (a `QScrollArea`); the heading, **Select all** / **Clear all**, the summary and the buttons stay fixed, and `BaseDialog.fit_wrapped_labels()` reserves each wrapped text's real height at the current width, so no dialog can be squeezed shorter than its text. Checked by an overlap scan of every page (Dashboard, Profiles in grid and list, Import / Export, Settings, About) and dialog (confirmation, conflict, details, safety copies) at their minimum sizes; no other overlap was found.
+- (KonGUI) Segmented controls (Settings: language, theme, default view; Profiles: grid / list): the selected option is drawn in semibold, but Qt sized every option for regular text, so the selected label was clipped at both ends (most visible on "English" with wide fonts such as Noto Sans). `Button` now reserves the semibold width for `segment` buttons in `sizeHint` (and so in the minimum size), in both states, so selecting an option no longer makes the control jump either.
+
+### Changed
+- (KonGUI) Repository and documentation cleanup. The README was rewritten to be shorter and current (it still said choosing what goes into a profile was not offered). `CONTRIBUTION.md`, still upstream Konsave's text (it pointed to a `konsave/vars.py` that no longer exists), became a KonGUI `CONTRIBUTING.md`. `docs/GUI_PROTOTYPE.md` and `docs/GUI_SERVICES.md` were merged into `docs/GUI.md`. `docs/TEST_OVERVIEW.md` now explains how to run the suite (as a regular user) and holds the Python/PySide6 matrix. `docs/PLASMA_TEST_PLAN.md` now holds the real-session results. The screenshots moved to `docs/screenshots/`. This changelog now keeps only KonGUI's releases and links to Konsave's own history.
+
+### Removed
+- (KonGUI) `docs/FINAL_AUDIT.md`, an out-of-date status snapshot that cited four removed modules; its still-useful parts moved to `docs/LIMITATIONS.md`, `docs/TEST_OVERVIEW.md` and `docs/PLASMA_TEST_PLAN.md`. Also removed: `docs/reports/` (its only report is summarized in `docs/PLASMA_TEST_PLAN.md`), `.vscode/settings.json` (editor settings with keys VS Code no longer reads), and a `package_data` entry in `setup.py` for a `config` package that does not exist (the wheel's contents are unchanged).
+
 ## [0.1.0a3] - 2026-10-23
 Third alpha (GitHub pre-release). Adds the application icon.
 
@@ -75,216 +102,6 @@ the original Konsave.
 ### Fixed
 - (KonGUI) A refused apply or import could be reported with no reason: errors the service adds after validating the `conf.yaml` (a destination whose parent folder does not exist, a destination outside the home) were dropped from the notice when the file only had warnings. They are now listed. See `docs/TEST_OVERVIEW.md` §3
 
-## [2.2.0] - 2023-01-31
-### Added
-- You can now set the output directory and archive name when exporting a profile ([#72](https://github.com/Prayag2/konsave/pull/72))
-- Profiles will now be listed in alphabetical order (#67)
-
-### Fixed
-- Fixed typo in README (#48)
-
-### Changed
-- Improved README (#75)
-- Made it clear that a profile needs to be saved before exporting in the help text.
-- Logs will now be saved to `$HOME/.cache/konsave_log.txt`
-
-
-## [2.1.2] - 2022-04-20
-### Fixed
-- Empty entries in the config files will now be parsed as empty strings to prevent an exception. See [#50](https://github.com/Prayag2/konsave/pull/50)
-- A small typo was fixed. See [#51](https://github.com/Prayag2/konsave/pull/51)
-- Fixed incorrect PyYaml version in `requirements.txt`. See [#56](https://github.com/Prayag2/konsave/pull/56)
-
-### Added
-- Kate's (KDE's code editor) config files were added in the default KDE config file. See [#58](https://github.com/Prayag2/konsave/pull/58)
-
-## [2.1.1] - 2021-10-24
-### Removed
-- Removed the prompt that asked you which desktop environment you use when you ran Konsave for the first time. See [#45](https://github.com/Prayag2/konsave/issues/45).
-- Removed unused import of the `log` function in `__main__.py`.
-
-### Changed
-- Konsave will now automatically detect if you're using KDE plasma or not.
-- Fixed some Pylint errors.
-
-## [2.1.0] - 2021-09-07
-### Added
-- The following placeholders for `config.yaml` were added:
-    1. `$SHARE_DIR`: It points to `$HOME/.local/share`
-    2. `$BIN_DIR`: It points to `$HOME/.local/bin`
-
-### Changed
-- Now, there's no need to check for the ID of a profile if you already know its name. You can remove, apply and export a profile using its name. For example `konsave --export myprofile`. See [#38](https://github.com/Prayag2/konsave/issues/38)
-- Replaced the words "variables and functions" with "placeholders".
-- Updated readme.
-
-### Removed
-- You'll no longer be able to use IDs to remove, apply and export profiles. You have to use the name of the profile to do so.
-- The following placeholders were removed:
-    - `$KONSAVE_DIR`
-    - `$CONFIG_DIR`
-
-## [2.0.2] - 2021-04-13
-### Fixed
-- Fixed a bug with export. Previously, exporting a profile would export the current profile but now it will export the specified profile.
-- Fixed a typo in the readme
-
-## Added
-- Added a line in the readme
-
-## [2.0.1] - 2021-04-11
-### Removed
-- KDE Plasma won't be restarted after applying a new configuration now. You'll have to restart it yourself. This was done because using Konsave on other DEs would give an error.
-
-## [2.0.0] - 2021-04-11
-### Added
-- Possibility to define multiple backup targets via the configuration file.
-- Errors will be saved to `konsave_log.txt` in the home directory.
-- Ability to use a few variables and functions in the configuration file.
-- Ability to use Konsave on all desktop environments.
-
-### Changed
-- Improved export and import feature. You'll be able change which files to export and import from the configuration file.
-- Changed yaml loader from `yaml.FullLoader` to `yaml.SafeLoader`
-- The version will now be dynamically printed.
-
-### Break
-- The old configuration files and profiles won't work with this version of Konsave.
-
-## [1.1.9] - 2021-03-18
-### Fixes
-- Fixes [#26](https://github.com/Prayag2/konsave/issues/26)
-- Prints help when entering "konsave" without any arguments
-
-## [1.1.8] - 2021-03-18
-### Changes
-- Add missing new lines at end of `.pylintrc` and `CONTRIBUTION.md`.
-- Gitignore:
-    - Common VS Code and JetBrains IDE user-specific stuff.
-    - All `__pycache__` dirs (`**/__pycache__`).
-- Delete and untrack all `*.pyc` files.
-- Reformat and improve some docstrings.
-- Remove some excessive comments, e.g. `## IMPORTS ##` or `# WIPE`. The import section is clear and visible enough to not need such additional comment. Same with functions - docstrings do that job well.
-- Refactor and simplify CLI argument parsing.
-- Adapt `setup.py` to use pip requirement text files.
-    - Create extra `dev` and corresponding `requirements_dev.txt` requirement text file. Can be installed via `pip install -e .[dev]` or from PyPI via `pip install konsave[dev]`.
-- Remove "Dependencies" section from `README.md` - dependencies get installed automatically anyway.
-
-## [1.1.7] - 2021-03-13
-### Fixes
-- Fixed [#28](https://github.com/Prayag2/konsave/issues/28)
-
-## Changes
-- The program will now quit on any error
-
-
-## [1.1.6] - 2021-03-11
-### Changes
-- Changed code style to [PEP8](https://www.python.org/dev/peps/pep-0008/)
-- Changed docstring style to [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
-- Updated README
-
-### Additions
-- Added a CONTRIBUTIONS.md
-
-### Fixes
-- Fixed a possible bug. Refer to [#26](https://github.com/Prayag2/konsave/issues/26).
-
-## [1.1.5] - 2021-03-08
-### Changes
-- Changed `print_msg` to `log`.
-- Changed `check_error` function to a decorator (Thanks to (this article)[https://medium.com/swlh/handling-exceptions-in-python-a-cleaner-way-using-decorators-fae22aa0abec]) for easier maintenance.
-- Improved logging
-
-## [1.1.4] - 2021-03-07
-### Changes
-- Created a function called `copy` to replace `shutil.copytree`. This would add support for python versions <= 3.7. 
-- Changed version in `vars.py` from 1.1.3 to 1.1.4
-
-### Fixes
-- Previously, running `konsave --export <id>` would cause it to export the CURRENT icon and cursor theme. Now, it will export the icon and cursor theme of the profile being exported.
-- Some fixes in `copy()`
-
-## [1.1.3] - 2021-03-06
-### Changes
-- Fixed something
-
-## [1.1.2] - 2021-03-06
-### Changes
-- Fixed something
-
-## [1.1.1] - 2021-03-06
-### Changes
-- Fixed a bug
-
-## [1.1.0] - 2021-03-06
-### Changes
-- You can now wipe all your profiles at once using konsave -w or konsave --wipe
-
-## [1.0.7] - 2021-03-06
-### Changes
-- bug fixes
-
-## [1.0.6] - 2021-03-06
-### Changes made by @majabojarska
-- Add GitHub Actions workflow "Release". Runs on tag push, named v* (e.g. v1.0.5). This workflow creates a GitHub release and publishes the package to PyPI repository.
-- Change setup.py manual versioning to SCM versioning - the tag's version determines the package's version. This means that tag v1.0.5 results in package version 1.0.5 on PyPI. This also means that the package version won't be maintained via source code, but via Git tags.
-
-
-## [1.0.5] - 2021-03-06
-### Changes
-- Fixed a small mistake with the versioning
-
-## [1.0.4] - 2021-03-05
-### Changes
-- You can now use the --force or -f option to overwrite existing profiles!
-- A separate config file has been introduced for easier maintenance
-
-## [1.0.3] - 2021-03-05
-### Changes
-- Deployed it to PyPI!
-
-## [1.0.2] - 2021-02-28
-### Changes
-- Fixed a small bug
-
-## [1.0.1] - 2021-02-28
-### Changes
-- Bug fixes
-- Better import and export
-    + It will now export and import the installed themes, icons, cursors and plasmoids so there will be no need to install the themes manually on other machines.
-
-## [1.0.0] - 2021-02-27
-### Changes
-- You can now export and import your favourite profiles as ".knsv" files and share them with your friends!
-- You can also import ".knsv" files as profiles!
-
-
-[2.2.0]: https://github.com/Prayag2/konsave/compare/v2.1.2...v2.2.0
-[2.1.2]: https://github.com/Prayag2/konsave/compare/v2.1.1...v2.1.2
-[2.1.1]: https://github.com/Prayag2/konsave/compare/v2.1.0...v2.1.1
-[2.1.0]: https://github.com/Prayag2/konsave/compare/v2.0.2...v2.1.0
-[2.0.2]: https://github.com/Prayag2/konsave/compare/v2.0.1...v2.0.2
-[2.0.1]: https://github.com/Prayag2/konsave/compare/v2.0.0...v2.0.1
-[2.0.0]: https://github.com/Prayag2/konsave/compare/v1.1.9...v2.0.0
-[1.1.9]: https://github.com/Prayag2/konsave/compare/v1.1.8...v1.1.9
-[1.1.8]: https://github.com/Prayag2/konsave/compare/v1.1.7...v1.1.8
-[1.1.7]: https://github.com/Prayag2/konsave/compare/v1.1.6...v1.1.7
-[1.1.6]: https://github.com/Prayag2/konsave/compare/v1.1.5...v1.1.6
-[1.1.5]: https://github.com/Prayag2/konsave/compare/v1.1.4...v1.1.5
-[1.1.4]: https://github.com/Prayag2/konsave/compare/v1.1.3...v1.1.4
-[1.1.3]: https://github.com/Prayag2/konsave/compare/v1.1.2...v1.1.3
-[1.1.2]: https://github.com/Prayag2/konsave/compare/v1.1.1...v1.1.2
-[1.1.1]: https://github.com/Prayag2/konsave/compare/v1.1.0...v1.1.1
-[1.1.0]: https://github.com/Prayag2/konsave/compare/v1.0.7...v1.1.0
-[1.0.7]: https://github.com/Prayag2/konsave/compare/v1.0.6...v1.0.7
-[1.0.6]: https://github.com/Prayag2/konsave/compare/v1.0.5...v1.0.6
-[1.0.5]: https://github.com/Prayag2/konsave/compare/v1.0.4...v1.0.5
-[1.0.4]: https://github.com/Prayag2/konsave/compare/v1.0.3...v1.0.4
-[1.0.3]: https://github.com/Prayag2/konsave/compare/v1.0.2...v1.0.3
-[1.0.2]: https://github.com/Prayag2/konsave/compare/v1.0.1...v1.0.2
-[1.0.1]: https://github.com/Prayag2/konsave/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/Prayag2/konsave/compare/6b4a0c0bbf8c29684cc2a334065314bc8e4ea529...v1.0.0
-[Unreleased]: https://github.com/ericksousa32/kongui/compare/v0.1.0a2...HEAD
-[0.1.0a2]: https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a2
-[0.1.0a1]: https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1
+## Konsave 2.2.0 and earlier
+KonGUI starts from Konsave 2.2.0 (2023-01-31). The history of Konsave itself is in the
+[original project's changelog](https://github.com/Prayag2/konsave/blob/master/CHANGELOG.md).

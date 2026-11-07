@@ -1,8 +1,7 @@
 # Limitations and decisions
 
 One place for what KonGUI does **not** do, what was decided on purpose, and what is
-still open. Details of each item are in the document linked next to it; the status
-of every requirement is in [`FINAL_AUDIT.md`](FINAL_AUDIT.md).
+still open. Details of each item are in the document linked next to it.
 
 Written on 2026-10-18 and kept up to date; it applies to the first alpha, [`0.1.0a1`](https://github.com/ericksousa32/kongui/releases/tag/v0.1.0a1)
 (2026-10-22). How versions and releases work: [`RELEASING.md`](RELEASING.md). Nothing
@@ -13,7 +12,7 @@ blocker; what it did not cover is in B-3 below.
 
 | Id | What is missing | Why | Where |
 |---|---|---|---|
-| B-3 | The rest of the validation in a real Fedora KDE / Plasma session: drag and drop on **X11**, **SELinux**, **Flatpak**, **quitting during an operation**, and more thorough testing in general; minor layout and text alignment adjustments | a first quick test (Fedora 44, Plasma 6.7.5, Wayland, 2026-10-22) passed: start, save and apply with safety copy and restore, export and import, drag and drop on Wayland, `conf.yaml` edited by hand, two operations at once. The automated tests never apply anything to a real session. Script and report template: [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md) | [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §3.5 and §7 |
+| B-3 | The rest of the validation in a real Fedora KDE / Plasma session: drag and drop on **X11**, **SELinux**, **Flatpak**, **quitting during an operation**, and more thorough testing in general; minor layout and text alignment adjustments | a first quick test (Fedora 44, Plasma 6.7.5, Wayland, 2026-10-22) passed: start, save and apply with safety copy and restore, export and import, drag and drop on Wayland, `conf.yaml` edited by hand, two operations at once. The automated tests never apply anything to a real session. Script and report template: [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md) | [`PLASMA_TEST_PLAN.md`](PLASMA_TEST_PLAN.md), *Results so far* |
 | B-1 | Progress and cancellation of an operation that has already started | the original engine cannot be interrupted and `konsave/` is only changed for the lock and the package rename; the interface only shows "busy" (waiting for the lock *can* be cancelled) | [`INTEGRATION.md`](INTEGRATION.md) §8 |
 
 The other mandatory requirements are implemented and tested: safety copy before
@@ -26,14 +25,14 @@ The other mandatory requirements are implemented and tested: safety copy before
 |---|---|---|
 | **No `conf.yaml` management (2026-10-19).** The editor, its backups (`conf.yaml.bak-*`), KonGUI's own validation of the file (errors with line and column, duplicate keys, placeholder checks) and the warning about a `.knsv` whose `conf.yaml` differs from the profile's (A-4) were removed, to stay within Konsave's scope | the user edits `~/.config/konsave/conf.yaml` by hand, as with Konsave (§4). KonGUI still *reads* the file through Konsave's own parser, because the safety copies, the free-space estimates, the sections on the cards and the refusals below need to know where files go | this file, §4 |
 | **What a profile includes is chosen by hand**, in `~/.config/konsave/conf.yaml`. The save dialog has no "what to include" check boxes in real mode | the `save` groups of the global `conf.yaml` decide what is saved | §4 |
-| **The `conf.yaml` inside a `.knsv` is not rewritten, and there is no warning about it.** Konsave puts the *global* file there while it assembles `save/` and `export/` from the *profile's* file | if they differ the archive contradicts itself: a group added since makes the profile impossible to apply on the other computer (KonGUI refuses and says which group), a group removed since is ignored. Inspecting an archive before importing still lists groups without data | [`FINAL_AUDIT.md`](FINAL_AUDIT.md) A-4 |
+| **The `conf.yaml` inside a `.knsv` is not rewritten, and there is no warning about it.** Konsave puts the *global* file there while it assembles `save/` and `export/` from the *profile's* file | if they differ the archive contradicts itself: a group added since makes the profile impossible to apply on the other computer (KonGUI refuses and says which group), a group removed since is ignored. Inspecting an archive before importing still lists groups without data | [`INTEGRATION.md`](INTEGRATION.md) §8 |
 | **Safety refusals are kept.** Applying a profile, or importing a `.knsv`, whose `conf.yaml` would write outside the home folder (a `location` outside it, or an entry such as `../x`) is refused, and so is applying a group whose folder and parent folder are both missing | the notice lists the reasons. These are not validation of the user's file: they protect the session from a hostile archive or a profile that would leave the home | [`INTEGRATION.md`](INTEGRATION.md) §10 |
 | **No limit on the number of safety copies** and **no automatic pruning** | copies grow until the user deletes them in *Settings → Safety copies → Manage…*. Pruning would remove the oldest copy first, which is the one that holds the original state | [`INTEGRATION.md`](INTEGRATION.md) §9 |
 | **The description does not travel in the `.knsv`** and **the `.knsv` format is unchanged** | an imported profile starts without a description | [`INTEGRATION.md`](INTEGRATION.md) §11 |
 | **P-3 limits stay fixed constants** | see §3 | [`INTEGRATION.md`](INTEGRATION.md) §10 |
 | **Without PySide6, `kongui` shows a raw `ImportError`** for now | the interface needs the `gui` extra: `pip install "kongui[gui]"` | [`README.md`](../README.md) |
 | **The package is called `kongui`** (not `Konsave`); author, URL and links in `setup.py` are this repository's | the bundled `konsave` command is still installed; see §5 | [`KONSAVE_PATCHES.md`](KONSAVE_PATCHES.md) §3.5 |
-| **`setuptools` is not a runtime dependency** and was removed from `requirements.txt` | it is only needed to *build* the package. Proof: nothing in `kongui/` or `konsave/` imports it, and the whole test suite passes with `setuptools`, `pkg_resources` and `distutils` made unimportable (`tests.test_packaging` checks the imports and the requirements) | [`FINAL_AUDIT.md`](FINAL_AUDIT.md) §5 |
+| **`setuptools` is not a runtime dependency** and was removed from `requirements.txt` | it is only needed to *build* the package. Proof: nothing in `kongui/` or `konsave/` imports it, and the whole test suite passes with `setuptools`, `pkg_resources` and `distutils` made unimportable (`tests.test_packaging` checks the imports and the requirements) | `tests.test_packaging` |
 
 ## 3. Import and export limits (P-3)
 
@@ -60,8 +59,28 @@ They protect against a damaged or hostile `.knsv` and against a full disk. They 
 
 ## 4. How to choose what a profile includes
 
-KonGUI does not ask this when saving and has no screen for it. The rule is
-Konsave's own, and so is the tool: a text editor.
+`kongui.core.profiles.ProfileService.save()` accepts a `categories` argument
+(`docs/INTEGRATION.md` §12): pass a subset of the 12 export categories and the
+profile is saved with only the matching files, without touching
+`~/.config/konsave/conf.yaml`. This is wired all the way to the application now:
+**Save profile** (`kongui/gui/actions.py`) opens `ProfileDialog`
+(`kongui/gui/widgets/dialogs.py`) with the real 12 categories (translated
+through `kongui.gui.messages.section_label`), the dialog offers **Select all**
+and **Clear all**, warns when a checked category needs another that is not
+checked (`kongui.core.CATEGORY_DEPENDENCIES`) and shows a running summary of
+what will be included; the keys the user leaves checked are passed to
+`kongui.gui.backend.ServiceBackend.save()` as `sections`, which passes them
+through to `ProfileService.save()` as `categories`. `Capabilities.sections` is
+`True` for `ServiceBackend`, so this is the normal save flow, not a prototype.
+
+What is **not** offered yet is picking individual files or settings *within* a
+category — the dialog only offers the 12 categories as a whole, matching
+`kongui.core.categories`'s own granularity; a category with files the user does
+not want still needs the manual route below, or hand-editing after the profile
+is saved. The manual route is also still how to add a group `filter_groups`
+does not know about (an unrecognized name falls into "Other settings", never
+dropped, but cannot be aimed at a *different* category without editing
+`kongui/core/categories.py`'s catalog itself):
 
 1. Open `~/.config/konsave/conf.yaml` in a text editor (Konsave creates it the first
    time; KonGUI creates the same default file before the first save). The `save:`
@@ -76,10 +95,16 @@ Konsave's own, and so is the tool: a text editor.
    *at that moment*; profiles saved earlier keep what they had. If the file has a
    mistake, the save fails and the notice shows Konsave's own reason (for example a
    YAML error, or an entry with a `/` in it); nothing is left behind.
-4. The cards show what each profile ended up holding (its sections).
+4. The cards show what each profile ended up holding: the real export categories
+   re-derived entry by entry from the group(s) you edited (`profile_categories()`,
+   `docs/INTEGRATION.md` §11), not the raw group name you gave it — a custom group
+   with recognized entries shows the category they belong to; one with none
+   recognized shows "Other settings".
 
 Before **exporting** a profile, make sure the global file and the profile's agree
-(see A-4 in §2): KonGUI no longer warns about it.
+(see A-4 in §2): KonGUI no longer warns about it. This caveat does not apply to a
+profile saved with `categories`: the categories are resolved and filtered at that
+moment regardless of what the global file later becomes.
 
 ## 5. Package and installation
 
@@ -106,7 +131,7 @@ Before **exporting** a profile, make sure the global file and the profile's agre
   `tests.test_packaging` checks that the limit is declared. If you install PySide6
   by hand (not through the extra) on Python older than 3.12, use 6.9 or older.
 * Python versions: the suite was run on 3.9, 3.10, 3.11, 3.12, 3.13 and 3.14
-  ([`FINAL_AUDIT.md`](FINAL_AUDIT.md) §6).
+  ([`TEST_OVERVIEW.md`](TEST_OVERVIEW.md), *Python and PySide6*).
 * The version comes from the git tag only: `setuptools_scm` computes the package
   version and `kongui.__version__` reads it from the installed package, so they can
   not disagree ([`RELEASING.md`](RELEASING.md)). A checkout that was never installed
