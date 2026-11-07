@@ -495,9 +495,7 @@ class CategoriesTests(DetailsCase):
     def test_a_present_app_layout_entry_adds_its_own_category(self):
         write(self.home / ".local/share/kxmlgui5/dolphin/ui.rc", "x")
         self.profiles.save("work").raise_for_status()
-        self.assertEqual(
-            profile_categories(self.folder("work")), (SYSTEM, ICONS, APPS)
-        )
+        self.assertEqual(profile_categories(self.folder("work")), (SYSTEM, ICONS, APPS))
 
     def test_a_selectively_saved_profile_reads_back_exactly_what_was_chosen(self):
         write(self.home / ".local/share/kxmlgui5/dolphin/ui.rc", "x")

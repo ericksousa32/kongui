@@ -11,7 +11,8 @@ same engine, same profile folder, same `.knsv` files, plus a graphical interface
 
 > **Status: alpha.** Published as GitHub
 > [pre-releases](https://github.com/ericksousa32/kongui/releases) since `0.1.0a1`
-> (2026-10-22). A first test on a real Plasma session (Fedora 44, Wayland) found no
+> (2026-10-22), and from `0.1.0a4` (2026-11-07) also as signed AppImages for x86_64 and
+> aarch64. A first test on a real Plasma session (Fedora 44, Wayland) found no
 > blocker; X11, SELinux and Flatpak are not tested yet. KonGUI is **not** affiliated
 > with, endorsed by, or maintained by the Konsave authors.
 
