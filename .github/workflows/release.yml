@@ -132,6 +132,7 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30   # a hung step fails here, not after GitHub's 6 hours
     env:
       ARCH: ${{ matrix.arch }}
       VERSION: ${{ needs.build.outputs.version }}
@@ -192,15 +193,20 @@ jobs:
           appimage="$PWD/dist/appimage/KonGUI-${VERSION}-${ARCH}.AppImage"
           home="$(mktemp -d)"
           mkdir -p "$home/.cache" "$home/.config"
-          export HOME="$home" APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen
-          "$appimage" konsave -v
+          export HOME="$home" QT_QPA_PLATFORM=offscreen
+          # The runner has no FUSE: extract-and-run for the app itself. Every
+          # call has a time limit, so a call that opens the window fails fast.
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 300 "$appimage" konsave -v
           cd "$home"
-          "$appimage" --appimage-extract >/dev/null
+          timeout 300 "$appimage" --appimage-extract >/dev/null
           python_dir="$(echo squashfs-root/opt/python3.*)"   # one folder: opt/python3.NN
-          "$python_dir/bin/$(basename "$python_dir")" -s "$GITHUB_WORKSPACE/tools/smoke_test.py" \
-            --expect-version "$VERSION"
+          timeout 300 "$python_dir/bin/$(basename "$python_dir")" -s \
+            "$GITHUB_WORKSPACE/tools/smoke_test.py" --expect-version "$VERSION"
           if [ "$IS_TAG" = "true" ]; then
-            test "$("$appimage" --appimage-updateinformation)" = "$UPDATE_INFORMATION"
+            # NOT with APPIMAGE_EXTRACT_AND_RUN: with it the runtime ignores its
+            # own --appimage-* option and starts KonGUI, which never ends
+            # offscreen (it hung the first v0.1.0a4 run).
+            test "$(timeout 60 "$appimage" --appimage-updateinformation)" = "$UPDATE_INFORMATION"
             test -s "${appimage}.zsync"
           fi
 
@@ -212,8 +218,8 @@ jobs:
             "https://github.com/AppImageCommunity/AppImageUpdate/releases/download/continuous/validate-${ARCH}.AppImage"
           chmod +x validate.AppImage
           # validate writes its report to stderr: keep both in the log.
-          APPIMAGE_EXTRACT_AND_RUN=1 ./validate.AppImage "dist/appimage/KonGUI-${VERSION}-${ARCH}.AppImage" \
-            2>&1 | tee validate.log
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 300 ./validate.AppImage \
+            "dist/appimage/KonGUI-${VERSION}-${ARCH}.AppImage" 2>&1 | tee validate.log
           grep -q "Validation result: validation successful" validate.log
           grep -q "$SIGN_KEY" validate.log
 
