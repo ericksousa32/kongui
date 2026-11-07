@@ -108,6 +108,10 @@ moment regardless of what the global file later becomes.
 
 ## 5. Package and installation
 
+* **AppImage: being prepared, not published yet** ([`RELEASING.md`](RELEASING.md)
+  §7). It is x86_64 only so far (aarch64 comes with the release workflow), uses
+  Qt's own file dialog rather than Plasma's (the Qt inside has no KDE platform
+  plugin; the dialog is fully translated), and needs glibc 2.34 or newer.
 * The distribution is `kongui` and installs two commands: `kongui` and the bundled
   `konsave`. Both ship a Python package called `konsave`, so **installing KonGUI in
   the same environment as the original Konsave replaces it**; use a virtual

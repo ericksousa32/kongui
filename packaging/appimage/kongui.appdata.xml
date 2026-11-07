@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata of the KonGUI AppImage (software centers, Gear Lever). -->
+<component type="desktop-application">
+  <id>kongui</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>KonGUI</name>
+  <summary>Save, apply and share KDE Plasma configuration profiles</summary>
+  <description>
+    <p>
+      KonGUI is a graphical interface for Konsave. It saves the look and
+      settings of your Plasma desktop as named profiles, applies them again,
+      and exports or imports them as .knsv files to use on another computer.
+    </p>
+    <ul>
+      <li>Choose which categories go into a profile: panels, themes, icons, fonts, shortcuts and more</li>
+      <li>Safety copies of the files a profile would replace, made before applying or importing</li>
+      <li>Works with the profile folder and .knsv files of Konsave</li>
+      <li>English and Brazilian Portuguese</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">kongui.desktop</launchable>
+  <url type="homepage">https://github.com/ericksousa32/kongui</url>
+  <url type="bugtracker">https://github.com/ericksousa32/kongui/issues</url>
+  <developer id="io.github.ericksousa32">
+    <name>KonGUI contributors</name>
+  </developer>
+  <provides>
+    <binary>kongui</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+</component>

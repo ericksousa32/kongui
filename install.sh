@@ -118,7 +118,9 @@ fi
 if [ "$(uname -s)" != "Linux" ]; then
     die "KonGUI only works on Linux"
 fi
-[ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not set to an existing folder"
+if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ]; then
+    die "HOME is not set to an existing folder"
+fi
 
 # A folder is KonGUI's environment only if this script made it (it leaves a
 # marker file in it before creating the environment, so an installation that
@@ -418,7 +420,7 @@ Exec=$EXEC
 ${ICON_LINE:+$ICON_LINE
 }Terminal=false
 StartupWMClass=kongui
-Categories=Settings;DesktopSettings;Utility;
+Categories=Settings;DesktopSettings;Qt;
 Keywords=konsave;profile;plasma;backup;theme;
 $MARKER
 EOF

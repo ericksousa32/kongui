@@ -129,6 +129,7 @@ pip install -e ".[gui,dev]"
 kongui --demo                                 # or: python3 -m kongui.gui --demo
 QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -t .   # or: make tests
 make smoke                                    # quick check that the app starts
+make appimage                                 # build an AppImage (docs/RELEASING.md §7)
 ```
 
 Use a virtual environment: the package also installs a Python package named
