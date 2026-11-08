@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - (KonGUI) README: the AppImage is now the recommended way in, with a download badge and link at the top and its section before `install.sh` (whose steps now sit under one `install.sh` heading). The release notes list the AppImage first too.
+- (KonGUI) New screenshots in `docs/screenshots/` (Dashboard, Profiles, Import / Export, Settings, About), taken with real profiles on Fedora 45 instead of demo mode; the old ones were removed.
 
 ## [0.1.0a4] - 2026-11-07
 Fourth alpha (GitHub pre-release). Choose what goes into a profile (12 categories);

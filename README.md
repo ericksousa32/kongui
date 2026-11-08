@@ -12,8 +12,8 @@ and open it; nothing to install. Details in [AppImage](#appimage).
 
 ![KonGUI dashboard](docs/screenshots/Captura_de_tela_20261107_104625.png)
 
-*Screenshots are taken using real profiles. More in
-[`docs/screenshots/`](docs/screenshots/).*
+*The screenshots show real profiles (Fedora 45, dark theme). More in
+[`docs/screenshots/`](docs/screenshots/); `kongui --demo` shows fictitious ones.*
 
 > **Status: alpha.** Published as GitHub
 > [pre-releases](https://github.com/ericksousa32/kongui/releases) since `0.1.0a1`
