@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QObject, QSettings, Signal
 
-from kongui.gui.i18n import NO_PREFERENCE, normalize_preference
+from kongui.gui.i18n import NO_PREFERENCE, Text, normalize_preference
 from kongui.gui.theme import ThemeMode
 
 
@@ -113,12 +113,13 @@ class ActivityEntry:
     Attributes:
         when: Time of the event.
         kind: ``"save"``, ``"apply"``, ``"export"``, ``"import"``, ``"remove"`` or ``"info"``.
-        text: Description.
+        text: Description, or a function returning it in the current language
+            (so an entry follows a language change made after the event).
     """
 
     when: datetime
     kind: str
-    text: str
+    text: Text
 
 
 class ActivityLog(QObject):
@@ -143,12 +144,12 @@ class ActivityLog(QObject):
         """Returns the entries, newest first."""
         return list(self._entries)
 
-    def add(self, kind: str, text: str) -> ActivityEntry:
+    def add(self, kind: str, text: Text) -> ActivityEntry:
         """Records an event happening now.
 
         Args:
             kind: Event kind.
-            text: Description.
+            text: Description, or a function returning it in the current language.
 
         Returns:
             ActivityEntry: The new entry.

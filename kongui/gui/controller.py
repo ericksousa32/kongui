@@ -703,11 +703,7 @@ class ProfileController(QObject):  # pylint: disable=too-many-public-methods
             operation,
             name,
             True,
-            (
-                messages.partial_title(operation, name)
-                if partial
-                else messages.success_title(operation, name)
-            ),
+            messages.outcome_title(operation, name, partial),
             tuple(details),
             result=result,
             warning=partial,

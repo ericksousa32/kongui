@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - (KonGUI) README: the AppImage is now the recommended way in, with a download badge and link at the top and its section before `install.sh` (whose steps now sit under one `install.sh` heading). The release notes list the AppImage first too.
 - (KonGUI) New screenshots in `docs/screenshots/` (Dashboard, Profiles, Import / Export, Settings, About), taken with real profiles on Fedora 45 instead of demo mode; the old ones were removed.
+- (KonGUI) *About*: the "In development" notice no longer says a profile's content is set only by editing `~/.config/konsave/conf.yaml` by hand; it now says the save dialog chooses the categories, from the entries listed in `conf.yaml`. Tests: `tests.test_gui_real_backend`
+
+### Fixed
+- (KonGUI) The *Recent activity* (Dashboard) and *Recent transfers* (Import / Export) entries stayed in the language the operation ran in: after switching from Portuguese to English, a profile saved earlier still read *Perfil “Work” salvo*. An entry now keeps the operation, profile name and outcome and is written in the language in use each time it is shown (`ActivityEntry.text` may be a function, like `Label`; `messages.outcome_title()`). The fictitious `--demo` feed stays English, as before. See `docs/GUI.md` §9. Tests: `tests.test_i18n.LaterComponentsTests.test_activity_follows_a_later_language_change`
 
 ## [0.1.0a4] - 2026-11-07
 Fourth alpha (GitHub pre-release). Choose what goes into a profile (12 categories);

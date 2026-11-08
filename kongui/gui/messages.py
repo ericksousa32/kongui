@@ -145,6 +145,22 @@ def partial_title(operation: str, name: str) -> str:
     ).format(name=name)
 
 
+def outcome_title(operation: str, name: str, partial: bool) -> str:
+    """Returns the headline of a successful operation.
+
+    Args:
+        operation: Operation key.
+        name: Profile name (may be empty).
+        partial: Whether the operation worked only in part.
+
+    Returns:
+        str: Text in the interface language.
+    """
+    if partial:
+        return partial_title(operation, name)
+    return success_title(operation, name)
+
+
 def is_partial(result: Optional[OperationResult]) -> bool:
     """Tells whether a successful result carries a "description not saved" note."""
     return result is not None and any(

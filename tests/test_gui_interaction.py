@@ -104,7 +104,9 @@ class DashboardTests(GuiTestCase):
         self.assertIsNotNone(profile)
         self.assertEqual(profile.description, "Para o fim de semana")
         self.assertEqual(window.toasts.kinds()[-1], "success")
-        self.assertIn("Casa", window.context.activity.entries()[0].text)
+        from kongui.gui.i18n import resolve_text
+
+        self.assertIn("Casa", resolve_text(window.context.activity.entries()[0].text))
         self.assertEqual(page.stats["count"].value_label.text(), "8")
 
     def test_cancelled_dialog_changes_nothing(self):

@@ -266,8 +266,9 @@ prefix.
 
 **Language limits.**
 
-* Notices already on screen and activity entries already written keep their
-  language; the next ones use the new one.
+* Notices already on screen keep their language; the next ones use the new one.
+  Activity entries are rebuilt in the language in use whenever they are shown
+  (`ActivityEntry.text` is a text or a function returning it, like `Label`).
 * The fictitious `--demo` data (profile names, descriptions, sections and activity,
   `kongui/gui/mock_data.py`) is always English: it is sample content, not interface
   text. The interface around it is translated.

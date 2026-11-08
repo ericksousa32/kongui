@@ -480,6 +480,24 @@ class LaterComponentsTests(WindowCase):
         self.run_all()
         self.assertEqual(window.toasts.titles()[-1], "Perfil “Tablet” aplicado")
 
+    def test_activity_follows_a_later_language_change(self):
+        # An entry recorded in one language is shown in the language in use
+        # when it is displayed, not frozen in the one of the operation.
+        from kongui.gui.i18n import resolve_text
+
+        window = self.open_window()
+        window.controller.apply("Gaming", confirmed=True)
+        self.run_all()
+        entry = window.context.activity.entries()[0]
+        self.assertEqual(resolve_text(entry.text), "Profile “Gaming” applied")
+        self.switch("pt_BR")
+        self.assertEqual(resolve_text(entry.text), "Perfil “Gaming” aplicado")
+        dashboard = window.pages["dashboard"]
+        dashboard.refresh()
+        self.flush()
+        self.assertIn("Perfil “Gaming” aplicado", _walk_texts(dashboard))
+        self.assertNotIn("Profile “Gaming” applied", _walk_texts(dashboard))
+
     def test_errors_use_the_current_language(self):
         window = self.open_window()
         window.controller.apply("Nope", confirmed=True)

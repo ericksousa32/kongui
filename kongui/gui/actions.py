@@ -14,6 +14,7 @@ from PySide6.QtCore import QCoreApplication, QObject
 from PySide6.QtWidgets import QDialog, QWidget
 
 from kongui.core import CATEGORIES, LockCancelledError
+from kongui.gui import messages
 from kongui.gui.context import AppContext
 from kongui.gui.controller import Outcome
 from kongui.gui.formatting import format_datetime
@@ -353,7 +354,17 @@ class OutcomeNotifier(QObject):
             self.ctx.toasts.show_message(kind, outcome.title, text)
             activity = _ACTIVITY_KIND.get(outcome.operation)
             if activity:
-                self.ctx.activity.add(activity, outcome.title)
+                # Built again whenever it is shown, so the entry follows a
+                # language change made after the operation.
+                operation, name, partial = (
+                    outcome.operation,
+                    outcome.name,
+                    outcome.warning,
+                )
+                self.ctx.activity.add(
+                    activity,
+                    lambda: messages.outcome_title(operation, name, partial),
+                )
         elif isinstance(outcome.error, LockCancelledError):
             self.ctx.toasts.show_message(
                 "info",
