@@ -117,10 +117,12 @@ class AboutPage(Page):
             lambda: self.tr("In development"),
             lambda: self.tr(
                 "Listing, saving, overwriting, applying, removing, clearing, "
-                "importing and exporting profiles use the real Konsave. What a "
-                "profile holds is set in ~/.config/konsave/conf.yaml, edited by "
-                "hand as in Konsave. Before applying or importing, the files that "
-                "would be overwritten are copied and can be restored in Settings."
+                "importing and exporting profiles use the real Konsave. When "
+                "saving, you choose which categories go into the profile; the "
+                "files behind them are listed in ~/.config/konsave/conf.yaml, "
+                "which can still be edited by hand as in Konsave. Before applying "
+                "or importing, the files that would be overwritten are copied and "
+                "can be restored in Settings."
             ),
         )
 

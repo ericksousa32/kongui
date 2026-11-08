@@ -499,6 +499,9 @@ class RealWindowFlowTests(RealBackendCase):
         badges = [b.text() for b in window.pages["about"].findChildren(Badge)]
         self.assertIn("Em desenvolvimento", badges)
         self.assertNotIn("Protótipo visual", badges)
+        # Since 0.1.0a4 the save dialog chooses what a profile holds.
+        about = " ".join(w.text() for w in window.pages["about"].findChildren(Label))
+        self.assertIn("você escolhe quais categorias entram no perfil", about)
 
     def test_transfer_is_available_and_demo_controls_are_not(self):
         window = self.make_window(backend=self.backend)

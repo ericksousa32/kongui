@@ -36,12 +36,12 @@
         <translation>In development</translation>
     </message>
     <message>
-        <source>Environment</source>
-        <translation>Environment</translation>
+        <source>Listing, saving, overwriting, applying, removing, clearing, importing and exporting profiles use the real Konsave. When saving, you choose which categories go into the profile; the files behind them are listed in ~/.config/konsave/conf.yaml, which can still be edited by hand as in Konsave. Before applying or importing, the files that would be overwritten are copied and can be restored in Settings.</source>
+        <translation>Listing, saving, overwriting, applying, removing, clearing, importing and exporting profiles use the real Konsave. When saving, you choose which categories go into the profile; the files behind them are listed in ~/.config/konsave/conf.yaml, which can still be edited by hand as in Konsave. Before applying or importing, the files that would be overwritten are copied and can be restored in Settings.</translation>
     </message>
     <message>
-        <source>Listing, saving, overwriting, applying, removing, clearing, importing and exporting profiles use the real Konsave. What a profile holds is set in ~/.config/konsave/conf.yaml, edited by hand as in Konsave. Before applying or importing, the files that would be overwritten are copied and can be restored in Settings.</source>
-        <translation>Listing, saving, overwriting, applying, removing, clearing, importing and exporting profiles use the real Konsave. What a profile holds is set in ~/.config/konsave/conf.yaml, edited by hand as in Konsave. Before applying or importing, the files that would be overwritten are copied and can be restored in Settings.</translation>
+        <source>Environment</source>
+        <translation>Environment</translation>
     </message>
     <message>
         <source>KonGUI version</source>
